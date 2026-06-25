@@ -7,8 +7,8 @@ export const Route = createFileRoute("/settings")({
   component: () => (
     <Placeholder
       eyebrow="Workspace"
-      title="Settings & Admin"
-      description="Manage locations, team roles, integrations, tax settings, and billing for your account."
+      title="Settings"
+      description="Manage your restaurant profile, locations, integrations, tax settings, and billing preferences."
       icon={Settings}
     />
   ),
