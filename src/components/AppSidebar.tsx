@@ -8,6 +8,7 @@ import {
   Search,
   Megaphone,
   CalendarClock,
+  Shield,
   Settings,
   UtensilsCrossed,
 } from "lucide-react";
@@ -39,7 +40,8 @@ const growth = [
 
 const operations = [
   { title: "Scheduling", url: "/scheduling", icon: CalendarClock },
-  { title: "Settings & Admin", url: "/settings", icon: Settings },
+  { title: "Admin", url: "/admin", icon: Shield },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
