@@ -82,7 +82,7 @@ export function AppSidebar() {
             <UtensilsCrossed className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <div className="font-display text-base leading-tight">Maison Olive</div>
+            <div className="font-display text-base leading-tight">Thrasher's Pub</div>
             <div className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               Owner Dashboard
             </div>

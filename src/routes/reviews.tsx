@@ -40,7 +40,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 export const Route = createFileRoute("/reviews")({
   head: () => ({
     meta: [
-      { title: "Reviews · Maison Olive" },
+      { title: "Reviews · Thrasher's Pub" },
       {
         name: "description",
         content:
@@ -113,7 +113,7 @@ const REVIEWS: Review[] = [
     tags: ["ambience", "noise"],
     visit: "Sat dinner · party of 2",
     aiDraft:
-      "Sophie, thank you for the thoughtful review. The 8pm energy is part of the room's character, but we hear you — for quieter evenings, ask for table 6 or 11 along the banquette. We'd love to host you again. — Maison Olive",
+      "Sophie, thank you for the thoughtful review. The 8pm energy is part of the room's character, but we hear you — for quieter evenings, ask for table 6 or 11 along the banquette. We'd love to host you again. — Thrasher's Pub",
   },
   {
     id: "r4",
@@ -140,7 +140,7 @@ const REVIEWS: Review[] = [
     status: "escalated",
     tags: ["delivery", "pasta", "temperature"],
     aiDraft:
-      "Thank you for flagging this — pasta doesn't travel well past 15 minutes, and we should have caught that. I've issued a full refund and added store credit. We're testing a new container for pasta delivery this month. — Maison Olive",
+      "Thank you for flagging this — pasta doesn't travel well past 15 minutes, and we should have caught that. I've issued a full refund and added store credit. We're testing a new container for pasta delivery this month. — Thrasher's Pub",
   },
   {
     id: "r6",
@@ -168,7 +168,7 @@ const REVIEWS: Review[] = [
     tags: ["billing", "service"],
     visit: "Tue dinner · party of 3",
     aiDraft:
-      "Hannah, apologies for the billing slip — we've retrained the floor team on the new POS this week. Please come back and let us comp a round of negronis. — Maison Olive",
+      "Hannah, apologies for the billing slip — we've retrained the floor team on the new POS this week. Please come back and let us comp a round of negronis. — Thrasher's Pub",
   },
 ];
 
@@ -431,7 +431,7 @@ function ReviewsPage() {
                 <div>
                   <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Signature</div>
                   <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                    — Lia, Owner · Maison Olive
+                    — Lia, Owner · Thrasher's Pub
                   </div>
                 </div>
               </div>

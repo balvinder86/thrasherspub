@@ -74,7 +74,7 @@ import { Separator } from "@/components/ui/separator";
 export const Route = createFileRoute("/seo")({
   head: () => ({
     meta: [
-      { title: "SEO · Maison Olive" },
+      { title: "SEO · Thrasher's Pub" },
       {
         name: "description",
         content:
@@ -130,8 +130,8 @@ type Page = {
 };
 
 const pages: Page[] = [
-  { id: "p1", path: "/", title: "Maison Olive — Modern Italian in Hayes Valley", score: 86, issues: ["Add FAQ schema"], status: "Healthy" },
-  { id: "p2", path: "/menu", title: "Seasonal Tasting Menu | Maison Olive", score: 72, issues: ["Meta description >160ch", "2 images missing alt"], status: "Needs work" },
+  { id: "p1", path: "/", title: "Thrasher's Pub — Modern Italian in Hayes Valley", score: 86, issues: ["Add FAQ schema"], status: "Healthy" },
+  { id: "p2", path: "/menu", title: "Seasonal Tasting Menu | Thrasher's Pub", score: 72, issues: ["Meta description >160ch", "2 images missing alt"], status: "Needs work" },
   { id: "p3", path: "/menu/tagliatelle", title: "Truffle Tagliatelle", score: 64, issues: ["No H1", "Thin content (180 words)", "Missing Product schema"], status: "Needs work" },
   { id: "p4", path: "/events", title: "Private Events & Buyouts", score: 41, issues: ["Page slow (LCP 4.8s)", "Duplicate title", "No internal links in"], status: "Critical" },
   { id: "p5", path: "/reservations", title: "Reservations", score: 91, issues: [], status: "Healthy" },
@@ -139,7 +139,7 @@ const pages: Page[] = [
 
 const competitors = [
   { name: "Trattoria Bianca", visibility: 71, delta: -2, share: 18 },
-  { name: "Maison Olive", visibility: 64, delta: 6, share: 16, you: true },
+  { name: "Thrasher's Pub", visibility: 64, delta: 6, share: 16, you: true },
   { name: "Osteria Nord", visibility: 58, delta: 1, share: 14 },
   { name: "Vino & Sale", visibility: 49, delta: -4, share: 11 },
   { name: "Café Marais", visibility: 42, delta: 3, share: 9 },
@@ -616,7 +616,7 @@ function SeoPage() {
                     <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                       Google Business Profile
                     </div>
-                    <h3 className="mt-1 font-display text-2xl">Maison Olive · Hayes Valley</h3>
+                    <h3 className="mt-1 font-display text-2xl">Thrasher's Pub · Hayes Valley</h3>
                     <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> 4.7 · 832
@@ -1099,7 +1099,7 @@ function SeoPage() {
                   </div>
                   <div className="mt-1 text-lg text-[hsl(220,80%,40%)] underline">
                     {biz === "restaurant"
-                      ? "Maison Olive — Modern Italian in Hayes Valley"
+                      ? "Thrasher's Pub — Modern Italian in Hayes Valley"
                       : "North Bay Remodel — Kitchen & Bath Contractor"}
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -1258,7 +1258,7 @@ function SeoPage() {
                 </div>
                 {(biz === "restaurant"
                   ? [
-                      { domain: "sfchronicle.com", anchor: "Maison Olive", da: 91, type: "Editorial", date: "2d" },
+                      { domain: "sfchronicle.com", anchor: "Thrasher's Pub", da: 91, type: "Editorial", date: "2d" },
                       { domain: "eater.com", anchor: "modern italian in hayes valley", da: 89, type: "Editorial", date: "5d" },
                       { domain: "opentable.com", anchor: "Reserve", da: 88, type: "Profile", date: "1w" },
                       { domain: "hayesvalleysf.org", anchor: "neighborhood guide", da: 41, type: "Resource", date: "2w" },
@@ -1420,7 +1420,7 @@ function SeoPage() {
                   </Label>
                   <Textarea
                     className="mt-2 min-h-[180px]"
-                    defaultValue={`Maison Olive · Modern Italian in Hayes Valley\n\nSeasonal tasting menu featuring white truffle, hand-cut tagliatelle, and a 200-bottle Italian wine list. Reserve a table tonight.`}
+                    defaultValue={`Thrasher's Pub · Modern Italian in Hayes Valley\n\nSeasonal tasting menu featuring white truffle, hand-cut tagliatelle, and a 200-bottle Italian wine list. Reserve a table tonight.`}
                   />
                 </div>
 

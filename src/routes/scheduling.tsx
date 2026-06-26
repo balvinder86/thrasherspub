@@ -3,7 +3,7 @@ import { CalendarClock } from "lucide-react";
 import { Placeholder } from "@/components/dashboard/Placeholder";
 
 export const Route = createFileRoute("/scheduling")({
-  head: () => ({ meta: [{ title: "Scheduling · Maison Olive" }] }),
+  head: () => ({ meta: [{ title: "Scheduling · Thrasher's Pub" }] }),
   component: () => (
     <Placeholder
       eyebrow="Labor"

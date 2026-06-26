@@ -3,7 +3,7 @@ import { Receipt } from "lucide-react";
 import { Placeholder } from "@/components/dashboard/Placeholder";
 
 export const Route = createFileRoute("/invoices")({
-  head: () => ({ meta: [{ title: "Invoices · Maison Olive" }] }),
+  head: () => ({ meta: [{ title: "Invoices · Thrasher's Pub" }] }),
   component: () => (
     <Placeholder
       eyebrow="Accounts payable"

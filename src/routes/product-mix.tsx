@@ -3,7 +3,7 @@ import { PieChart } from "lucide-react";
 import { Placeholder } from "@/components/dashboard/Placeholder";
 
 export const Route = createFileRoute("/product-mix")({
-  head: () => ({ meta: [{ title: "Product Mix · Maison Olive" }] }),
+  head: () => ({ meta: [{ title: "Product Mix · Thrasher's Pub" }] }),
   component: () => (
     <Placeholder
       eyebrow="Menu performance"

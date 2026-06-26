@@ -31,7 +31,7 @@ import { Progress } from "@/components/ui/progress";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Sales Overview · Maison Olive" },
+      { title: "Sales Overview · Thrasher's Pub" },
       {
         name: "description",
         content: "Daily sales, covers, top items, and service health for restaurant owners.",
