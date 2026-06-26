@@ -97,10 +97,10 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent font-display text-sm text-accent-foreground">
-            EM
+            BS
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium">Elena Marchetti</div>
+            <div className="truncate text-sm font-medium">Bali Singh</div>
             <div className="truncate text-[11px] text-muted-foreground">Owner · West Village</div>
           </div>
         </div>
