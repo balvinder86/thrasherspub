@@ -258,6 +258,7 @@ function SeoPage() {
   const [selected, setSelected] = useState<Keyword | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<(typeof agentQueue)[number] | null>(null);
+  const [biz, setBiz] = useState<"restaurant" | "contractor">("restaurant");
 
   const quickWins = useMemo(
     () => keywords.filter((k) => k.opportunity === "Quick win").length,
@@ -269,6 +270,40 @@ function SeoPage() {
       <Topbar eyebrow="Discovery" title="SEO & local search" />
 
       <div className="space-y-6 px-6 py-6">
+        {/* Business type switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-full border border-border bg-card p-1 text-sm">
+            {([
+              { id: "restaurant", label: "Restaurant", icon: Utensils },
+              { id: "contractor", label: "Contractor", icon: Hammer },
+            ] as const).map((b) => {
+              const Icon = b.icon;
+              const active = biz === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setBiz(b.id)}
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 transition ${
+                    active
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {b.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            Last crawl 12 min ago · Google Search Console connected
+            <Button variant="outline" size="sm" className="ml-2 gap-2">
+              <RefreshCw className="h-3.5 w-3.5" /> Run audit
+            </Button>
+          </div>
+        </div>
+
         {/* KPI row */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Kpi
