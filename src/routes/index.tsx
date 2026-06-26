@@ -76,7 +76,7 @@ const topItems = [
 
 const liveOrders = [
   { table: "T-12", server: "Marco", items: 6, total: 184, status: "Firing", min: 4 },
-  { table: "Bar 03", server: "Lia", items: 3, total: 62, status: "Plating", min: 9 },
+  { table: "Bar 03", server: "Bali", items: 3, total: 62, status: "Plating", min: 9 },
   { table: "T-04", server: "Jules", items: 8, total: 246, status: "Open tab", min: 22 },
   { table: "Patio 7", server: "Sana", items: 5, total: 138, status: "Firing", min: 2 },
 ];

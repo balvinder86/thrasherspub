@@ -83,7 +83,7 @@ const REVIEWS: Review[] = [
     tags: ["service", "pasta", "cocktails"],
     visit: "Fri dinner · party of 4",
     aiDraft:
-      "Amelia, thank you for such a kind note — we'll pass your words on to Marco and the kitchen. The ragù simmers eight hours, so we're thrilled it landed. Save us a seat next time; the autumn menu drops in two weeks. — Chef Lia",
+      "Amelia, thank you for such a kind note — we'll pass your words on to Marco and the kitchen. The ragù simmers eight hours, so we're thrilled it landed. Save us a seat next time; the autumn menu drops in two weeks. — Chef Bali",
   },
   {
     id: "r2",
@@ -98,7 +98,7 @@ const REVIEWS: Review[] = [
     tags: ["wait time", "temperature", "branzino"],
     visit: "Thu dinner · party of 2",
     aiDraft:
-      "Daniel, I'm sorry your Thursday didn't reflect the standard we hold ourselves to — a 40 minute wait and a cold main are not acceptable. I'd like to invite you back as our guests for a tasting with the chef. Please email me directly at lia@maisonolive.com. — Lia, Owner",
+      "Daniel, I'm sorry your Thursday didn't reflect the standard we hold ourselves to — a 40 minute wait and a cold main are not acceptable. I'd like to invite you back as our guests for a tasting with the chef. Please email me directly at bali@thrasherspub.com. — Bali Singh, Owner",
   },
   {
     id: "r3",
@@ -431,7 +431,7 @@ function ReviewsPage() {
                 <div>
                   <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Signature</div>
                   <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                    — Lia, Owner · Thrasher's Pub
+                    — Bali Singh, Owner · Thrasher's Pub
                   </div>
                 </div>
               </div>
@@ -522,7 +522,7 @@ function ReviewsPage() {
               <ul className="mt-4 space-y-3 text-sm">
                 {[
                   { name: "Marco D.", role: "Server", score: 4.9, n: 41 },
-                  { name: "Lia K.", role: "Chef", score: 4.9, n: 33 },
+                  { name: "Bali S.", role: "Chef", score: 4.9, n: 33 },
                   { name: "Jules P.", role: "Server", score: 4.7, n: 28 },
                   { name: "Sofia R.", role: "Bar", score: 4.6, n: 22 },
                 ].map((s) => (
