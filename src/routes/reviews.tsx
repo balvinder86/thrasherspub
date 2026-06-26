@@ -431,7 +431,7 @@ function ReviewsPage() {
                 <div>
                   <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Signature</div>
                   <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                    — Lia, Owner · Thrasher's Pub
+                    — Bali Singh, Owner · Thrasher's Pub
                   </div>
                 </div>
               </div>
@@ -522,7 +522,7 @@ function ReviewsPage() {
               <ul className="mt-4 space-y-3 text-sm">
                 {[
                   { name: "Marco D.", role: "Server", score: 4.9, n: 41 },
-                  { name: "Lia K.", role: "Chef", score: 4.9, n: 33 },
+                  { name: "Bali S.", role: "Chef", score: 4.9, n: 33 },
                   { name: "Jules P.", role: "Server", score: 4.7, n: 28 },
                   { name: "Sofia R.", role: "Bar", score: 4.6, n: 22 },
                 ].map((s) => (
