@@ -93,6 +93,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Restaurant owner dashboard for sales, inventory, reviews, and operations." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Thrasher's Pub · Owner Dashboard" },
+      { name: "twitter:description", content: "Restaurant owner dashboard for sales, inventory, reviews, and operations." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png" },
     ],
     links: [
       {
