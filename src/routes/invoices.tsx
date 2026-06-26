@@ -5,20 +5,31 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Bot,
+  Brain,
   CheckCircle2,
   Clock,
   Download,
+  Eye,
+  FileSearch,
   FileText,
   Filter,
+  Globe,
   Inbox,
+  Mail,
   PiggyBank,
+  Plug,
   Plus,
   Receipt,
+  RefreshCw,
   Search,
+  ShieldCheck,
   Sparkles,
   Truck,
   Upload,
   Wallet,
+  Wand2,
+  XCircle,
+  Zap,
 } from "lucide-react";
 import {
   Area,
@@ -43,6 +54,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -715,6 +727,9 @@ function InvoicesPage() {
               <TabsTrigger value="savings" className="gap-1.5">
                 <PiggyBank className="h-3.5 w-3.5" /> Savings
               </TabsTrigger>
+              <TabsTrigger value="automation" className="gap-1.5">
+                <Bot className="h-3.5 w-3.5" /> Automation
+              </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-9 gap-1.5">
@@ -1065,6 +1080,11 @@ function InvoicesPage() {
               </div>
             </Card>
           </TabsContent>
+
+          {/* Automation tab */}
+          <TabsContent value="automation" className="space-y-4">
+            <AutomationTab />
+          </TabsContent>
         </Tabs>
       </main>
 
@@ -1173,4 +1193,613 @@ function InvoicesPage() {
       </Sheet>
     </>
   );
+}
+
+// =====================================================
+// Automation tab — auto-ingestion of vendor invoices
+// =====================================================
+
+type SourceKind = "email" | "portal" | "edi" | "api";
+type SourceStatus = "connected" | "syncing" | "needs-auth" | "disconnected";
+
+type IngestionSource = {
+  id: string;
+  name: string;
+  kind: SourceKind;
+  status: SourceStatus;
+  detail: string;
+  lastSync: string;
+  ingested30d: number;
+  accuracy: number;
+};
+
+const SOURCES: IngestionSource[] = [
+  {
+    id: "s1",
+    name: "Gmail · invoices@thrasherspub.com",
+    kind: "email",
+    status: "connected",
+    detail: "Watching label: AP/Inbox · 14 vendors auto-detected",
+    lastSync: "1m ago",
+    ingested30d: 184,
+    accuracy: 98.4,
+  },
+  {
+    id: "s2",
+    name: "Southern Glazer's · eInvoice portal",
+    kind: "portal",
+    status: "connected",
+    detail: "Nightly login at 3:00am · headless agent",
+    lastSync: "6h ago",
+    ingested30d: 42,
+    accuracy: 99.1,
+  },
+  {
+    id: "s3",
+    name: "Sysco · Sysco Now API",
+    kind: "api",
+    status: "connected",
+    detail: "OAuth direct feed · webhook + nightly reconcile",
+    lastSync: "12m ago",
+    ingested30d: 38,
+    accuracy: 99.6,
+  },
+  {
+    id: "s4",
+    name: "Columbia Distributing · portal",
+    kind: "portal",
+    status: "syncing",
+    detail: "Pulling 4 new invoices…",
+    lastSync: "just now",
+    ingested30d: 22,
+    accuracy: 97.2,
+  },
+  {
+    id: "s5",
+    name: "Restaurant Depot · receipt scan",
+    kind: "email",
+    status: "connected",
+    detail: "OCR on PDF receipts forwarded from inbox",
+    lastSync: "2h ago",
+    ingested30d: 18,
+    accuracy: 94.0,
+  },
+  {
+    id: "s6",
+    name: "Pacific Seafood · EDI 810",
+    kind: "edi",
+    status: "needs-auth",
+    detail: "VAN credentials expired · reconnect to resume",
+    lastSync: "3d ago",
+    ingested30d: 12,
+    accuracy: 99.8,
+  },
+];
+
+type FeedEvent = {
+  id: string;
+  time: string;
+  vendor: string;
+  source: string;
+  step: string;
+  result: "auto-approved" | "queued" | "flagged" | "matched";
+  detail: string;
+};
+
+const FEED: FeedEvent[] = [
+  {
+    id: "f1",
+    time: "2m ago",
+    vendor: "Sysco Foods",
+    source: "API webhook",
+    step: "Parsed INV-2841 · matched to PO-1184",
+    result: "auto-approved",
+    detail: "$3,284.60 · 12 line items · 100% confidence",
+  },
+  {
+    id: "f2",
+    time: "14m ago",
+    vendor: "Pacific Seafood",
+    source: "Gmail attachment",
+    step: "Parsed INV-2838",
+    result: "flagged",
+    detail: "Short 4 branzino vs delivery sheet — credit memo drafted",
+  },
+  {
+    id: "f3",
+    time: "38m ago",
+    vendor: "Southern Glazer's",
+    source: "Portal scrape",
+    step: "Downloaded 3 PDFs · OCR + extracted",
+    result: "auto-approved",
+    detail: "Aperol promo credit recognized — $96 savings posted",
+  },
+  {
+    id: "f4",
+    time: "1h ago",
+    vendor: "Acme Bread",
+    source: "Gmail attachment",
+    step: "Parsed INV-2834",
+    result: "queued",
+    detail: "Net 7 overdue 2d — awaiting your payment approval",
+  },
+  {
+    id: "f5",
+    time: "2h ago",
+    vendor: "Veritable Vegetable",
+    source: "Gmail attachment",
+    step: "Parsed INV-2835 · matched PO-1178",
+    result: "matched",
+    detail: "All quantities & prices match · auto-posted",
+  },
+  {
+    id: "f6",
+    time: "3h ago",
+    vendor: "Niman Ranch",
+    source: "Gmail attachment",
+    step: "Parsed INV-2836",
+    result: "auto-approved",
+    detail: "$1,842.00 · 6 line items",
+  },
+];
+
+type ReviewItem = {
+  id: string;
+  vendor: string;
+  invoice: string;
+  total: number;
+  reason: string;
+  confidence: number;
+  arrived: string;
+};
+
+const REVIEW_QUEUE: ReviewItem[] = [
+  {
+    id: "rq1",
+    vendor: "Pacific Seafood",
+    invoice: "INV-2838",
+    total: 1284.4,
+    reason: "Quantity mismatch · billed 22 branzino, delivery sheet 18",
+    confidence: 88,
+    arrived: "14m ago",
+  },
+  {
+    id: "rq2",
+    vendor: "Sysco Foods",
+    invoice: "INV-2839",
+    total: 3284.6,
+    reason: "Heirloom tomato unit price +18% vs 30d avg",
+    confidence: 92,
+    arrived: "1h ago",
+  },
+  {
+    id: "rq3",
+    vendor: "New vendor: Olio Verde",
+    invoice: "OV-00214",
+    total: 482.0,
+    reason: "First invoice from this vendor — confirm mapping",
+    confidence: 71,
+    arrived: "4h ago",
+  },
+  {
+    id: "rq4",
+    vendor: "Restaurant Depot",
+    invoice: "RD-887421",
+    total: 1842.18,
+    reason: "PO not found · ad-hoc purchase confirmation",
+    confidence: 95,
+    arrived: "6h ago",
+  },
+];
+
+function sourceStatusBadge(s: SourceStatus) {
+  if (s === "connected")
+    return (
+      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-500" /> Connected
+      </Badge>
+    );
+  if (s === "syncing")
+    return (
+      <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+        <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Syncing
+      </Badge>
+    );
+  if (s === "needs-auth")
+    return (
+      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+        <AlertTriangle className="mr-1 h-3 w-3" /> Reconnect
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="border-muted bg-muted/40 text-muted-foreground">
+      Disconnected
+    </Badge>
+  );
+}
+
+function kindIcon(k: SourceKind) {
+  if (k === "email") return Mail;
+  if (k === "portal") return Globe;
+  if (k === "edi") return Plug;
+  return Zap;
+}
+
+function resultBadge(r: FeedEvent["result"]) {
+  const map = {
+    "auto-approved": "border-emerald-200 bg-emerald-50 text-emerald-700",
+    matched: "border-sky-200 bg-sky-50 text-sky-700",
+    queued: "border-amber-200 bg-amber-50 text-amber-800",
+    flagged: "border-rose-200 bg-rose-50 text-rose-700",
+  } as const;
+  return (
+    <Badge variant="outline" className={`capitalize ${map[r]}`}>
+      {r.replace("-", " ")}
+    </Badge>
+  );
+}
+
+function AutomationTab() {
+  const connected = SOURCES.filter((s) => s.status === "connected" || s.status === "syncing").length;
+  const total30d = FEED.length + REVIEW_QUEUE.length + 168;
+  const autoRate = 92;
+
+  return (
+    <div className="space-y-4">
+      {/* Hero strip */}
+      <Card className="border-primary/30 bg-primary/[0.04] p-5">
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary">
+            <Bot className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-primary/80">
+              Invoice ingestion agent
+            </div>
+            <h3 className="font-display text-xl">
+              Pulling invoices automatically from email, vendor portals, and EDI feeds
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Every PDF, email, and portal upload is OCR'd, matched to a PO and delivery receipt,
+              then auto-approved or queued for your eye. You stop entering invoices.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5" /> Sync now
+            </Button>
+            <Button size="sm" className="h-9 gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> Connect source
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Sources live</div>
+            <div className="font-display text-2xl">{connected}/{SOURCES.length}</div>
+          </div>
+          <div className="rounded-xl border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Ingested · 30d</div>
+            <div className="font-display text-2xl">{total30d}</div>
+            <div className="text-xs text-emerald-700">+24% vs last month</div>
+          </div>
+          <div className="rounded-xl border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Auto-approved</div>
+            <div className="font-display text-2xl">{autoRate}%</div>
+            <div className="text-xs text-muted-foreground">{100 - autoRate}% routed to review</div>
+          </div>
+          <div className="rounded-xl border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Time saved</div>
+            <div className="font-display text-2xl">14.2 hrs</div>
+            <div className="text-xs text-muted-foreground">vs manual entry · 30d</div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Sources */}
+        <Card className="p-5 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Inbox sources
+              </div>
+              <h3 className="mt-1 font-display text-xl">Where invoices come from</h3>
+            </div>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> Add source
+            </Button>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {SOURCES.map((s) => {
+              const Icon = kindIcon(s.kind);
+              return (
+                <div key={s.id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="truncate font-medium">{s.name}</div>
+                      <Badge variant="outline" className="text-[10px] uppercase">
+                        {s.kind}
+                      </Badge>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{s.detail}</div>
+                  </div>
+                  <div className="hidden text-right text-xs text-muted-foreground sm:block">
+                    <div>{s.ingested30d} · 30d</div>
+                    <div>{s.accuracy}% acc.</div>
+                  </div>
+                  <div className="hidden text-xs text-muted-foreground md:block">{s.lastSync}</div>
+                  {sourceStatusBadge(s.status)}
+                </div>
+              );
+            })}
+          </div>
+
+          <Separator className="my-5" />
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: "Gmail / Google Workspace", icon: Mail },
+              { label: "Outlook / Microsoft 365", icon: Mail },
+              { label: "Vendor portal (custom)", icon: Globe },
+              { label: "EDI 810 / VAN", icon: Plug },
+            ].map((c) => (
+              <button
+                key={c.label}
+                className="flex items-center gap-2 rounded-xl border border-dashed bg-card/60 p-3 text-left text-sm hover:bg-accent"
+              >
+                <c.icon className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate">{c.label}</span>
+                <Plus className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        {/* Live activity feed */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Live activity
+              </div>
+              <h3 className="mt-1 font-display text-xl">Ingestion feed</h3>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
+            </span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {FEED.map((f) => (
+              <div key={f.id} className="border-l-2 border-primary/40 pl-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{f.time}</span>
+                  <span>·</span>
+                  <span>{f.source}</span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className="text-sm font-medium">{f.vendor}</span>
+                  {resultBadge(f.result)}
+                </div>
+                <div className="text-xs text-muted-foreground">{f.step}</div>
+                <div className="text-xs">{f.detail}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Review queue */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <FileSearch className="h-3.5 w-3.5" /> Needs your eye
+            </div>
+            <h3 className="mt-1 font-display text-xl">Review queue · {REVIEW_QUEUE.length}</h3>
+          </div>
+          <Button variant="outline" size="sm" className="h-8">
+            Approve all matching rules
+          </Button>
+        </div>
+        <Table className="mt-3">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Vendor / Invoice</TableHead>
+              <TableHead>Why flagged</TableHead>
+              <TableHead>Confidence</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead>Arrived</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {REVIEW_QUEUE.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell>
+                  <div className="font-medium">{r.vendor}</div>
+                  <div className="text-xs text-muted-foreground">{r.invoice}</div>
+                </TableCell>
+                <TableCell className="text-sm">{r.reason}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Progress value={r.confidence} className="h-1.5 w-20" />
+                    <span className="text-xs font-medium">{r.confidence}%</span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-medium">{formatMoney(r.total)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{r.arrived}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-600">
+                      <XCircle className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" className="h-7 gap-1 px-2">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {/* Agent settings + pipeline */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Agent rules & guardrails
+            </div>
+          </div>
+          <h3 className="mt-1 font-display text-xl">How aggressively to automate</h3>
+
+          <div className="mt-4 space-y-4 text-sm">
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Auto-approve confidence threshold</Label>
+                <span className="font-medium">95%</span>
+              </div>
+              <Progress value={95} className="mt-2 h-1.5" />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Anything below 95% extraction confidence goes to your review queue.
+              </p>
+            </div>
+
+            {[
+              {
+                label: "Auto-approve trusted vendors under $500 with matching PO",
+                desc: "Sysco, Niman Ranch, Veritable, Acme Bread, Columbia",
+                on: true,
+              },
+              {
+                label: "Auto-approve 3-way matched invoices (PO + delivery + invoice)",
+                desc: "All quantities and prices within 2% tolerance",
+                on: true,
+              },
+              {
+                label: "Require approval for invoices >$2,500",
+                desc: "Regardless of vendor or PO match",
+                on: true,
+              },
+              {
+                label: "Require approval on price increase >10%",
+                desc: "Compared to trailing 30-day average unit price",
+                on: true,
+              },
+              {
+                label: "Always review first 3 invoices from new vendor",
+                desc: "Helps the agent learn each vendor's layout",
+                on: true,
+              },
+              {
+                label: "Auto-pay invoices marked approved on due date",
+                desc: "Uses your default payment account",
+                on: false,
+              },
+            ].map((r) => (
+              <div key={r.label} className="flex items-start justify-between gap-3 rounded-lg border bg-card p-3">
+                <div>
+                  <div className="text-sm font-medium">{r.label}</div>
+                  <div className="text-xs text-muted-foreground">{r.desc}</div>
+                </div>
+                <Switch defaultChecked={r.on} />
+              </div>
+            ))}
+          </div>
+
+          <Separator className="my-5" />
+
+          <div className="space-y-2 text-sm">
+            <Label>Notify on exceptions</Label>
+            <Input defaultValue="bali@thrasherspub.com, ap@thrasherspub.com" />
+            <p className="text-xs text-muted-foreground">
+              Email + push when something needs review. Daily digest at 9am.
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-primary" />
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              How the agent works
+            </div>
+          </div>
+          <h3 className="mt-1 font-display text-xl">Extraction pipeline</h3>
+
+          <ol className="mt-4 space-y-3">
+            {[
+              {
+                icon: Mail,
+                title: "1 · Collect",
+                detail: "Watches inbox, portals, and EDI feeds 24/7 for new invoices.",
+              },
+              {
+                icon: FileSearch,
+                title: "2 · OCR + parse",
+                detail: "Reads PDFs, photos, scans. Recovers line items even from messy layouts.",
+              },
+              {
+                icon: Wand2,
+                title: "3 · Extract",
+                detail:
+                  "AI pulls vendor, invoice #, dates, line items, unit prices, taxes, totals into structured JSON.",
+              },
+              {
+                icon: CheckCircle2,
+                title: "4 · 3-way match",
+                detail: "Cross-checks invoice ↔ purchase order ↔ delivery receipt.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "5 · Flag exceptions",
+                detail:
+                  "Catches price hikes, short qty, duplicates, missing POs, new vendors.",
+              },
+              {
+                icon: Sparkles,
+                title: "6 · Post or route",
+                detail: "Auto-posts if confident, otherwise queues for your 1-click approval.",
+              },
+            ].map((step) => (
+              <li key={step.title} className="flex items-start gap-3">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <step.icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">{step.title}</div>
+                  <div className="text-xs text-muted-foreground">{step.detail}</div>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <Separator className="my-5" />
+
+          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <div className="font-medium text-foreground">For your Claude backend</div>
+            Suggested stack: Gmail / Microsoft Graph for email watch, Mistral OCR or Google
+            Document AI for layout, Claude 3.5 Sonnet for line-item extraction, Playwright for
+            portal scraping, and your DB to dedupe by invoice #.
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Label primitive (kept local to avoid extra import)
+function Label({ children }: { children: React.ReactNode }) {
+  return <div className="text-sm font-medium">{children}</div>;
 }
