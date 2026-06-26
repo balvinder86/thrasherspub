@@ -1080,6 +1080,11 @@ function InvoicesPage() {
               </div>
             </Card>
           </TabsContent>
+
+          {/* Automation tab */}
+          <TabsContent value="automation" className="space-y-4">
+            <AutomationTab />
+          </TabsContent>
         </Tabs>
       </main>
 
