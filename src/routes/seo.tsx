@@ -440,18 +440,30 @@ function SeoPage() {
 
         {/* Tabs */}
         <Tabs defaultValue="keywords">
-          <TabsList className="bg-card">
+          <TabsList className="flex h-auto flex-wrap gap-1 bg-card">
             <TabsTrigger value="keywords" className="gap-2">
               <Target className="h-4 w-4" /> Keywords
             </TabsTrigger>
             <TabsTrigger value="pages" className="gap-2">
               <FileText className="h-4 w-4" /> Pages
             </TabsTrigger>
+            <TabsTrigger value="technical" className="gap-2">
+              <Gauge className="h-4 w-4" /> Technical
+            </TabsTrigger>
+            <TabsTrigger value="schema" className="gap-2">
+              <Code2 className="h-4 w-4" /> Schema
+            </TabsTrigger>
+            <TabsTrigger value="content" className="gap-2">
+              <PenSquare className="h-4 w-4" /> Content
+            </TabsTrigger>
             <TabsTrigger value="gbp" className="gap-2">
               <Building2 className="h-4 w-4" /> Google Business
             </TabsTrigger>
             <TabsTrigger value="citations" className="gap-2">
               <Link2 className="h-4 w-4" /> Citations
+            </TabsTrigger>
+            <TabsTrigger value="backlinks" className="gap-2">
+              <Share2 className="h-4 w-4" /> Backlinks
             </TabsTrigger>
             <TabsTrigger value="competitors" className="gap-2">
               <Globe className="h-4 w-4" /> Competitors
@@ -460,6 +472,7 @@ function SeoPage() {
               <Bot className="h-4 w-4" /> AI agent
             </TabsTrigger>
           </TabsList>
+
 
           {/* KEYWORDS */}
           <TabsContent value="keywords" className="mt-4">
