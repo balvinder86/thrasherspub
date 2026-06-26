@@ -3,7 +3,7 @@ import { Shield } from "lucide-react";
 import { Placeholder } from "@/components/dashboard/Placeholder";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Admin · Maison Olive" }] }),
+  head: () => ({ meta: [{ title: "Admin · Thrasher's Pub" }] }),
   component: () => (
     <Placeholder
       eyebrow="Workspace"

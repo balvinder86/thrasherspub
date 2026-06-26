@@ -3,7 +3,7 @@ import { Megaphone } from "lucide-react";
 import { Placeholder } from "@/components/dashboard/Placeholder";
 
 export const Route = createFileRoute("/marketing")({
-  head: () => ({ meta: [{ title: "Marketing · Maison Olive" }] }),
+  head: () => ({ meta: [{ title: "Marketing · Thrasher's Pub" }] }),
   component: () => (
     <Placeholder
       eyebrow="Campaigns"
