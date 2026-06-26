@@ -727,6 +727,9 @@ function InvoicesPage() {
               <TabsTrigger value="savings" className="gap-1.5">
                 <PiggyBank className="h-3.5 w-3.5" /> Savings
               </TabsTrigger>
+              <TabsTrigger value="automation" className="gap-1.5">
+                <Bot className="h-3.5 w-3.5" /> Automation
+              </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-9 gap-1.5">
