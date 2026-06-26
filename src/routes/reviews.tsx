@@ -83,7 +83,7 @@ const REVIEWS: Review[] = [
     tags: ["service", "pasta", "cocktails"],
     visit: "Fri dinner · party of 4",
     aiDraft:
-      "Amelia, thank you for such a kind note — we'll pass your words on to Marco and the kitchen. The ragù simmers eight hours, so we're thrilled it landed. Save us a seat next time; the autumn menu drops in two weeks. — Chef Lia",
+      "Amelia, thank you for such a kind note — we'll pass your words on to Marco and the kitchen. The ragù simmers eight hours, so we're thrilled it landed. Save us a seat next time; the autumn menu drops in two weeks. — Chef Bali",
   },
   {
     id: "r2",
