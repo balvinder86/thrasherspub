@@ -1095,7 +1095,7 @@ function SeoPage() {
                 <p className="text-sm text-muted-foreground">How Google may render your homepage.</p>
                 <div className="mt-4 rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-emerald-700">
-                    {biz === "restaurant" ? "maisonolive.com › menu" : "northbayremodel.com › services"}
+                    {biz === "restaurant" ? "thrasherspub.com › menu" : "northbayremodel.com › services"}
                   </div>
                   <div className="mt-1 text-lg text-[hsl(220,80%,40%)] underline">
                     {biz === "restaurant"

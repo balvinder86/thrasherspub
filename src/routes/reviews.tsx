@@ -98,7 +98,7 @@ const REVIEWS: Review[] = [
     tags: ["wait time", "temperature", "branzino"],
     visit: "Thu dinner · party of 2",
     aiDraft:
-      "Daniel, I'm sorry your Thursday didn't reflect the standard we hold ourselves to — a 40 minute wait and a cold main are not acceptable. I'd like to invite you back as our guests for a tasting with the chef. Please email me directly at lia@maisonolive.com. — Lia, Owner",
+      "Daniel, I'm sorry your Thursday didn't reflect the standard we hold ourselves to — a 40 minute wait and a cold main are not acceptable. I'd like to invite you back as our guests for a tasting with the chef. Please email me directly at lia@thrasherspub.com. — Lia, Owner",
   },
   {
     id: "r3",
