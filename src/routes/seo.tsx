@@ -113,7 +113,7 @@ type Keyword = {
 const keywords: Keyword[] = [
   { id: "k1", term: "italian restaurant near me", intent: "Local", rank: 4, prev: 7, volume: 4400, difficulty: 58, url: "/", opportunity: "Quick win" },
   { id: "k2", term: "best pasta hayes valley", intent: "Local", rank: 2, prev: 3, volume: 880, difficulty: 32, url: "/menu", opportunity: "Watch" },
-  { id: "k3", term: "maison olive", intent: "Brand", rank: 1, prev: 1, volume: 1300, difficulty: 8, url: "/", opportunity: "Watch" },
+  { id: "k3", term: "thrasher's pub", intent: "Brand", rank: 1, prev: 1, volume: 1300, difficulty: 8, url: "/", opportunity: "Watch" },
   { id: "k4", term: "truffle tagliatelle sf", intent: "Dish", rank: 6, prev: 11, volume: 320, difficulty: 24, url: "/menu/tagliatelle", opportunity: "Quick win" },
   { id: "k5", term: "private dining san francisco", intent: "Event", rank: 14, prev: 18, volume: 2100, difficulty: 64, url: "/events", opportunity: "Stretch" },
   { id: "k6", term: "wine bar near opera house", intent: "Local", rank: 9, prev: 13, volume: 590, difficulty: 38, url: "/wine", opportunity: "Quick win" },
