@@ -189,7 +189,7 @@ function MarketingPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Topbar />
+      <Topbar eyebrow="Growth" title="Marketing" />
       <main className="flex-1 space-y-6 px-6 py-6 lg:px-10">
         {/* Header */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
