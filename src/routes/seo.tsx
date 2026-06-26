@@ -1,32 +1,44 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
+  Activity,
   ArrowDownRight,
   ArrowUpRight,
   Bot,
   Building2,
   CheckCircle2,
+  Code2,
   ExternalLink,
   Eye,
+  FileCode,
   FileText,
+  Gauge,
   Globe,
+  Hammer,
   Image as ImageIcon,
+  Layers,
   Link2,
   MapPin,
   Megaphone,
   MousePointerClick,
+  PenSquare,
   Pencil,
   Phone,
   Plus,
   RefreshCw,
   Search,
   Send,
+  Share2,
+  Shield,
+  Smartphone,
   Sparkles,
   Star,
   Target,
   TrendingDown,
   TrendingUp,
+  Utensils,
   Wand2,
+  Zap,
 } from "lucide-react";
 import {
   Area,
@@ -246,6 +258,7 @@ function SeoPage() {
   const [selected, setSelected] = useState<Keyword | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<(typeof agentQueue)[number] | null>(null);
+  const [biz, setBiz] = useState<"restaurant" | "contractor">("restaurant");
 
   const quickWins = useMemo(
     () => keywords.filter((k) => k.opportunity === "Quick win").length,
@@ -257,6 +270,40 @@ function SeoPage() {
       <Topbar eyebrow="Discovery" title="SEO & local search" />
 
       <div className="space-y-6 px-6 py-6">
+        {/* Business type switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-full border border-border bg-card p-1 text-sm">
+            {([
+              { id: "restaurant", label: "Restaurant", icon: Utensils },
+              { id: "contractor", label: "Contractor", icon: Hammer },
+            ] as const).map((b) => {
+              const Icon = b.icon;
+              const active = biz === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setBiz(b.id)}
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 transition ${
+                    active
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {b.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            Last crawl 12 min ago · Google Search Console connected
+            <Button variant="outline" size="sm" className="ml-2 gap-2">
+              <RefreshCw className="h-3.5 w-3.5" /> Run audit
+            </Button>
+          </div>
+        </div>
+
         {/* KPI row */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Kpi
@@ -393,18 +440,30 @@ function SeoPage() {
 
         {/* Tabs */}
         <Tabs defaultValue="keywords">
-          <TabsList className="bg-card">
+          <TabsList className="flex h-auto flex-wrap gap-1 bg-card">
             <TabsTrigger value="keywords" className="gap-2">
               <Target className="h-4 w-4" /> Keywords
             </TabsTrigger>
             <TabsTrigger value="pages" className="gap-2">
               <FileText className="h-4 w-4" /> Pages
             </TabsTrigger>
+            <TabsTrigger value="technical" className="gap-2">
+              <Gauge className="h-4 w-4" /> Technical
+            </TabsTrigger>
+            <TabsTrigger value="schema" className="gap-2">
+              <Code2 className="h-4 w-4" /> Schema
+            </TabsTrigger>
+            <TabsTrigger value="content" className="gap-2">
+              <PenSquare className="h-4 w-4" /> Content
+            </TabsTrigger>
             <TabsTrigger value="gbp" className="gap-2">
               <Building2 className="h-4 w-4" /> Google Business
             </TabsTrigger>
             <TabsTrigger value="citations" className="gap-2">
               <Link2 className="h-4 w-4" /> Citations
+            </TabsTrigger>
+            <TabsTrigger value="backlinks" className="gap-2">
+              <Share2 className="h-4 w-4" /> Backlinks
             </TabsTrigger>
             <TabsTrigger value="competitors" className="gap-2">
               <Globe className="h-4 w-4" /> Competitors
@@ -413,6 +472,7 @@ function SeoPage() {
               <Bot className="h-4 w-4" /> AI agent
             </TabsTrigger>
           </TabsList>
+
 
           {/* KEYWORDS */}
           <TabsContent value="keywords" className="mt-4">
@@ -849,7 +909,420 @@ function SeoPage() {
               </Card>
             </div>
           </TabsContent>
+          {/* TECHNICAL */}
+          <TabsContent value="technical" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-3">
+              {[
+                { label: "Performance", value: 78, icon: Zap, tone: "amber", hint: "LCP 2.9s · CLS 0.04 · INP 220ms" },
+                { label: "Accessibility", value: 92, icon: Eye, tone: "emerald", hint: "3 contrast warnings on /menu" },
+                { label: "Best practices", value: 88, icon: Shield, tone: "emerald", hint: "1 mixed-content asset" },
+                { label: "SEO basics", value: 84, icon: Search, tone: "emerald", hint: "2 missing meta descriptions" },
+                { label: "Mobile usability", value: 95, icon: Smartphone, tone: "emerald", hint: "Tap targets OK" },
+                { label: "Indexability", value: 71, icon: Activity, tone: "amber", hint: "8 pages discovered, not indexed" },
+              ].map((m) => {
+                const Icon = m.icon;
+                return (
+                  <Card key={m.label} className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/40">
+                        <Icon className="h-5 w-5 text-foreground/70" />
+                      </div>
+                      <div className="font-display text-3xl">{m.value}</div>
+                    </div>
+                    <div className="mt-3 text-sm font-medium">{m.label}</div>
+                    <Progress value={m.value} className="mt-2 h-1.5" />
+                    <div className="mt-2 text-xs text-muted-foreground">{m.hint}</div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/70 p-4">
+                  <div>
+                    <h3 className="font-display text-lg">Crawl & indexing</h3>
+                    <p className="text-sm text-muted-foreground">From Google Search Console + your sitemap.</p>
+                  </div>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <RefreshCw className="h-4 w-4" /> Re-crawl
+                  </Button>
+                </div>
+                {[
+                  { label: "Submitted in sitemap", value: 42, tone: "muted" },
+                  { label: "Indexed", value: 31, tone: "emerald" },
+                  { label: "Discovered – not indexed", value: 8, tone: "amber" },
+                  { label: "Crawled – not indexed", value: 2, tone: "amber" },
+                  { label: "Blocked by robots.txt", value: 1, tone: "rose" },
+                  { label: "Server error (5xx)", value: 0, tone: "muted" },
+                  { label: "Soft 404", value: 0, tone: "muted" },
+                ].map((r) => (
+                  <div key={r.label} className="flex items-center justify-between border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                    <span>{r.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="tabular-nums">{r.value}</span>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                        Inspect <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="font-display text-xl">Core Web Vitals</h3>
+                <p className="text-sm text-muted-foreground">28-day field data, mobile.</p>
+                <div className="mt-4 space-y-4">
+                  {[
+                    { name: "LCP", good: 72, ni: 19, poor: 9, target: "≤ 2.5s", value: "2.9s" },
+                    { name: "INP", good: 81, ni: 12, poor: 7, target: "≤ 200ms", value: "220ms" },
+                    { name: "CLS", good: 94, ni: 4, poor: 2, target: "≤ 0.1", value: "0.04" },
+                  ].map((v) => (
+                    <div key={v.name}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium">{v.name}</span>
+                        <span className="text-muted-foreground">{v.value} <span className="text-xs">/ {v.target}</span></span>
+                      </div>
+                      <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="bg-emerald-500" style={{ width: `${v.good}%` }} />
+                        <div className="bg-amber-400" style={{ width: `${v.ni}%` }} />
+                        <div className="bg-rose-500" style={{ width: `${v.poor}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <Separator className="my-5" />
+
+                <h4 className="text-sm font-medium">Site files</h4>
+                <div className="mt-2 space-y-2">
+                  {[
+                    { name: "robots.txt", status: "OK", detail: "Sitemap referenced" },
+                    { name: "sitemap.xml", status: "OK", detail: "42 URLs · updated 2h ago" },
+                    { name: "SSL certificate", status: "OK", detail: "Renews in 64 days" },
+                    { name: "Canonical tags", status: "Warn", detail: "3 pages missing canonical" },
+                    { name: "hreflang", status: "—", detail: "Single-language site" },
+                  ].map((f) => (
+                    <div key={f.name} className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm">
+                      <div>
+                        <div className="font-medium">{f.name}</div>
+                        <div className="text-xs text-muted-foreground">{f.detail}</div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={`rounded-full ${
+                          f.status === "OK"
+                            ? "border-emerald-200 text-emerald-700"
+                            : f.status === "Warn"
+                              ? "border-amber-200 text-amber-700"
+                              : ""
+                        }`}
+                      >
+                        {f.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* SCHEMA */}
+          <TabsContent value="schema" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/70 p-4">
+                  <div>
+                    <h3 className="font-display text-lg">Structured data coverage</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Rich results unlock star ratings, prices, hours and FAQs in search.
+                    </p>
+                  </div>
+                  <Button size="sm" className="gap-2">
+                    <Wand2 className="h-4 w-4" /> Generate missing
+                  </Button>
+                </div>
+                {(biz === "restaurant"
+                  ? [
+                      { type: "Restaurant", coverage: 100, pages: "Homepage", status: "Live" },
+                      { type: "Menu / MenuItem", coverage: 68, pages: "18 of 26 dishes", status: "Partial" },
+                      { type: "LocalBusiness", coverage: 100, pages: "Homepage, Contact", status: "Live" },
+                      { type: "Event", coverage: 40, pages: "2 of 5 events", status: "Partial" },
+                      { type: "FAQPage", coverage: 0, pages: "Not implemented", status: "Missing" },
+                      { type: "BreadcrumbList", coverage: 100, pages: "All routes", status: "Live" },
+                      { type: "Review / AggregateRating", coverage: 100, pages: "Homepage", status: "Live" },
+                    ]
+                  : [
+                      { type: "LocalBusiness", coverage: 100, pages: "Homepage", status: "Live" },
+                      { type: "Service", coverage: 55, pages: "11 of 20 services", status: "Partial" },
+                      { type: "Project / CreativeWork", coverage: 30, pages: "6 of 20 case studies", status: "Partial" },
+                      { type: "FAQPage", coverage: 80, pages: "Pricing, Process", status: "Live" },
+                      { type: "AggregateRating", coverage: 100, pages: "Homepage", status: "Live" },
+                      { type: "GeoCoordinates", coverage: 100, pages: "Service areas", status: "Live" },
+                      { type: "BreadcrumbList", coverage: 100, pages: "All routes", status: "Live" },
+                    ]
+                ).map((s) => (
+                  <div key={s.type} className="grid grid-cols-[1.2fr_1fr_0.8fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                    <div>
+                      <div className="font-medium">{s.type}</div>
+                      <div className="text-xs text-muted-foreground">{s.pages}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Progress value={s.coverage} className="h-1.5 w-full" />
+                      <span className="text-xs text-muted-foreground">{s.coverage}%</span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`rounded-full ${
+                        s.status === "Live"
+                          ? "border-emerald-200 text-emerald-700"
+                          : s.status === "Partial"
+                            ? "border-amber-200 text-amber-700"
+                            : "border-rose-200 text-rose-700"
+                      }`}
+                    >
+                      {s.status}
+                    </Badge>
+                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                      <FileCode className="h-3 w-3" /> Edit
+                    </Button>
+                  </div>
+                ))}
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="font-display text-xl">Live snippet preview</h3>
+                <p className="text-sm text-muted-foreground">How Google may render your homepage.</p>
+                <div className="mt-4 rounded-xl border border-border bg-card p-4">
+                  <div className="text-xs text-emerald-700">
+                    {biz === "restaurant" ? "maisonolive.com › menu" : "northbayremodel.com › services"}
+                  </div>
+                  <div className="mt-1 text-lg text-[hsl(220,80%,40%)] underline">
+                    {biz === "restaurant"
+                      ? "Maison Olive — Modern Italian in Hayes Valley"
+                      : "North Bay Remodel — Kitchen & Bath Contractor"}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                    4.7 (832) · $$ · Open until 11 PM
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {biz === "restaurant"
+                      ? "Seasonal tasting menu, hand-cut pasta and a 200-bottle Italian wine list…"
+                      : "Licensed kitchen, bath and full-home remodels across the Bay Area. Free estimates…"}
+                  </div>
+                </div>
+
+                <Separator className="my-5" />
+
+                <h4 className="text-sm font-medium">Validation</h4>
+                <div className="mt-2 space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" /> 0 errors
+                  </div>
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <Activity className="h-4 w-4" /> 3 warnings (missing image dimensions)
+                  </div>
+                  <Button variant="outline" size="sm" className="mt-2 gap-2">
+                    <ExternalLink className="h-3 w-3" /> Open in Rich Results Test
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* CONTENT */}
+          <TabsContent value="content" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <Card className="p-0">
+                <div className="flex items-center justify-between border-b border-border/70 p-4">
+                  <div>
+                    <h3 className="font-display text-lg">Content engine</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {biz === "restaurant"
+                        ? "Editorial calendar for menus, journal posts and seasonal landing pages."
+                        : "Programmatic service-area pages, case studies and how-to guides."}
+                    </p>
+                  </div>
+                  <Button size="sm" className="gap-2">
+                    <Plus className="h-4 w-4" /> New brief
+                  </Button>
+                </div>
+                {(biz === "restaurant"
+                  ? [
+                      { title: "Truffle season: a love letter to autumn", type: "Journal", target: "truffle tagliatelle sf", status: "In review", date: "Oct 14" },
+                      { title: "Best date night spots in Hayes Valley", type: "Landing", target: "date night restaurant sf", status: "Drafting", date: "Oct 18" },
+                      { title: "How we source our olive oil", type: "Story", target: "italian olive oil sf", status: "Idea", date: "—" },
+                      { title: "Holiday private buyouts 2026", type: "Landing", target: "private dining san francisco", status: "Live", date: "Sep 28" },
+                    ]
+                  : [
+                      { title: "Kitchen remodels in Walnut Creek", type: "Service area", target: "kitchen remodel walnut creek", status: "Live", date: "Sep 12" },
+                      { title: "Cost guide: full bathroom remodel 2026", type: "Guide", target: "bathroom remodel cost bay area", status: "In review", date: "Oct 14" },
+                      { title: "ADU build, Berkeley · case study", type: "Case study", target: "adu contractor berkeley", status: "Drafting", date: "Oct 22" },
+                      { title: "Permits 101 for SF homeowners", type: "Guide", target: "sf remodeling permits", status: "Idea", date: "—" },
+                    ]
+                ).map((c) => (
+                  <div key={c.title} className="grid grid-cols-[1.6fr_0.7fr_1fr_0.7fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{c.title}</div>
+                      <div className="text-xs text-muted-foreground">Target: {c.target}</div>
+                    </div>
+                    <Badge variant="secondary" className="rounded-full text-[11px]">{c.type}</Badge>
+                    <Badge
+                      variant="outline"
+                      className={`rounded-full justify-self-start ${
+                        c.status === "Live"
+                          ? "border-emerald-200 text-emerald-700"
+                          : c.status === "In review"
+                            ? "border-amber-200 text-amber-700"
+                            : ""
+                      }`}
+                    >
+                      {c.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{c.date}</span>
+                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                      <Pencil className="h-3 w-3" /> Open
+                    </Button>
+                  </div>
+                ))}
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="font-display text-xl">
+                  {biz === "restaurant" ? "Local landing pages" : "Service areas"}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {biz === "restaurant"
+                    ? "Neighborhood + occasion pages built from your menu and reviews."
+                    : "Generate a page per city × service to rank in local packs."}
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {(biz === "restaurant"
+                    ? ["Hayes Valley", "SoMa", "Mission", "Anniversary", "Group dining", "Vegetarian"]
+                    : ["Oakland", "Berkeley", "Walnut Creek", "Kitchen", "Bath", "ADU"]
+                  ).map((t) => (
+                    <div key={t} className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm">
+                      <span>{t}</span>
+                      <Badge variant="outline" className="rounded-full text-[10px]">Live</Badge>
+                    </div>
+                  ))}
+                </div>
+
+                <Separator className="my-5" />
+
+                <h4 className="text-sm font-medium">AI brief generator</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Pick a keyword cluster and the agent drafts a brief with H-structure, FAQs and internal links.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Input placeholder={biz === "restaurant" ? "e.g. sunday brunch hayes valley" : "e.g. bathroom remodel oakland"} className="h-9" />
+                  <Button className="gap-2"><Sparkles className="h-4 w-4" /> Brief</Button>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Coverage gap</div>
+                  {biz === "restaurant"
+                    ? "You have no page targeting 'wine pairing dinner sf' (590 searches/mo)."
+                    : "You have no page targeting 'garage conversion oakland' (720 searches/mo)."}
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* BACKLINKS */}
+          <TabsContent value="backlinks" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-4">
+              {[
+                { label: "Domain authority", value: "42", delta: "+3" },
+                { label: "Referring domains", value: "186", delta: "+12" },
+                { label: "Total backlinks", value: "1,948", delta: "+74" },
+                { label: "Toxic links", value: "7", delta: "−2" },
+              ].map((s) => (
+                <Card key={s.label} className="p-5">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{s.label}</div>
+                  <div className="mt-2 font-display text-3xl">{s.value}</div>
+                  <div className="text-xs text-emerald-700">{s.delta} · 30d</div>
+                </Card>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/70 p-4">
+                  <h3 className="font-display text-lg">Recent backlinks</h3>
+                  <div className="flex gap-2">
+                    <Badge variant="outline" className="rounded-full">DoFollow</Badge>
+                    <Badge variant="outline" className="rounded-full">All types</Badge>
+                  </div>
+                </div>
+                {(biz === "restaurant"
+                  ? [
+                      { domain: "sfchronicle.com", anchor: "Maison Olive", da: 91, type: "Editorial", date: "2d" },
+                      { domain: "eater.com", anchor: "modern italian in hayes valley", da: 89, type: "Editorial", date: "5d" },
+                      { domain: "opentable.com", anchor: "Reserve", da: 88, type: "Profile", date: "1w" },
+                      { domain: "hayesvalleysf.org", anchor: "neighborhood guide", da: 41, type: "Resource", date: "2w" },
+                      { domain: "foodblog-sara.com", anchor: "truffle tagliatelle", da: 28, type: "Blog", date: "3w" },
+                    ]
+                  : [
+                      { domain: "houzz.com", anchor: "North Bay Remodel", da: 92, type: "Profile", date: "3d" },
+                      { domain: "sfgate.com", anchor: "bay area contractor", da: 90, type: "Editorial", date: "1w" },
+                      { domain: "angi.com", anchor: "kitchen remodeling", da: 86, type: "Profile", date: "1w" },
+                      { domain: "berkeleychamber.com", anchor: "member directory", da: 52, type: "Citation", date: "2w" },
+                      { domain: "designerblog.io", anchor: "ADU case study", da: 34, type: "Blog", date: "3w" },
+                    ]
+                ).map((b) => (
+                  <div key={b.domain} className="grid grid-cols-[1.2fr_1.4fr_0.6fr_0.7fr_0.5fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                    <div className="font-medium">{b.domain}</div>
+                    <div className="truncate text-muted-foreground">"{b.anchor}"</div>
+                    <div className="tabular-nums">DA {b.da}</div>
+                    <Badge variant="secondary" className="rounded-full text-[11px]">{b.type}</Badge>
+                    <div className="text-right text-xs text-muted-foreground">{b.date}</div>
+                  </div>
+                ))}
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="font-display text-xl">Outreach opportunities</h3>
+                <p className="text-sm text-muted-foreground">
+                  Sites linking to competitors but not to you.
+                </p>
+                <div className="mt-4 space-y-2">
+                  {(biz === "restaurant"
+                    ? ["thrillist.com", "infatuation.com", "sfeater.com", "tastecooking.com"]
+                    : ["bobvila.com", "thisoldhouse.com", "remodelista.com", "dwell.com"]
+                  ).map((d) => (
+                    <div key={d} className="flex items-center justify-between rounded-xl border border-border/70 p-3 text-sm">
+                      <div>
+                        <div className="font-medium">{d}</div>
+                        <div className="text-xs text-muted-foreground">Links to 2 competitors</div>
+                      </div>
+                      <Button variant="outline" size="sm" className="gap-1 text-xs">
+                        <Wand2 className="h-3 w-3" /> Draft pitch
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <Separator className="my-5" />
+
+                <div className="rounded-xl bg-rose-50 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-rose-700">
+                    <Shield className="h-4 w-4" /> 7 toxic links flagged
+                  </div>
+                  <p className="mt-1 text-xs text-rose-700/80">
+                    Spammy directories and link farms. Review and disavow.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3 gap-1 text-xs">
+                    Generate disavow file
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
         </Tabs>
+
       </div>
 
       {/* Keyword drawer */}
