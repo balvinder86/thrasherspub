@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -791,12 +791,16 @@ function MarketingPage() {
                         <div className="text-sm font-medium text-foreground">{s.name}</div>
                         <div className="text-xs text-muted-foreground">{s.size.toLocaleString()} guests</div>
                       </div>
-                      <Button variant="ghost" size="sm" className="gap-1">Use <ArrowUpRight className="h-3.5 w-3.5" /></Button>
+                      <Button asChild variant="ghost" size="sm" className="gap-1">
+                        <Link to="/segments">Use <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+                      </Button>
                     </div>
                   ))}
                 </div>
                 <div className="mt-4">
-                  <Button variant="outline" size="sm" className="gap-1"><Layers className="h-3.5 w-3.5" /> Build custom segment</Button>
+                  <Button asChild variant="outline" size="sm" className="gap-1">
+                    <Link to="/segments"><Layers className="h-3.5 w-3.5" /> Build custom segment</Link>
+                  </Button>
                 </div>
               </Card>
 

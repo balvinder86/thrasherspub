@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SeoRouteImport } from './routes/seo'
+import { Route as SegmentsRouteImport } from './routes/segments'
 import { Route as SchedulingRouteImport } from './routes/scheduling'
 import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as ProductMixRouteImport } from './routes/product-mix'
@@ -28,6 +29,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const SeoRoute = SeoRouteImport.update({
   id: '/seo',
   path: '/seo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SegmentsRoute = SegmentsRouteImport.update({
+  id: '/segments',
+  path: '/segments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SchedulingRoute = SchedulingRouteImport.update({
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/product-mix': typeof ProductMixRoute
   '/reviews': typeof ReviewsRoute
   '/scheduling': typeof SchedulingRoute
+  '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
   '/settings': typeof SettingsRoute
 }
@@ -92,6 +99,7 @@ export interface FileRoutesByTo {
   '/product-mix': typeof ProductMixRoute
   '/reviews': typeof ReviewsRoute
   '/scheduling': typeof SchedulingRoute
+  '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
   '/settings': typeof SettingsRoute
 }
@@ -105,6 +113,7 @@ export interface FileRoutesById {
   '/product-mix': typeof ProductMixRoute
   '/reviews': typeof ReviewsRoute
   '/scheduling': typeof SchedulingRoute
+  '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
   '/settings': typeof SettingsRoute
 }
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/product-mix'
     | '/reviews'
     | '/scheduling'
+    | '/segments'
     | '/seo'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/product-mix'
     | '/reviews'
     | '/scheduling'
+    | '/segments'
     | '/seo'
     | '/settings'
   id:
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '/product-mix'
     | '/reviews'
     | '/scheduling'
+    | '/segments'
     | '/seo'
     | '/settings'
   fileRoutesById: FileRoutesById
@@ -156,6 +168,7 @@ export interface RootRouteChildren {
   ProductMixRoute: typeof ProductMixRoute
   ReviewsRoute: typeof ReviewsRoute
   SchedulingRoute: typeof SchedulingRoute
+  SegmentsRoute: typeof SegmentsRoute
   SeoRoute: typeof SeoRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -174,6 +187,13 @@ declare module '@tanstack/react-router' {
       path: '/seo'
       fullPath: '/seo'
       preLoaderRoute: typeof SeoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/segments': {
+      id: '/segments'
+      path: '/segments'
+      fullPath: '/segments'
+      preLoaderRoute: typeof SegmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scheduling': {
@@ -244,6 +264,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProductMixRoute: ProductMixRoute,
   ReviewsRoute: ReviewsRoute,
   SchedulingRoute: SchedulingRoute,
+  SegmentsRoute: SegmentsRoute,
   SeoRoute: SeoRoute,
   SettingsRoute: SettingsRoute,
 }
