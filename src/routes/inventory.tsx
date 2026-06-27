@@ -193,7 +193,7 @@ function stockState(item: Item): { label: string; tone: string } {
 }
 
 function InventoryPage() {
-  const [items, setItems] = useState<Item[]>(INITIAL_ITEMS);
+  const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
   const [vendorFilter, setVendorFilter] = useState<string>("All");
