@@ -327,6 +327,104 @@ function InventoryPage() {
     setItems((arr) => arr.map((i) => (i.id === id ? { ...i, onHand } : i)));
   };
 
+  // ----- Item CRUD -----
+  const openAddItem = () => {
+    setItemDraft({
+      name: "",
+      category: tab === "All" ? "Food" : tab,
+      unit: "case",
+      onHand: 0,
+      par: 1,
+      vendor: vendorNames[0] ?? "",
+      cost: 0,
+      weeklyUsage: 0,
+    });
+    setItemDialogOpen(true);
+  };
+  const saveNewItem = () => {
+    if (!itemDraft.name.trim() || !itemDraft.vendor) return;
+    const id = `n${Date.now().toString(36)}`;
+    const derived = deriveItem({
+      id,
+      category: itemDraft.category,
+      vendor: itemDraft.vendor,
+      unit: itemDraft.unit,
+      seedCost: itemDraft.cost || 1,
+      seedUsage: itemDraft.weeklyUsage || 1,
+    });
+    DERIVED[id] = derived;
+    const newItem: Item = {
+      id,
+      name: itemDraft.name.trim(),
+      category: itemDraft.category,
+      unit: itemDraft.unit,
+      onHand: itemDraft.onHand,
+      par: itemDraft.par,
+      vendor: itemDraft.vendor,
+      cost: derived.cost,
+      weeklyUsage: Math.round(derived.weeklyUsage),
+      lastOrdered: "—",
+    };
+    setItems((arr) => [newItem, ...arr]);
+    setItemDialogOpen(false);
+  };
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
+    setItems((arr) => arr.filter((i) => i.id !== itemToDelete.id));
+    setCart((c) => {
+      const next = { ...c };
+      delete next[itemToDelete.id];
+      return next;
+    });
+    setItemToDelete(null);
+  };
+
+  // ----- Vendor CRUD -----
+  const openAddVendor = () => {
+    setVendorEditing(null);
+    setVendorDraft({
+      name: "",
+      contactName: "",
+      email: "",
+      phone: "",
+      accountNo: "",
+      deliveryDays: "",
+      terms: "Net 30",
+      notes: "",
+    });
+    setVendorDialogOpen(true);
+  };
+  const openEditVendor = (v: Vendor) => {
+    setVendorEditing(v);
+    const { id: _id, ...rest } = v;
+    setVendorDraft(rest);
+    setVendorDialogOpen(true);
+  };
+  const saveVendor = () => {
+    if (!vendorDraft.name.trim()) return;
+    if (vendorEditing) {
+      const oldName = vendorEditing.name;
+      const newName = vendorDraft.name.trim();
+      setVendors((arr) =>
+        arr.map((v) => (v.id === vendorEditing.id ? { ...vendorEditing, ...vendorDraft, name: newName } : v))
+      );
+      if (oldName !== newName) {
+        setItems((arr) => arr.map((i) => (i.vendor === oldName ? { ...i, vendor: newName } : i)));
+      }
+    } else {
+      const id = `v${Date.now().toString(36)}`;
+      setVendors((arr) => [...arr, { id, ...vendorDraft, name: vendorDraft.name.trim() }]);
+    }
+    setVendorDialogOpen(false);
+  };
+  const confirmDeleteVendor = () => {
+    if (!vendorToDelete) return;
+    setVendors((arr) => arr.filter((v) => v.id !== vendorToDelete.id));
+    setVendorToDelete(null);
+  };
+  const vendorItemCount = (name: string) => items.filter((i) => i.vendor === name).length;
+
+
   const autoFillCart = () => {
     const next: Record<string, number> = { ...cart };
     items.forEach((i) => {
