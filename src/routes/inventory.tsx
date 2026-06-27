@@ -731,6 +731,40 @@ function KpiCard({
   );
 }
 
+function InlineNumber({
+  value,
+  unit,
+  onChange,
+}: {
+  value: number;
+  unit: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded border border-stone-200 hover:bg-stone-50"
+        onClick={() => onChange(Math.max(0, value - 1))}
+      >
+        <Minus className="h-3 w-3" />
+      </button>
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10)))}
+        className="h-7 w-14 text-center tabular-nums px-1"
+      />
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded border border-stone-200 hover:bg-stone-50"
+        onClick={() => onChange(value + 1)}
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+      <span className="text-xs text-stone-500 ml-1">{unit}</span>
+    </div>
+  );
+}
+
 function NumberRow({
   label,
   unit,
