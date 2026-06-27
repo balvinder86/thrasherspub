@@ -517,58 +517,6 @@ function InventoryPage() {
         </Card>
       </main>
 
-      {/* Edit drawer */}
-      <Sheet open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <SheetContent className="sm:max-w-md">
-          {editing && (
-            <>
-              <SheetHeader>
-                <SheetTitle className="font-serif text-2xl">{editing.name}</SheetTitle>
-                <SheetDescription>
-                  {editing.category} · {editing.vendor}
-                </SheetDescription>
-              </SheetHeader>
-              <div className="mt-6 space-y-5">
-                <NumberRow
-                  label="On hand"
-                  unit={editing.unit}
-                  value={editing.onHand}
-                  onChange={(v) => {
-                    updateOnHand(editing.id, v);
-                    setEditing({ ...editing, onHand: v });
-                  }}
-                />
-                <NumberRow
-                  label="Par level"
-                  unit={editing.unit}
-                  value={editing.par}
-                  onChange={(v) => {
-                    updatePar(editing.id, v);
-                    setEditing({ ...editing, par: v });
-                  }}
-                />
-                <Separator />
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <Stat label="Unit cost" value={`$${editing.cost.toFixed(2)}`} />
-                  <Stat label="Weekly usage" value={`${editing.weeklyUsage} ${editing.unit}`} />
-                  <Stat label="Last ordered" value={editing.lastOrdered} />
-                  <Stat label="AI suggested" value={`${suggestedQty(editing)} ${editing.unit}`} />
-                </div>
-                <Separator />
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    addToCart(editing.id, suggestedQty(editing) || 1);
-                    setEditing(null);
-                  }}
-                >
-                  <ShoppingCart className="h-4 w-4" /> Add suggested qty to cart
-                </Button>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
       {/* Cart drawer */}
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
