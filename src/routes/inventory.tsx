@@ -547,159 +547,284 @@ function InventoryPage() {
           </div>
         </Card>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as Category | "All")}>
-            <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
-              <TabsTrigger value="All">All</TabsTrigger>
-              {CATEGORIES.map((c) => (
-                <TabsTrigger key={c} value={c}>
-                  {c}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <div className="relative flex-1 min-w-[220px] max-w-md">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search items"
-              className="pl-9 bg-white"
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Filter className="h-4 w-4 text-stone-500" />
-            <select
-              value={vendorFilter}
-              onChange={(e) => setVendorFilter(e.target.value)}
-              className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
-            >
-              <option value="All">All vendors</option>
-              {vendorNames.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <Button variant="outline" onClick={() => setAgentOpen(true)}>
-              <Settings2 className="h-4 w-4" /> AI agent
-            </Button>
-            <Button variant="outline" onClick={autoFillCart}>
-              <Wand2 className="h-4 w-4" /> Auto-fill cart
-            </Button>
-            <Button onClick={() => setCartOpen(true)} className="relative">
-              <ShoppingCart className="h-4 w-4" /> Cart
-              {cartCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center rounded-full bg-white/25 px-2 text-xs">
-                  {cartCount}
-                </span>
-              )}
-            </Button>
-          </div>
+        {/* Items vs Vendors */}
+        <Tabs value={view} onValueChange={(v) => setView(v as "items" | "vendors")}>
+          <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
+            <TabsTrigger value="items">
+              <Package className="h-3.5 w-3.5" /> Items
+              <Badge variant="outline" className="ml-2 font-normal">{items.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="vendors">
+              <Building2 className="h-3.5 w-3.5" /> Vendors
+              <Badge variant="outline" className="ml-2 font-normal">{vendors.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Items table */}
-        <Card className="border-stone-200 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-stone-50/60">
-                <TableHead className="w-[28%]">Item</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead className="text-center">On hand</TableHead>
-                <TableHead className="text-center">Par</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-center">AI suggested</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((item) => {
-                const state = stockState(item);
-                const suggested = suggestedQty(item);
-                const ratio = Math.min(1, item.onHand / item.par);
-                return (
-                  <TableRow key={item.id} className="hover:bg-stone-50/50">
-                    <TableCell>
-                      <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                      <HoverCard openDelay={120}>
-                        <HoverCardTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
-                          >
-                            <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                            ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                          </button>
-                        </HoverCardTrigger>
-                        <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
-                          <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
-                        </HoverCardContent>
-                      </HoverCard>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-normal">
-                        {item.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
-                    <TableCell className="text-center">
-                      <InlineNumber
-                        value={item.onHand}
-                        unit={item.unit}
-                        onChange={(v) => updateOnHand(item.id, v)}
-                      />
-                      <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <InlineNumber
-                        value={item.par}
-                        unit={item.unit}
-                        onChange={(v) => updatePar(item.id, v)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={state.tone}>
-                        {state.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {suggested > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-sm">
-                          <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                          <span className="font-medium tabular-nums">{suggested}</span>
-                          <span className="text-xs text-stone-500">{item.unit}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs text-stone-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        disabled={suggested <= 0}
-                        onClick={() => addToCart(item.id, suggested || 1)}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Cart
-                      </Button>
-                    </TableCell>
+          {/* ITEMS TAB */}
+          <TabsContent value="items" className="space-y-5 mt-5">
+            {/* Filters */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Tabs value={tab} onValueChange={(v) => setTab(v as Category | "All")}>
+                <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
+                  <TabsTrigger value="All">All</TabsTrigger>
+                  {CATEGORIES.map((c) => (
+                    <TabsTrigger key={c} value={c}>
+                      {c}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search items"
+                  className="pl-9 bg-white"
+                />
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Filter className="h-4 w-4 text-stone-500" />
+                <select
+                  value={vendorFilter}
+                  onChange={(e) => setVendorFilter(e.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                >
+                  <option value="All">All vendors</option>
+                  {vendorNames.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button variant="outline" onClick={openAddItem}>
+                  <Plus className="h-4 w-4" /> Add item
+                </Button>
+                <Button variant="outline" onClick={() => setAgentOpen(true)}>
+                  <Settings2 className="h-4 w-4" /> AI agent
+                </Button>
+                <Button variant="outline" onClick={autoFillCart}>
+                  <Wand2 className="h-4 w-4" /> Auto-fill cart
+                </Button>
+                <Button onClick={() => setCartOpen(true)} className="relative">
+                  <ShoppingCart className="h-4 w-4" /> Cart
+                  {cartCount > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-white/25 px-2 text-xs">
+                      {cartCount}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Items table */}
+            <Card className="border-stone-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-stone-50/60">
+                    <TableHead className="w-[26%]">Item</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead className="text-center">On hand</TableHead>
+                    <TableHead className="text-center">Par</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">AI suggested</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="w-[40px]"></TableHead>
                   </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10 text-sm text-stone-500">
-                    No items match your filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((item) => {
+                    const state = stockState(item);
+                    const suggested = suggestedQty(item);
+                    const ratio = Math.min(1, item.onHand / item.par);
+                    return (
+                      <TableRow key={item.id} className="hover:bg-stone-50/50">
+                        <TableCell>
+                          <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
+                          <HoverCard openDelay={120}>
+                            <HoverCardTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
+                              >
+                                <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                                ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
+                              <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
+                            </HoverCardContent>
+                          </HoverCard>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-normal">
+                            {item.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
+                        <TableCell className="text-center">
+                          <InlineNumber
+                            value={item.onHand}
+                            unit={item.unit}
+                            onChange={(v) => updateOnHand(item.id, v)}
+                          />
+                          <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <InlineNumber
+                            value={item.par}
+                            unit={item.unit}
+                            onChange={(v) => updatePar(item.id, v)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={state.tone}>
+                            {state.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {suggested > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-sm">
+                              <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                              <span className="font-medium tabular-nums">{suggested}</span>
+                              <span className="text-xs text-stone-500">{item.unit}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-stone-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            disabled={suggested <= 0}
+                            onClick={() => addToCart(item.id, suggested || 1)}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Cart
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                            onClick={() => setItemToDelete(item)}
+                            aria-label={`Delete ${item.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-sm text-stone-500">
+                        No items match your filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+
+          {/* VENDORS TAB */}
+          <TabsContent value="vendors" className="space-y-5 mt-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-serif text-2xl text-[hsl(var(--ink))]">Vendor management</p>
+                <p className="text-sm text-stone-600">
+                  {vendors.length} vendors · {items.length} items assigned · used by Inventory, Invoices and the Ordering agent.
+                </p>
+              </div>
+              <Button onClick={openAddVendor}>
+                <UserPlus className="h-4 w-4" /> Add vendor
+              </Button>
+            </div>
+
+            <Card className="border-stone-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-stone-50/60">
+                    <TableHead className="w-[22%]">Vendor</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Delivery</TableHead>
+                    <TableHead>Terms</TableHead>
+                    <TableHead className="text-center">Items</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendors.map((v) => {
+                    const count = vendorItemCount(v.name);
+                    return (
+                      <TableRow key={v.id} className="hover:bg-stone-50/50">
+                        <TableCell>
+                          <p className="font-medium text-[hsl(var(--ink))]">{v.name}</p>
+                          {v.notes && (
+                            <p className="text-xs text-stone-500 mt-0.5">{v.notes}</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm">{v.contactName}</p>
+                          <p className="text-xs text-stone-500 flex items-center gap-1 mt-0.5">
+                            <Mail className="h-3 w-3" /> {v.email}
+                          </p>
+                          <p className="text-xs text-stone-500 flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {v.phone}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-sm font-mono text-stone-700">{v.accountNo}</TableCell>
+                        <TableCell className="text-sm text-stone-700">{v.deliveryDays}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-normal">{v.terms}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-sm tabular-nums font-medium">{count}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => openEditVendor(v)}
+                              aria-label={`Edit ${v.name}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                              onClick={() => setVendorToDelete(v)}
+                              aria-label={`Delete ${v.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {vendors.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-sm text-stone-500">
+                        No vendors yet. Add one to start assigning items.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
+
 
 
       {/* Cart drawer */}
