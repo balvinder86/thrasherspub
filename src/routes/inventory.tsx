@@ -172,7 +172,7 @@ function InventoryPage() {
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
-  const [editing, setEditing] = useState<Item | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(true);
   const [confirmThreshold, setConfirmThreshold] = useState(true);
@@ -419,15 +419,10 @@ function InventoryPage() {
                 return (
                   <TableRow key={item.id} className="hover:bg-stone-50/50">
                     <TableCell>
-                      <button
-                        onClick={() => setEditing(item)}
-                        className="text-left"
-                      >
-                        <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                        <p className="text-xs text-stone-500">
-                          ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                        </p>
-                      </button>
+                      <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
+                      <p className="text-xs text-stone-500">
+                        ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                      </p>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-normal">
@@ -436,13 +431,33 @@ function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <span className="font-medium tabular-nums">{item.onHand}</span>
-                        <span className="text-xs text-stone-500">{item.unit}</span>
-                      </div>
-                      <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                      {editingId === item.id ? (
+                        <InlineNumber
+                          value={item.onHand}
+                          unit={item.unit}
+                          onChange={(v) => updateOnHand(item.id, v)}
+                        />
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-medium tabular-nums">{item.onHand}</span>
+                            <span className="text-xs text-stone-500">{item.unit}</span>
+                          </div>
+                          <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                        </>
+                      )}
                     </TableCell>
-                    <TableCell className="text-center tabular-nums">{item.par}</TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {editingId === item.id ? (
+                        <InlineNumber
+                          value={item.par}
+                          unit={item.unit}
+                          onChange={(v) => updatePar(item.id, v)}
+                        />
+                      ) : (
+                        item.par
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={state.tone}>
                         {state.label}
@@ -461,13 +476,23 @@ function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditing(item)}
-                        >
-                          Edit
-                        </Button>
+                        {editingId === item.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingId(null)}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingId(item.id)}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           disabled={suggested <= 0}
@@ -492,58 +517,6 @@ function InventoryPage() {
         </Card>
       </main>
 
-      {/* Edit drawer */}
-      <Sheet open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <SheetContent className="sm:max-w-md">
-          {editing && (
-            <>
-              <SheetHeader>
-                <SheetTitle className="font-serif text-2xl">{editing.name}</SheetTitle>
-                <SheetDescription>
-                  {editing.category} · {editing.vendor}
-                </SheetDescription>
-              </SheetHeader>
-              <div className="mt-6 space-y-5">
-                <NumberRow
-                  label="On hand"
-                  unit={editing.unit}
-                  value={editing.onHand}
-                  onChange={(v) => {
-                    updateOnHand(editing.id, v);
-                    setEditing({ ...editing, onHand: v });
-                  }}
-                />
-                <NumberRow
-                  label="Par level"
-                  unit={editing.unit}
-                  value={editing.par}
-                  onChange={(v) => {
-                    updatePar(editing.id, v);
-                    setEditing({ ...editing, par: v });
-                  }}
-                />
-                <Separator />
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <Stat label="Unit cost" value={`$${editing.cost.toFixed(2)}`} />
-                  <Stat label="Weekly usage" value={`${editing.weeklyUsage} ${editing.unit}`} />
-                  <Stat label="Last ordered" value={editing.lastOrdered} />
-                  <Stat label="AI suggested" value={`${suggestedQty(editing)} ${editing.unit}`} />
-                </div>
-                <Separator />
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    addToCart(editing.id, suggestedQty(editing) || 1);
-                    setEditing(null);
-                  }}
-                >
-                  <ShoppingCart className="h-4 w-4" /> Add suggested qty to cart
-                </Button>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
       {/* Cart drawer */}
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
@@ -755,6 +728,40 @@ function KpiCard({
       <p className="font-serif text-3xl text-[hsl(var(--ink))] mt-2 tabular-nums">{value}</p>
       {hint && <p className="text-xs text-stone-500 mt-1">{hint}</p>}
     </Card>
+  );
+}
+
+function InlineNumber({
+  value,
+  unit,
+  onChange,
+}: {
+  value: number;
+  unit: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded border border-stone-200 hover:bg-stone-50"
+        onClick={() => onChange(Math.max(0, value - 1))}
+      >
+        <Minus className="h-3 w-3" />
+      </button>
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Math.max(0, parseInt(e.target.value || "0", 10)))}
+        className="h-7 w-14 text-center tabular-nums px-1"
+      />
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded border border-stone-200 hover:bg-stone-50"
+        onClick={() => onChange(value + 1)}
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+      <span className="text-xs text-stone-500 ml-1">{unit}</span>
+    </div>
   );
 }
 
