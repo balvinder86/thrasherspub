@@ -51,6 +51,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -58,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { deriveItem, type Derived } from "@/lib/inventory-derive";
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({
@@ -140,6 +146,27 @@ const INITIAL_ITEMS: Item[] = [
   { id: "m4", name: "Dish Detergent 5gal", category: "Miscellaneous", unit: "pail", onHand: 1, par: 2, vendor: "US Foods", cost: 64.0, weeklyUsage: 1, lastOrdered: "Jun 11" },
 ];
 
+// Enrich seed items with cost & weekly usage derived from vendor invoices
+// (latest unit price) and product mix (menu items × yield per sale).
+const DERIVED: Record<string, Derived> = Object.fromEntries(
+  INITIAL_ITEMS.map((i) => [
+    i.id,
+    deriveItem({
+      id: i.id,
+      category: i.category,
+      vendor: i.vendor,
+      unit: i.unit,
+      seedCost: i.cost,
+      seedUsage: i.weeklyUsage,
+    }),
+  ])
+);
+const ENRICHED_ITEMS: Item[] = INITIAL_ITEMS.map((i) => ({
+  ...i,
+  cost: DERIVED[i.id].cost,
+  weeklyUsage: Math.round(DERIVED[i.id].weeklyUsage),
+}));
+
 const USAGE_TREND = [
   { week: "W19", usage: 14200 },
   { week: "W20", usage: 15100 },
@@ -166,7 +193,7 @@ function stockState(item: Item): { label: string; tone: string } {
 }
 
 function InventoryPage() {
-  const [items, setItems] = useState<Item[]>(INITIAL_ITEMS);
+  const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
   const [vendorFilter, setVendorFilter] = useState<string>("All");
@@ -420,9 +447,20 @@ function InventoryPage() {
                   <TableRow key={item.id} className="hover:bg-stone-50/50">
                     <TableCell>
                       <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                      <p className="text-xs text-stone-500">
-                        ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                      </p>
+                      <HoverCard openDelay={120}>
+                        <HoverCardTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
+                          >
+                            <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                            ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
+                          <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
+                        </HoverCardContent>
+                      </HoverCard>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-normal">
@@ -696,6 +734,86 @@ function KpiCard({
       <p className="font-serif text-3xl text-[hsl(var(--ink))] mt-2 tabular-nums">{value}</p>
       {hint && <p className="text-xs text-stone-500 mt-1">{hint}</p>}
     </Card>
+  );
+}
+
+function DerivedBreakdown({ item, derived }: { item: Item; derived: Derived }) {
+  const weeklyTotals = ["W22", "W23", "W24", "W25"].map((w) => ({
+    week: w,
+    units: +derived.mix
+      .filter((m) => m.week === w)
+      .reduce((s, m) => s + m.inventoryUnits, 0)
+      .toFixed(1),
+  }));
+  const costArrow = derived.costDeltaPct >= 0 ? "▲" : "▼";
+  const usageArrow = derived.usageDeltaPct >= 0 ? "▲" : "▼";
+  return (
+    <div className="text-xs">
+      <div className="px-4 py-3 bg-[hsl(var(--ink))] text-stone-100 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-amber-200" />
+        <span className="font-serif text-sm">Live · derived value</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-stone-200">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-stone-500">Unit cost</p>
+          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
+            ${derived.cost.toFixed(2)}
+          </p>
+          <p
+            className={`text-[11px] tabular-nums ${derived.costDeltaPct >= 0 ? "text-[hsl(var(--terracotta))]" : "text-emerald-700"}`}
+          >
+            {costArrow} {Math.abs(derived.costDeltaPct).toFixed(1)}% vs 6 wk
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-stone-500">Weekly usage</p>
+          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
+            {derived.weeklyUsage} {item.unit}
+          </p>
+          <p
+            className={`text-[11px] tabular-nums ${derived.usageDeltaPct >= 0 ? "text-emerald-700" : "text-[hsl(var(--terracotta))]"}`}
+          >
+            {usageArrow} {Math.abs(derived.usageDeltaPct).toFixed(1)}% vs 4 wk
+          </p>
+        </div>
+      </div>
+      <div className="px-4 py-3 border-b border-stone-200">
+        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
+          From invoices · {item.vendor}
+        </p>
+        <ul className="space-y-1">
+          {derived.invoices.map((inv) => (
+            <li key={inv.invoiceNo} className="flex items-center justify-between">
+              <span className="text-stone-600">{inv.date} · {inv.invoiceNo}</span>
+              <span className="tabular-nums text-[hsl(var(--ink))]">
+                ${inv.unitPrice.toFixed(2)} × {inv.qty}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="px-4 py-3">
+        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
+          From product mix · last 4 wk
+        </p>
+        <div className="grid grid-cols-4 gap-1 mb-2">
+          {weeklyTotals.map((w) => (
+            <div key={w.week} className="text-center">
+              <p className="text-[10px] text-stone-500">{w.week}</p>
+              <p className="text-xs tabular-nums text-[hsl(var(--ink))]">{w.units}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-stone-500 mb-1">Driven by</p>
+        <div className="flex flex-wrap gap-1">
+          {derived.menuItems.map((m) => (
+            <Badge key={m} variant="outline" className="font-normal text-[10px] py-0">
+              {m}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
