@@ -228,18 +228,62 @@ function stockState(item: Item): { label: string; tone: string } {
   return { label: "OK", tone: "bg-stone-100 text-stone-700 border-stone-300" };
 }
 
+type ItemDraft = {
+  name: string;
+  category: Category;
+  unit: string;
+  onHand: number;
+  par: number;
+  vendor: string;
+  cost: number;
+  weeklyUsage: number;
+};
+
 function InventoryPage() {
   const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
+  const [vendors, setVendors] = useState<Vendor[]>(INITIAL_VENDORS);
+  const [view, setView] = useState<"items" | "vendors">("items");
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
-  
+
   const [agentOpen, setAgentOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(true);
   const [confirmThreshold, setConfirmThreshold] = useState(true);
   const [sentToast, setSentToast] = useState<string | null>(null);
+
+  // Item dialog
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [itemDraft, setItemDraft] = useState<ItemDraft>({
+    name: "",
+    category: "Food",
+    unit: "case",
+    onHand: 0,
+    par: 1,
+    vendor: INITIAL_VENDORS[0]?.name ?? "",
+    cost: 0,
+    weeklyUsage: 0,
+  });
+  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+
+  // Vendor dialog
+  const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
+  const [vendorEditing, setVendorEditing] = useState<Vendor | null>(null);
+  const [vendorDraft, setVendorDraft] = useState<Omit<Vendor, "id">>({
+    name: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    accountNo: "",
+    deliveryDays: "",
+    terms: "Net 30",
+    notes: "",
+  });
+  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+
+  const vendorNames = useMemo(() => vendors.map((v) => v.name), [vendors]);
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
