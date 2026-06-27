@@ -256,7 +256,7 @@ function InventoryPage() {
 
   return (
     <div className="min-h-screen bg-[hsl(var(--cream))]">
-      <Topbar />
+      <Topbar eyebrow="Stock & purchasing" title="Inventory & Ordering" />
 
       <main className="px-8 py-8 max-w-[1500px] mx-auto space-y-8">
         {/* Header */}
