@@ -1009,7 +1009,233 @@ function InventoryPage() {
           </button>
         </div>
       )}
+
+      {/* Add Item dialog */}
+      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Add inventory item</DialogTitle>
+            <DialogDescription>
+              The Ordering agent will start tracking par levels and usage as soon as you save.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2">
+              <Label htmlFor="item-name">Item name</Label>
+              <Input
+                id="item-name"
+                value={itemDraft.name}
+                onChange={(e) => setItemDraft({ ...itemDraft, name: e.target.value })}
+                placeholder="e.g. Hendrick's Gin 1L"
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-cat">Category</Label>
+              <select
+                id="item-cat"
+                value={itemDraft.category}
+                onChange={(e) => setItemDraft({ ...itemDraft, category: e.target.value as Category })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="item-vendor">Vendor</Label>
+              <select
+                id="item-vendor"
+                value={itemDraft.vendor}
+                onChange={(e) => setItemDraft({ ...itemDraft, vendor: e.target.value })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {vendorNames.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="item-unit">Unit</Label>
+              <Input
+                id="item-unit"
+                value={itemDraft.unit}
+                onChange={(e) => setItemDraft({ ...itemDraft, unit: e.target.value })}
+                placeholder="btl, case, lb…"
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-cost">Cost / unit ($)</Label>
+              <Input
+                id="item-cost"
+                type="number"
+                step="0.01"
+                value={itemDraft.cost}
+                onChange={(e) => setItemDraft({ ...itemDraft, cost: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-onhand">On hand</Label>
+              <Input
+                id="item-onhand"
+                type="number"
+                value={itemDraft.onHand}
+                onChange={(e) => setItemDraft({ ...itemDraft, onHand: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-par">Par</Label>
+              <Input
+                id="item-par"
+                type="number"
+                value={itemDraft.par}
+                onChange={(e) => setItemDraft({ ...itemDraft, par: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="item-usage">Est. weekly usage ({itemDraft.unit || "units"})</Label>
+              <Input
+                id="item-usage"
+                type="number"
+                value={itemDraft.weeklyUsage}
+                onChange={(e) => setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })}
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                Seed value — the agent will refine this from product mix once sales come in.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveNewItem} disabled={!itemDraft.name.trim() || !itemDraft.vendor}>
+              <Plus className="h-4 w-4" /> Add item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete item confirm */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(o) => !o && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {itemToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Removes the item from inventory and any pending cart line. Historical invoices stay intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteItem}
+              className="bg-[hsl(var(--terracotta))] hover:bg-[hsl(var(--terracotta))]/90"
+            >
+              Delete item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Vendor dialog */}
+      <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">
+              {vendorEditing ? "Edit vendor" : "Add vendor"}
+            </DialogTitle>
+            <DialogDescription>
+              Vendor details are shared with the Invoices tab and the Ordering agent for auto-dispatch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2">
+              <Label htmlFor="v-name">Vendor name</Label>
+              <Input id="v-name" value={vendorDraft.name} onChange={(e) => setVendorDraft({ ...vendorDraft, name: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-contact">Contact name</Label>
+              <Input id="v-contact" value={vendorDraft.contactName} onChange={(e) => setVendorDraft({ ...vendorDraft, contactName: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-account">Account #</Label>
+              <Input id="v-account" value={vendorDraft.accountNo} onChange={(e) => setVendorDraft({ ...vendorDraft, accountNo: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-email">Order email</Label>
+              <Input id="v-email" type="email" value={vendorDraft.email} onChange={(e) => setVendorDraft({ ...vendorDraft, email: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-phone">Phone</Label>
+              <Input id="v-phone" value={vendorDraft.phone} onChange={(e) => setVendorDraft({ ...vendorDraft, phone: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-days">Delivery days</Label>
+              <Input id="v-days" placeholder="e.g. Mon, Wed, Fri" value={vendorDraft.deliveryDays} onChange={(e) => setVendorDraft({ ...vendorDraft, deliveryDays: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-terms">Payment terms</Label>
+              <select
+                id="v-terms"
+                value={vendorDraft.terms}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, terms: e.target.value })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {["COD", "Net 7", "Net 15", "Net 21", "Net 30", "Net 45", "Net 60"].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="v-notes">Notes</Label>
+              <Textarea
+                id="v-notes"
+                rows={2}
+                value={vendorDraft.notes ?? ""}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, notes: e.target.value })}
+                placeholder="Optional — minimum orders, rep schedule, special instructions…"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveVendor} disabled={!vendorDraft.name.trim()}>
+              {vendorEditing ? "Save changes" : "Add vendor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete vendor confirm */}
+      <AlertDialog open={!!vendorToDelete} onOpenChange={(o) => !o && setVendorToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {vendorToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {vendorToDelete && vendorItemCount(vendorToDelete.name) > 0 ? (
+                <>
+                  <span className="text-[hsl(var(--terracotta))] font-medium">
+                    {vendorItemCount(vendorToDelete.name)} item(s) are still assigned to this vendor.
+                  </span>{" "}
+                  Reassign or delete those items first — otherwise the Ordering agent won't know where to send their POs.
+                </>
+              ) : (
+                "This vendor has no items assigned and can be safely removed."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteVendor}
+              disabled={!!vendorToDelete && vendorItemCount(vendorToDelete.name) > 0}
+              className="bg-[hsl(var(--terracotta))] hover:bg-[hsl(var(--terracotta))]/90"
+            >
+              Delete vendor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+
   );
 }
 
