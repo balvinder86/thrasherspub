@@ -853,7 +853,7 @@ function InventoryPage() {
             <div>
               <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">Vendor channels</p>
               <div className="space-y-2">
-                {VENDORS.slice(0, 5).map((v) => (
+                {vendorNames.slice(0, 5).map((v) => (
                   <div key={v} className="flex items-center justify-between border border-stone-200 rounded-md px-3 py-2 text-sm">
                     <div className="flex items-center gap-2">
                       <Mail className="h-3.5 w-3.5 text-stone-500" />
