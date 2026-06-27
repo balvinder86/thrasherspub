@@ -146,6 +146,27 @@ const INITIAL_ITEMS: Item[] = [
   { id: "m4", name: "Dish Detergent 5gal", category: "Miscellaneous", unit: "pail", onHand: 1, par: 2, vendor: "US Foods", cost: 64.0, weeklyUsage: 1, lastOrdered: "Jun 11" },
 ];
 
+// Enrich seed items with cost & weekly usage derived from vendor invoices
+// (latest unit price) and product mix (menu items × yield per sale).
+const DERIVED: Record<string, Derived> = Object.fromEntries(
+  INITIAL_ITEMS.map((i) => [
+    i.id,
+    deriveItem({
+      id: i.id,
+      category: i.category,
+      vendor: i.vendor,
+      unit: i.unit,
+      seedCost: i.cost,
+      seedUsage: i.weeklyUsage,
+    }),
+  ])
+);
+const ENRICHED_ITEMS: Item[] = INITIAL_ITEMS.map((i) => ({
+  ...i,
+  cost: DERIVED[i.id].cost,
+  weeklyUsage: Math.round(DERIVED[i.id].weeklyUsage),
+}));
+
 const USAGE_TREND = [
   { week: "W19", usage: 14200 },
   { week: "W20", usage: 15100 },
