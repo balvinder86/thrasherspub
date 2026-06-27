@@ -7,6 +7,7 @@ import {
   Star,
   Search,
   Megaphone,
+  Gift,
   CalendarClock,
   Shield,
   Settings,
@@ -36,6 +37,7 @@ const growth = [
   { title: "Reviews", url: "/reviews", icon: Star },
   { title: "SEO", url: "/seo", icon: Search },
   { title: "Marketing", url: "/marketing", icon: Megaphone },
+  { title: "Loyalty", url: "/loyalty", icon: Gift },
 ];
 
 const operations = [
