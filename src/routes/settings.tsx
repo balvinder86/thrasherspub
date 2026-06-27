@@ -620,8 +620,17 @@ function NotificationsSection() {
 
 /* ---------- Integrations ---------- */
 
+type AppRow = {
+  name: string;
+  cat: string;
+  status: "Connected" | "Available" | "Action needed";
+  desc: string;
+  meta?: string;
+  channel?: "EDI" | "API" | "Email PO" | "Portal" | "CSV";
+};
+
 function IntegrationsSection() {
-  const apps = [
+  const platform: AppRow[] = [
     { name: "Toast POS", cat: "Point of sale", status: "Connected", desc: "Syncs orders, menu, payments." },
     { name: "Square", cat: "Payments", status: "Connected", desc: "Card processing & online ordering." },
     { name: "QuickBooks Online", cat: "Accounting", status: "Connected", desc: "Pushes invoices, sales, payroll exports." },
@@ -631,17 +640,73 @@ function IntegrationsSection() {
     { name: "Resy", cat: "Reservations", status: "Available", desc: "Sync reservation activity." },
     { name: "Google Business", cat: "Listings", status: "Connected", desc: "Hours, menu, reviews." },
     { name: "Yelp", cat: "Reviews", status: "Connected", desc: "Pull reviews into the inbox." },
-    { name: "Sysco EDI", cat: "Vendors", status: "Connected", desc: "Auto-send purchase orders." },
     { name: "Slack", cat: "Notifications", status: "Available", desc: "Route alerts to channels." },
     { name: "Stripe", cat: "Payments", status: "Available", desc: "Gift cards & online sales." },
   ];
+
+  const vendors: AppRow[] = [
+    { name: "Sysco", cat: "Broadline foodservice", status: "Connected", desc: "Live catalog, pricing, EDI 850/810.", channel: "EDI", meta: "Acct #44-218 · orders by 4pm" },
+    { name: "US Foods", cat: "Broadline foodservice", status: "Connected", desc: "MOXē API for catalog, orders, invoices.", channel: "API", meta: "Acct #US-90412 · 24h lead" },
+    { name: "Southern Glazer's", cat: "Wine & spirits", status: "Connected", desc: "eXchange portal sync + invoice PDFs.", channel: "Portal", meta: "Lic. #LBD-7781 · Mon/Thu delivery" },
+    { name: "Columbia Distributing", cat: "Beer & beverage", status: "Connected", desc: "Auto-send POs by email with PDF attachment.", channel: "Email PO", meta: "rep.bali@columbiadist.com" },
+    { name: "Restaurant Depot", cat: "Cash & carry", status: "Action needed", desc: "Cart export via Instacart Business — reconnect.", channel: "Portal", meta: "Token expired 2 days ago" },
+    { name: "Performance Food Group", cat: "Broadline foodservice", status: "Available", desc: "PFG Customer API for catalog & invoices.", channel: "API" },
+    { name: "Reinhart (RDC)", cat: "Broadline foodservice", status: "Available", desc: "EDI 850/855/810 over SFTP.", channel: "EDI" },
+    { name: "Breakthru Beverage", cat: "Wine & spirits", status: "Available", desc: "Portal scrape + email confirmations.", channel: "Portal" },
+    { name: "RNDC", cat: "Wine & spirits", status: "Available", desc: "eRNDC catalog + email PO fallback.", channel: "Email PO" },
+    { name: "Local Produce Co-op", cat: "Produce", status: "Connected", desc: "CSV order sheet emailed nightly.", channel: "CSV", meta: "orders@localcoop.com" },
+    { name: "Bimbo Bakeries", cat: "Bakery", status: "Available", desc: "Standing order via email.", channel: "Email PO" },
+    { name: "Edward Don & Co.", cat: "Smallwares", status: "Available", desc: "B2B portal for non-food supplies.", channel: "Portal" },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <SectionHeader
         eyebrow="Workspace"
         title="Integrations"
         description="Connect Thrasher's Pub to the systems you already run."
       />
+
+      <IntegrationGroup
+        title="Platform & operations"
+        subtitle="POS, payments, accounting, marketing, and listings."
+        apps={platform}
+      />
+
+      <IntegrationGroup
+        title="Vendor integrations"
+        subtitle="How the Ordering agent reaches each supplier — EDI, API, portal, or email PO. Powers auto-send from the Inventory cart and invoice ingestion."
+        apps={vendors}
+        action={
+          <Button size="sm" variant="outline" className="gap-2 rounded-full">
+            <Plus className="h-3.5 w-3.5" /> Add vendor integration
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+function IntegrationGroup({
+  title,
+  subtitle,
+  apps,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  apps: AppRow[];
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">{title}</div>
+          <p className="text-xs text-muted-foreground max-w-xl">{subtitle}</p>
+        </div>
+        {action}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {apps.map((a) => (
           <Card key={a.name} className="p-4">
@@ -653,18 +718,35 @@ function IntegrationsSection() {
                 variant={a.status === "Connected" ? "secondary" : "outline"}
                 className={cn(
                   a.status === "Connected" && "bg-primary/10 text-primary hover:bg-primary/10",
+                  a.status === "Action needed" && "border-destructive/40 text-destructive",
                 )}
               >
                 {a.status === "Connected" && <Check className="mr-1 h-3 w-3" />}
                 {a.status}
               </Badge>
             </div>
-            <div className="mt-3 text-sm font-medium">{a.name}</div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="text-sm font-medium">{a.name}</div>
+              {a.channel && (
+                <span className="rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {a.channel}
+                </span>
+              )}
+            </div>
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{a.cat}</div>
             <p className="mt-2 text-xs text-muted-foreground">{a.desc}</p>
+            {a.meta && <p className="mt-1 text-[11px] text-muted-foreground/80">{a.meta}</p>}
             <Separator className="my-3" />
-            <Button size="sm" variant="outline" className="w-full">
-              {a.status === "Connected" ? "Manage" : "Connect"}
+            <Button
+              size="sm"
+              variant={a.status === "Action needed" ? "default" : "outline"}
+              className="w-full"
+            >
+              {a.status === "Connected"
+                ? "Manage"
+                : a.status === "Action needed"
+                  ? "Reconnect"
+                  : "Connect"}
             </Button>
           </Card>
         ))}
