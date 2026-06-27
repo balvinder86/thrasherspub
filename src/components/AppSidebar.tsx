@@ -7,6 +7,7 @@ import {
   Star,
   Search,
   Megaphone,
+  Gift,
   CalendarClock,
   Shield,
   Settings,
