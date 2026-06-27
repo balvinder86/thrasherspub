@@ -4,12 +4,15 @@ import {
   AlertTriangle,
   Bot,
   Brain,
+  Building2,
   CheckCircle2,
   ClipboardList,
   Filter,
   Mail,
   Minus,
   Package,
+  Pencil,
+  Phone,
   Plus,
   Search,
   Send,
@@ -20,6 +23,7 @@ import {
   TrendingDown,
   TrendingUp,
   Truck,
+  UserPlus,
   Wand2,
   X,
   Zap,
@@ -63,6 +67,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { deriveItem, type Derived } from "@/lib/inventory-derive";
 
 export const Route = createFileRoute("/inventory")({
@@ -102,14 +126,26 @@ const CATEGORIES: Category[] = [
   "Miscellaneous",
 ];
 
-const VENDORS = [
-  "Southern Glazer's",
-  "Columbia Distributing",
-  "Sysco",
-  "Restaurant Depot",
-  "US Foods",
-  "Pepsi Bottling",
-  "Local Produce Co.",
+type Vendor = {
+  id: string;
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  accountNo: string;
+  deliveryDays: string; // e.g. "Mon, Wed, Fri"
+  terms: string; // e.g. "Net 30"
+  notes?: string;
+};
+
+const INITIAL_VENDORS: Vendor[] = [
+  { id: "v1", name: "Southern Glazer's", contactName: "Marcus Reed", email: "orders@sgws.com", phone: "(503) 555-0142", accountNo: "SGW-44218", deliveryDays: "Tue, Fri", terms: "Net 30" },
+  { id: "v2", name: "Columbia Distributing", contactName: "Priya Naidu", email: "po@coldist.com", phone: "(503) 555-0177", accountNo: "CD-9912", deliveryDays: "Mon, Thu", terms: "Net 21" },
+  { id: "v3", name: "Sysco", contactName: "Tom Albright", email: "sysco.pdx@sysco.com", phone: "(503) 555-0211", accountNo: "SYS-77140", deliveryDays: "Mon, Wed, Fri", terms: "Net 30" },
+  { id: "v4", name: "Restaurant Depot", contactName: "—", email: "noreply@restaurantdepot.com", phone: "(503) 555-0188", accountNo: "RD-30221", deliveryDays: "Pickup", terms: "COD" },
+  { id: "v5", name: "US Foods", contactName: "Janelle Cho", email: "orders@usfoods.com", phone: "(503) 555-0166", accountNo: "USF-58811", deliveryDays: "Tue, Fri", terms: "Net 30" },
+  { id: "v6", name: "Pepsi Bottling", contactName: "Diego Ramos", email: "fountain@pepsi.com", phone: "(503) 555-0199", accountNo: "PEP-2204", deliveryDays: "Wed", terms: "Net 15" },
+  { id: "v7", name: "Local Produce Co.", contactName: "Hannah Ortiz", email: "hannah@localproduce.co", phone: "(503) 555-0125", accountNo: "LP-118", deliveryDays: "Tue, Thu, Sat", terms: "Net 7", notes: "Farm-direct seasonal produce" },
 ];
 
 const INITIAL_ITEMS: Item[] = [
@@ -192,18 +228,62 @@ function stockState(item: Item): { label: string; tone: string } {
   return { label: "OK", tone: "bg-stone-100 text-stone-700 border-stone-300" };
 }
 
+type ItemDraft = {
+  name: string;
+  category: Category;
+  unit: string;
+  onHand: number;
+  par: number;
+  vendor: string;
+  cost: number;
+  weeklyUsage: number;
+};
+
 function InventoryPage() {
   const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
+  const [vendors, setVendors] = useState<Vendor[]>(INITIAL_VENDORS);
+  const [view, setView] = useState<"items" | "vendors">("items");
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
-  
+
   const [agentOpen, setAgentOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(true);
   const [confirmThreshold, setConfirmThreshold] = useState(true);
   const [sentToast, setSentToast] = useState<string | null>(null);
+
+  // Item dialog
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [itemDraft, setItemDraft] = useState<ItemDraft>({
+    name: "",
+    category: "Food",
+    unit: "case",
+    onHand: 0,
+    par: 1,
+    vendor: INITIAL_VENDORS[0]?.name ?? "",
+    cost: 0,
+    weeklyUsage: 0,
+  });
+  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+
+  // Vendor dialog
+  const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
+  const [vendorEditing, setVendorEditing] = useState<Vendor | null>(null);
+  const [vendorDraft, setVendorDraft] = useState<Omit<Vendor, "id">>({
+    name: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    accountNo: "",
+    deliveryDays: "",
+    terms: "Net 30",
+    notes: "",
+  });
+  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+
+  const vendorNames = useMemo(() => vendors.map((v) => v.name), [vendors]);
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
@@ -246,6 +326,104 @@ function InventoryPage() {
   const updateOnHand = (id: string, onHand: number) => {
     setItems((arr) => arr.map((i) => (i.id === id ? { ...i, onHand } : i)));
   };
+
+  // ----- Item CRUD -----
+  const openAddItem = () => {
+    setItemDraft({
+      name: "",
+      category: tab === "All" ? "Food" : tab,
+      unit: "case",
+      onHand: 0,
+      par: 1,
+      vendor: vendorNames[0] ?? "",
+      cost: 0,
+      weeklyUsage: 0,
+    });
+    setItemDialogOpen(true);
+  };
+  const saveNewItem = () => {
+    if (!itemDraft.name.trim() || !itemDraft.vendor) return;
+    const id = `n${Date.now().toString(36)}`;
+    const derived = deriveItem({
+      id,
+      category: itemDraft.category,
+      vendor: itemDraft.vendor,
+      unit: itemDraft.unit,
+      seedCost: itemDraft.cost || 1,
+      seedUsage: itemDraft.weeklyUsage || 1,
+    });
+    DERIVED[id] = derived;
+    const newItem: Item = {
+      id,
+      name: itemDraft.name.trim(),
+      category: itemDraft.category,
+      unit: itemDraft.unit,
+      onHand: itemDraft.onHand,
+      par: itemDraft.par,
+      vendor: itemDraft.vendor,
+      cost: derived.cost,
+      weeklyUsage: Math.round(derived.weeklyUsage),
+      lastOrdered: "—",
+    };
+    setItems((arr) => [newItem, ...arr]);
+    setItemDialogOpen(false);
+  };
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
+    setItems((arr) => arr.filter((i) => i.id !== itemToDelete.id));
+    setCart((c) => {
+      const next = { ...c };
+      delete next[itemToDelete.id];
+      return next;
+    });
+    setItemToDelete(null);
+  };
+
+  // ----- Vendor CRUD -----
+  const openAddVendor = () => {
+    setVendorEditing(null);
+    setVendorDraft({
+      name: "",
+      contactName: "",
+      email: "",
+      phone: "",
+      accountNo: "",
+      deliveryDays: "",
+      terms: "Net 30",
+      notes: "",
+    });
+    setVendorDialogOpen(true);
+  };
+  const openEditVendor = (v: Vendor) => {
+    setVendorEditing(v);
+    const { id: _id, ...rest } = v;
+    setVendorDraft(rest);
+    setVendorDialogOpen(true);
+  };
+  const saveVendor = () => {
+    if (!vendorDraft.name.trim()) return;
+    if (vendorEditing) {
+      const oldName = vendorEditing.name;
+      const newName = vendorDraft.name.trim();
+      setVendors((arr) =>
+        arr.map((v) => (v.id === vendorEditing.id ? { ...vendorEditing, ...vendorDraft, name: newName } : v))
+      );
+      if (oldName !== newName) {
+        setItems((arr) => arr.map((i) => (i.vendor === oldName ? { ...i, vendor: newName } : i)));
+      }
+    } else {
+      const id = `v${Date.now().toString(36)}`;
+      setVendors((arr) => [...arr, { id, ...vendorDraft, name: vendorDraft.name.trim() }]);
+    }
+    setVendorDialogOpen(false);
+  };
+  const confirmDeleteVendor = () => {
+    if (!vendorToDelete) return;
+    setVendors((arr) => arr.filter((v) => v.id !== vendorToDelete.id));
+    setVendorToDelete(null);
+  };
+  const vendorItemCount = (name: string) => items.filter((i) => i.vendor === name).length;
+
 
   const autoFillCart = () => {
     const next: Record<string, number> = { ...cart };
@@ -369,159 +547,284 @@ function InventoryPage() {
           </div>
         </Card>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as Category | "All")}>
-            <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
-              <TabsTrigger value="All">All</TabsTrigger>
-              {CATEGORIES.map((c) => (
-                <TabsTrigger key={c} value={c}>
-                  {c}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <div className="relative flex-1 min-w-[220px] max-w-md">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search items"
-              className="pl-9 bg-white"
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Filter className="h-4 w-4 text-stone-500" />
-            <select
-              value={vendorFilter}
-              onChange={(e) => setVendorFilter(e.target.value)}
-              className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
-            >
-              <option value="All">All vendors</option>
-              {VENDORS.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <Button variant="outline" onClick={() => setAgentOpen(true)}>
-              <Settings2 className="h-4 w-4" /> AI agent
-            </Button>
-            <Button variant="outline" onClick={autoFillCart}>
-              <Wand2 className="h-4 w-4" /> Auto-fill cart
-            </Button>
-            <Button onClick={() => setCartOpen(true)} className="relative">
-              <ShoppingCart className="h-4 w-4" /> Cart
-              {cartCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center rounded-full bg-white/25 px-2 text-xs">
-                  {cartCount}
-                </span>
-              )}
-            </Button>
-          </div>
+        {/* Items vs Vendors */}
+        <Tabs value={view} onValueChange={(v) => setView(v as "items" | "vendors")}>
+          <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
+            <TabsTrigger value="items">
+              <Package className="h-3.5 w-3.5" /> Items
+              <Badge variant="outline" className="ml-2 font-normal">{items.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="vendors">
+              <Building2 className="h-3.5 w-3.5" /> Vendors
+              <Badge variant="outline" className="ml-2 font-normal">{vendors.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Items table */}
-        <Card className="border-stone-200 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-stone-50/60">
-                <TableHead className="w-[28%]">Item</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead className="text-center">On hand</TableHead>
-                <TableHead className="text-center">Par</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-center">AI suggested</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((item) => {
-                const state = stockState(item);
-                const suggested = suggestedQty(item);
-                const ratio = Math.min(1, item.onHand / item.par);
-                return (
-                  <TableRow key={item.id} className="hover:bg-stone-50/50">
-                    <TableCell>
-                      <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                      <HoverCard openDelay={120}>
-                        <HoverCardTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
-                          >
-                            <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                            ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                          </button>
-                        </HoverCardTrigger>
-                        <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
-                          <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
-                        </HoverCardContent>
-                      </HoverCard>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-normal">
-                        {item.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
-                    <TableCell className="text-center">
-                      <InlineNumber
-                        value={item.onHand}
-                        unit={item.unit}
-                        onChange={(v) => updateOnHand(item.id, v)}
-                      />
-                      <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <InlineNumber
-                        value={item.par}
-                        unit={item.unit}
-                        onChange={(v) => updatePar(item.id, v)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={state.tone}>
-                        {state.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {suggested > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-sm">
-                          <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                          <span className="font-medium tabular-nums">{suggested}</span>
-                          <span className="text-xs text-stone-500">{item.unit}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs text-stone-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        disabled={suggested <= 0}
-                        onClick={() => addToCart(item.id, suggested || 1)}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Cart
-                      </Button>
-                    </TableCell>
+          {/* ITEMS TAB */}
+          <TabsContent value="items" className="space-y-5 mt-5">
+            {/* Filters */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Tabs value={tab} onValueChange={(v) => setTab(v as Category | "All")}>
+                <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
+                  <TabsTrigger value="All">All</TabsTrigger>
+                  {CATEGORIES.map((c) => (
+                    <TabsTrigger key={c} value={c}>
+                      {c}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search items"
+                  className="pl-9 bg-white"
+                />
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Filter className="h-4 w-4 text-stone-500" />
+                <select
+                  value={vendorFilter}
+                  onChange={(e) => setVendorFilter(e.target.value)}
+                  className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                >
+                  <option value="All">All vendors</option>
+                  {vendorNames.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button variant="outline" onClick={openAddItem}>
+                  <Plus className="h-4 w-4" /> Add item
+                </Button>
+                <Button variant="outline" onClick={() => setAgentOpen(true)}>
+                  <Settings2 className="h-4 w-4" /> AI agent
+                </Button>
+                <Button variant="outline" onClick={autoFillCart}>
+                  <Wand2 className="h-4 w-4" /> Auto-fill cart
+                </Button>
+                <Button onClick={() => setCartOpen(true)} className="relative">
+                  <ShoppingCart className="h-4 w-4" /> Cart
+                  {cartCount > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-white/25 px-2 text-xs">
+                      {cartCount}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Items table */}
+            <Card className="border-stone-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-stone-50/60">
+                    <TableHead className="w-[26%]">Item</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead className="text-center">On hand</TableHead>
+                    <TableHead className="text-center">Par</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">AI suggested</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="w-[40px]"></TableHead>
                   </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10 text-sm text-stone-500">
-                    No items match your filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((item) => {
+                    const state = stockState(item);
+                    const suggested = suggestedQty(item);
+                    const ratio = Math.min(1, item.onHand / item.par);
+                    return (
+                      <TableRow key={item.id} className="hover:bg-stone-50/50">
+                        <TableCell>
+                          <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
+                          <HoverCard openDelay={120}>
+                            <HoverCardTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
+                              >
+                                <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                                ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
+                              <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
+                            </HoverCardContent>
+                          </HoverCard>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-normal">
+                            {item.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
+                        <TableCell className="text-center">
+                          <InlineNumber
+                            value={item.onHand}
+                            unit={item.unit}
+                            onChange={(v) => updateOnHand(item.id, v)}
+                          />
+                          <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <InlineNumber
+                            value={item.par}
+                            unit={item.unit}
+                            onChange={(v) => updatePar(item.id, v)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={state.tone}>
+                            {state.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {suggested > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-sm">
+                              <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                              <span className="font-medium tabular-nums">{suggested}</span>
+                              <span className="text-xs text-stone-500">{item.unit}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-stone-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            disabled={suggested <= 0}
+                            onClick={() => addToCart(item.id, suggested || 1)}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Cart
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                            onClick={() => setItemToDelete(item)}
+                            aria-label={`Delete ${item.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-sm text-stone-500">
+                        No items match your filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+
+          {/* VENDORS TAB */}
+          <TabsContent value="vendors" className="space-y-5 mt-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-serif text-2xl text-[hsl(var(--ink))]">Vendor management</p>
+                <p className="text-sm text-stone-600">
+                  {vendors.length} vendors · {items.length} items assigned · used by Inventory, Invoices and the Ordering agent.
+                </p>
+              </div>
+              <Button onClick={openAddVendor}>
+                <UserPlus className="h-4 w-4" /> Add vendor
+              </Button>
+            </div>
+
+            <Card className="border-stone-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-stone-50/60">
+                    <TableHead className="w-[22%]">Vendor</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Delivery</TableHead>
+                    <TableHead>Terms</TableHead>
+                    <TableHead className="text-center">Items</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendors.map((v) => {
+                    const count = vendorItemCount(v.name);
+                    return (
+                      <TableRow key={v.id} className="hover:bg-stone-50/50">
+                        <TableCell>
+                          <p className="font-medium text-[hsl(var(--ink))]">{v.name}</p>
+                          {v.notes && (
+                            <p className="text-xs text-stone-500 mt-0.5">{v.notes}</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm">{v.contactName}</p>
+                          <p className="text-xs text-stone-500 flex items-center gap-1 mt-0.5">
+                            <Mail className="h-3 w-3" /> {v.email}
+                          </p>
+                          <p className="text-xs text-stone-500 flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {v.phone}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-sm font-mono text-stone-700">{v.accountNo}</TableCell>
+                        <TableCell className="text-sm text-stone-700">{v.deliveryDays}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-normal">{v.terms}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-sm tabular-nums font-medium">{count}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => openEditVendor(v)}
+                              aria-label={`Edit ${v.name}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                              onClick={() => setVendorToDelete(v)}
+                              aria-label={`Delete ${v.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {vendors.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-sm text-stone-500">
+                        No vendors yet. Add one to start assigning items.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
+
 
 
       {/* Cart drawer */}
@@ -675,7 +978,7 @@ function InventoryPage() {
             <div>
               <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">Vendor channels</p>
               <div className="space-y-2">
-                {VENDORS.slice(0, 5).map((v) => (
+                {vendorNames.slice(0, 5).map((v) => (
                   <div key={v} className="flex items-center justify-between border border-stone-200 rounded-md px-3 py-2 text-sm">
                     <div className="flex items-center gap-2">
                       <Mail className="h-3.5 w-3.5 text-stone-500" />
@@ -706,7 +1009,233 @@ function InventoryPage() {
           </button>
         </div>
       )}
+
+      {/* Add Item dialog */}
+      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Add inventory item</DialogTitle>
+            <DialogDescription>
+              The Ordering agent will start tracking par levels and usage as soon as you save.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2">
+              <Label htmlFor="item-name">Item name</Label>
+              <Input
+                id="item-name"
+                value={itemDraft.name}
+                onChange={(e) => setItemDraft({ ...itemDraft, name: e.target.value })}
+                placeholder="e.g. Hendrick's Gin 1L"
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-cat">Category</Label>
+              <select
+                id="item-cat"
+                value={itemDraft.category}
+                onChange={(e) => setItemDraft({ ...itemDraft, category: e.target.value as Category })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="item-vendor">Vendor</Label>
+              <select
+                id="item-vendor"
+                value={itemDraft.vendor}
+                onChange={(e) => setItemDraft({ ...itemDraft, vendor: e.target.value })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {vendorNames.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="item-unit">Unit</Label>
+              <Input
+                id="item-unit"
+                value={itemDraft.unit}
+                onChange={(e) => setItemDraft({ ...itemDraft, unit: e.target.value })}
+                placeholder="btl, case, lb…"
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-cost">Cost / unit ($)</Label>
+              <Input
+                id="item-cost"
+                type="number"
+                step="0.01"
+                value={itemDraft.cost}
+                onChange={(e) => setItemDraft({ ...itemDraft, cost: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-onhand">On hand</Label>
+              <Input
+                id="item-onhand"
+                type="number"
+                value={itemDraft.onHand}
+                onChange={(e) => setItemDraft({ ...itemDraft, onHand: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="item-par">Par</Label>
+              <Input
+                id="item-par"
+                type="number"
+                value={itemDraft.par}
+                onChange={(e) => setItemDraft({ ...itemDraft, par: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="item-usage">Est. weekly usage ({itemDraft.unit || "units"})</Label>
+              <Input
+                id="item-usage"
+                type="number"
+                value={itemDraft.weeklyUsage}
+                onChange={(e) => setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })}
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                Seed value — the agent will refine this from product mix once sales come in.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveNewItem} disabled={!itemDraft.name.trim() || !itemDraft.vendor}>
+              <Plus className="h-4 w-4" /> Add item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete item confirm */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(o) => !o && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {itemToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Removes the item from inventory and any pending cart line. Historical invoices stay intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteItem}
+              className="bg-[hsl(var(--terracotta))] hover:bg-[hsl(var(--terracotta))]/90"
+            >
+              Delete item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Vendor dialog */}
+      <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">
+              {vendorEditing ? "Edit vendor" : "Add vendor"}
+            </DialogTitle>
+            <DialogDescription>
+              Vendor details are shared with the Invoices tab and the Ordering agent for auto-dispatch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2">
+              <Label htmlFor="v-name">Vendor name</Label>
+              <Input id="v-name" value={vendorDraft.name} onChange={(e) => setVendorDraft({ ...vendorDraft, name: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-contact">Contact name</Label>
+              <Input id="v-contact" value={vendorDraft.contactName} onChange={(e) => setVendorDraft({ ...vendorDraft, contactName: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-account">Account #</Label>
+              <Input id="v-account" value={vendorDraft.accountNo} onChange={(e) => setVendorDraft({ ...vendorDraft, accountNo: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-email">Order email</Label>
+              <Input id="v-email" type="email" value={vendorDraft.email} onChange={(e) => setVendorDraft({ ...vendorDraft, email: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-phone">Phone</Label>
+              <Input id="v-phone" value={vendorDraft.phone} onChange={(e) => setVendorDraft({ ...vendorDraft, phone: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-days">Delivery days</Label>
+              <Input id="v-days" placeholder="e.g. Mon, Wed, Fri" value={vendorDraft.deliveryDays} onChange={(e) => setVendorDraft({ ...vendorDraft, deliveryDays: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="v-terms">Payment terms</Label>
+              <select
+                id="v-terms"
+                value={vendorDraft.terms}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, terms: e.target.value })}
+                className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
+              >
+                {["COD", "Net 7", "Net 15", "Net 21", "Net 30", "Net 45", "Net 60"].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="v-notes">Notes</Label>
+              <Textarea
+                id="v-notes"
+                rows={2}
+                value={vendorDraft.notes ?? ""}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, notes: e.target.value })}
+                placeholder="Optional — minimum orders, rep schedule, special instructions…"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveVendor} disabled={!vendorDraft.name.trim()}>
+              {vendorEditing ? "Save changes" : "Add vendor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete vendor confirm */}
+      <AlertDialog open={!!vendorToDelete} onOpenChange={(o) => !o && setVendorToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {vendorToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {vendorToDelete && vendorItemCount(vendorToDelete.name) > 0 ? (
+                <>
+                  <span className="text-[hsl(var(--terracotta))] font-medium">
+                    {vendorItemCount(vendorToDelete.name)} item(s) are still assigned to this vendor.
+                  </span>{" "}
+                  Reassign or delete those items first — otherwise the Ordering agent won't know where to send their POs.
+                </>
+              ) : (
+                "This vendor has no items assigned and can be safely removed."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteVendor}
+              disabled={!!vendorToDelete && vendorItemCount(vendorToDelete.name) > 0}
+              className="bg-[hsl(var(--terracotta))] hover:bg-[hsl(var(--terracotta))]/90"
+            >
+              Delete vendor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+
   );
 }
 
