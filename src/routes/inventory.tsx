@@ -737,6 +737,86 @@ function KpiCard({
   );
 }
 
+function DerivedBreakdown({ item, derived }: { item: Item; derived: Derived }) {
+  const weeklyTotals = ["W22", "W23", "W24", "W25"].map((w) => ({
+    week: w,
+    units: +derived.mix
+      .filter((m) => m.week === w)
+      .reduce((s, m) => s + m.inventoryUnits, 0)
+      .toFixed(1),
+  }));
+  const costArrow = derived.costDeltaPct >= 0 ? "▲" : "▼";
+  const usageArrow = derived.usageDeltaPct >= 0 ? "▲" : "▼";
+  return (
+    <div className="text-xs">
+      <div className="px-4 py-3 bg-[hsl(var(--ink))] text-stone-100 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-amber-200" />
+        <span className="font-serif text-sm">Live · derived value</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-stone-200">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-stone-500">Unit cost</p>
+          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
+            ${derived.cost.toFixed(2)}
+          </p>
+          <p
+            className={`text-[11px] tabular-nums ${derived.costDeltaPct >= 0 ? "text-[hsl(var(--terracotta))]" : "text-emerald-700"}`}
+          >
+            {costArrow} {Math.abs(derived.costDeltaPct).toFixed(1)}% vs 6 wk
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-stone-500">Weekly usage</p>
+          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
+            {derived.weeklyUsage} {item.unit}
+          </p>
+          <p
+            className={`text-[11px] tabular-nums ${derived.usageDeltaPct >= 0 ? "text-emerald-700" : "text-[hsl(var(--terracotta))]"}`}
+          >
+            {usageArrow} {Math.abs(derived.usageDeltaPct).toFixed(1)}% vs 4 wk
+          </p>
+        </div>
+      </div>
+      <div className="px-4 py-3 border-b border-stone-200">
+        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
+          From invoices · {item.vendor}
+        </p>
+        <ul className="space-y-1">
+          {derived.invoices.map((inv) => (
+            <li key={inv.invoiceNo} className="flex items-center justify-between">
+              <span className="text-stone-600">{inv.date} · {inv.invoiceNo}</span>
+              <span className="tabular-nums text-[hsl(var(--ink))]">
+                ${inv.unitPrice.toFixed(2)} × {inv.qty}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="px-4 py-3">
+        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
+          From product mix · last 4 wk
+        </p>
+        <div className="grid grid-cols-4 gap-1 mb-2">
+          {weeklyTotals.map((w) => (
+            <div key={w.week} className="text-center">
+              <p className="text-[10px] text-stone-500">{w.week}</p>
+              <p className="text-xs tabular-nums text-[hsl(var(--ink))]">{w.units}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-stone-500 mb-1">Driven by</p>
+        <div className="flex flex-wrap gap-1">
+          {derived.menuItems.map((m) => (
+            <Badge key={m} variant="outline" className="font-normal text-[10px] py-0">
+              {m}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InlineNumber({
   value,
   unit,
