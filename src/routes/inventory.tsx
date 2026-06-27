@@ -126,14 +126,26 @@ const CATEGORIES: Category[] = [
   "Miscellaneous",
 ];
 
-const VENDORS = [
-  "Southern Glazer's",
-  "Columbia Distributing",
-  "Sysco",
-  "Restaurant Depot",
-  "US Foods",
-  "Pepsi Bottling",
-  "Local Produce Co.",
+type Vendor = {
+  id: string;
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  accountNo: string;
+  deliveryDays: string; // e.g. "Mon, Wed, Fri"
+  terms: string; // e.g. "Net 30"
+  notes?: string;
+};
+
+const INITIAL_VENDORS: Vendor[] = [
+  { id: "v1", name: "Southern Glazer's", contactName: "Marcus Reed", email: "orders@sgws.com", phone: "(503) 555-0142", accountNo: "SGW-44218", deliveryDays: "Tue, Fri", terms: "Net 30" },
+  { id: "v2", name: "Columbia Distributing", contactName: "Priya Naidu", email: "po@coldist.com", phone: "(503) 555-0177", accountNo: "CD-9912", deliveryDays: "Mon, Thu", terms: "Net 21" },
+  { id: "v3", name: "Sysco", contactName: "Tom Albright", email: "sysco.pdx@sysco.com", phone: "(503) 555-0211", accountNo: "SYS-77140", deliveryDays: "Mon, Wed, Fri", terms: "Net 30" },
+  { id: "v4", name: "Restaurant Depot", contactName: "—", email: "noreply@restaurantdepot.com", phone: "(503) 555-0188", accountNo: "RD-30221", deliveryDays: "Pickup", terms: "COD" },
+  { id: "v5", name: "US Foods", contactName: "Janelle Cho", email: "orders@usfoods.com", phone: "(503) 555-0166", accountNo: "USF-58811", deliveryDays: "Tue, Fri", terms: "Net 30" },
+  { id: "v6", name: "Pepsi Bottling", contactName: "Diego Ramos", email: "fountain@pepsi.com", phone: "(503) 555-0199", accountNo: "PEP-2204", deliveryDays: "Wed", terms: "Net 15" },
+  { id: "v7", name: "Local Produce Co.", contactName: "Hannah Ortiz", email: "hannah@localproduce.co", phone: "(503) 555-0125", accountNo: "LP-118", deliveryDays: "Tue, Thu, Sat", terms: "Net 7", notes: "Farm-direct seasonal produce" },
 ];
 
 const INITIAL_ITEMS: Item[] = [
