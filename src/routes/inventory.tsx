@@ -51,6 +51,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -58,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { deriveItem, type Derived } from "@/lib/inventory-derive";
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({
