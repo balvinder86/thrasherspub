@@ -419,15 +419,10 @@ function InventoryPage() {
                 return (
                   <TableRow key={item.id} className="hover:bg-stone-50/50">
                     <TableCell>
-                      <button
-                        onClick={() => setEditing(item)}
-                        className="text-left"
-                      >
-                        <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                        <p className="text-xs text-stone-500">
-                          ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                        </p>
-                      </button>
+                      <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
+                      <p className="text-xs text-stone-500">
+                        ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                      </p>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-normal">
@@ -436,13 +431,33 @@ function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <span className="font-medium tabular-nums">{item.onHand}</span>
-                        <span className="text-xs text-stone-500">{item.unit}</span>
-                      </div>
-                      <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                      {editingId === item.id ? (
+                        <InlineNumber
+                          value={item.onHand}
+                          unit={item.unit}
+                          onChange={(v) => updateOnHand(item.id, v)}
+                        />
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-medium tabular-nums">{item.onHand}</span>
+                            <span className="text-xs text-stone-500">{item.unit}</span>
+                          </div>
+                          <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                        </>
+                      )}
                     </TableCell>
-                    <TableCell className="text-center tabular-nums">{item.par}</TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {editingId === item.id ? (
+                        <InlineNumber
+                          value={item.par}
+                          unit={item.unit}
+                          onChange={(v) => updatePar(item.id, v)}
+                        />
+                      ) : (
+                        item.par
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={state.tone}>
                         {state.label}
@@ -461,13 +476,23 @@ function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditing(item)}
-                        >
-                          Edit
-                        </Button>
+                        {editingId === item.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingId(null)}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingId(item.id)}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           disabled={suggested <= 0}
