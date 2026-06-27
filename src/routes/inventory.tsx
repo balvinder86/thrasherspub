@@ -576,7 +576,7 @@ function InventoryPage() {
               className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
             >
               <option value="All">All vendors</option>
-              {VENDORS.map((v) => (
+              {vendorNames.map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
