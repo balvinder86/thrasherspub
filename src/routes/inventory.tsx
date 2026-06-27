@@ -172,7 +172,7 @@ function InventoryPage() {
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  
   const [agentOpen, setAgentOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(true);
   const [confirmThreshold, setConfirmThreshold] = useState(true);
