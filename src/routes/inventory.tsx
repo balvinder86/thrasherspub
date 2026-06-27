@@ -272,22 +272,6 @@ function InventoryPage() {
               Live counts across beverages, alcohol, food and dry goods. Update par levels, build a cart from AI suggestions, and dispatch POs to vendors automatically.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setAgentOpen(true)}>
-              <Settings2 className="h-4 w-4" /> AI agent
-            </Button>
-            <Button variant="outline" onClick={autoFillCart}>
-              <Wand2 className="h-4 w-4" /> Auto-fill cart
-            </Button>
-            <Button onClick={() => setCartOpen(true)} className="relative">
-              <ShoppingCart className="h-4 w-4" /> Cart
-              {cartCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center rounded-full bg-white/25 px-2 text-xs">
-                  {cartCount}
-                </span>
-              )}
-            </Button>
-          </div>
         </div>
 
         {/* KPIs */}
