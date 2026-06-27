@@ -447,9 +447,20 @@ function InventoryPage() {
                   <TableRow key={item.id} className="hover:bg-stone-50/50">
                     <TableCell>
                       <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                      <p className="text-xs text-stone-500">
-                        ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                      </p>
+                      <HoverCard openDelay={120}>
+                        <HoverCardTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
+                          >
+                            <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                            ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
+                          <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
+                        </HoverCardContent>
+                      </HoverCard>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-normal">
