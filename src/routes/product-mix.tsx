@@ -43,12 +43,9 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
-  ZAxis,
 } from "recharts";
 
 import { Topbar } from "@/components/dashboard/Topbar";
@@ -314,116 +311,9 @@ function ProductMixPage() {
           </div>
         </Card>
 
-        {/* Two-column: Quadrant + Daily mix */}
+        {/* Daily mix */}
         <section className="grid lg:grid-cols-3 gap-6">
-          <Card className="p-6 lg:col-span-2">
-            <div className="flex items-end justify-between mb-4">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                  Menu engineering matrix
-                </p>
-                <h3 className="font-serif text-2xl">Popularity × Margin</h3>
-              </div>
-              <div className="flex gap-3 text-xs">
-                {(["Star", "Plowhorse", "Puzzle", "Dog"] as Quadrant[]).map((q) => (
-                  <div key={q} className="flex items-center gap-1.5">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ background: QUAD_COLOR[q] }}
-                    />
-                    {q}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
-                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" />
-                  <XAxis
-                    type="number"
-                    dataKey="margin"
-                    name="Margin"
-                    tick={{ fontSize: 11 }}
-                    label={{
-                      value: "Contribution margin per unit ($)",
-                      position: "insideBottom",
-                      offset: -10,
-                      fontSize: 11,
-                      fill: PALETTE.muted,
-                    }}
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="soldWk"
-                    name="Units"
-                    tick={{ fontSize: 11 }}
-                    label={{
-                      value: "Units / wk",
-                      angle: -90,
-                      position: "insideLeft",
-                      fontSize: 11,
-                      fill: PALETTE.muted,
-                    }}
-                  />
-                  <ZAxis type="number" dataKey="revenue" range={[60, 360]} />
-                  <Tooltip
-                    cursor={{ strokeDasharray: "3 3" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const p = payload[0].payload as MenuItem & {
-                        margin: number;
-                        quad: Quadrant;
-                      };
-                      return (
-                        <div className="rounded-md border bg-background p-3 text-xs shadow-md">
-                          <div className="font-semibold mb-1">{p.name}</div>
-                          <div className="text-muted-foreground">
-                            {p.category} · {p.station}
-                          </div>
-                          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
-                            <span>Sold</span>
-                            <span className="text-right font-mono">{p.soldWk}/wk</span>
-                            <span>Margin</span>
-                            <span className="text-right font-mono">${p.margin.toFixed(2)}</span>
-                            <span>Quadrant</span>
-                            <span
-                              className="text-right font-medium"
-                              style={{ color: QUAD_COLOR[p.quad] }}
-                            >
-                              {p.quad}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Scatter
-                    data={ITEMS.map((i) => ({
-                      ...i,
-                      margin: i.price - i.cost,
-                      revenue: i.soldWk * i.price,
-                      quad: quadrant(i, popMedian, marginMedian),
-                    }))}
-                  >
-                    {ITEMS.map((i) => (
-                      <Cell
-                        key={i.id}
-                        fill={QUAD_COLOR[quadrant(i, popMedian, marginMedian)]}
-                        fillOpacity={0.85}
-                      />
-                    ))}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Bubble size = weekly revenue. Median lines split the four quadrants — protect Stars,
-              fix Plowhorses, reposition Puzzles, retire Dogs.
-            </p>
-          </Card>
-
-          <Card className="p-6">
+          <Card className="p-6 lg:col-span-3">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
               Daily mix
             </p>
