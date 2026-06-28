@@ -4,7 +4,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Award,
-  Brain,
   CheckCircle2,
   ChefHat,
   Clock,
@@ -28,10 +27,8 @@ import {
   TrendingUp,
   Utensils,
   Wine,
-  Wand2,
   AlertTriangle,
   DollarSign,
-  Eye,
   Pencil,
 } from "lucide-react";
 import {
