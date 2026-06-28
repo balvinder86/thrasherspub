@@ -229,12 +229,12 @@ function ProductMixPage() {
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
-              Menu engineering
+              Menu performance
             </p>
             <h1 className="font-serif text-4xl text-foreground">Product Mix</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
               See which dishes carry the room, which ones drain it, and where the menu wants a
-              nudge. Engineered against last week's checks, voids, and ratings.
+              nudge. Tracked against last week's checks, voids, and ratings.
             </p>
           </div>
           <div className="flex items-center gap-2">
