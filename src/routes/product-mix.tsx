@@ -1205,3 +1205,328 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+// ---------- POS sync strip ----------
+function PosSyncStrip() {
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState("3 min ago");
+  const handleSync = () => {
+    setSyncing(true);
+    setTimeout(() => {
+      setSyncing(false);
+      setLastSync("just now");
+    }, 1200);
+  };
+  return (
+    <Card className="p-4 border-[#e6dfd2] bg-[#fbf7f0]">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-md bg-[#ff4f00]/10 text-[#ff4f00] grid place-items-center">
+            <Plug className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">Toast POS</span>
+              <Badge
+                variant="outline"
+                className="gap-1 border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-[#5a7d4a]" /> Connected
+              </Badge>
+            </div>
+            <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" /> Last sync {lastSync}
+              </span>
+              <span>· Refreshing every 5 min</span>
+              <span>· Thrasher's Pub — Main</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="gap-2" onClick={handleSync} disabled={syncing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing…" : "Sync now"}
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Link2 className="h-3.5 w-3.5" /> Map menu items
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Settings2 className="h-3.5 w-3.5" /> Integration settings
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ---------- Customize panel ----------
+type Alias = { id: string; name: string; merges: string[]; category: string };
+type RecipeOv = { id: string; name: string; posCost: number; recipeCost: number };
+type Hidden = { id: string; name: string; reason: string };
+type Daypart = { id: string; name: string; days: string; window: string };
+
+function CustomizePanel() {
+  const [recipes, setRecipes] = useState<RecipeOv[]>([
+    { id: "m1", name: "Pub Burger", posCost: 5.2, recipeCost: 4.8 },
+    { id: "m2", name: "Wings (10pc)", posCost: 4.1, recipeCost: 3.65 },
+    { id: "m6", name: "Fish & Chips", posCost: 6.8, recipeCost: 6.2 },
+  ]);
+  const [aliases, setAliases] = useState<Alias[]>([
+    {
+      id: "a1",
+      name: "Pub Burger",
+      category: "Sandwiches",
+      merges: ["PubBurger (tst_001)", "Pub Burger (tst_002)", "HH Burger (tst_004)"],
+    },
+    {
+      id: "a2",
+      name: "Wings (10pc)",
+      category: "Apps",
+      merges: ["Wings 10pc (tst_010)", "Wings 10 (tst_011)"],
+    },
+  ]);
+  const [hidden, setHidden] = useState<Hidden[]>([
+    { id: "h1", name: "Employee Meal", reason: "Employee meal" },
+    { id: "h2", name: "TEST item — do not order", reason: "Test item" },
+    { id: "h3", name: "Manager Comp", reason: "Comp" },
+  ]);
+  const [dayparts, setDayparts] = useState<Daypart[]>([
+    { id: "dp1", name: "Brunch", days: "Sat–Sun", window: "10:00a – 2:00p" },
+    { id: "dp2", name: "Happy Hour", days: "Mon–Fri", window: "3:00p – 6:00p" },
+    { id: "dp3", name: "Late Night", days: "Thu–Sat", window: "10:00p – close" },
+    { id: "dp4", name: "Game Day", days: "Sun", window: "12:00p – 11:00p" },
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-[#e6dfd2] bg-[#fbf7f0] p-4 flex items-start gap-3">
+        <Sparkles className="h-4 w-4 text-[#c4654a] mt-0.5" />
+        <div className="text-sm">
+          <div className="font-medium">Layered on top of Toast</div>
+          <p className="text-muted-foreground">
+            Toast is the source of truth for sales. Anything you set here is applied at read-time —
+            recipe costs override the POS cost for margin math, aliases collapse duplicate SKUs,
+            hidden items disappear from mix charts, and custom dayparts replace the default
+            lunch/dinner buckets.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Recipe cost overrides */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                Margin math
+              </p>
+              <h3 className="font-serif text-xl">Recipe cost overrides</h3>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1">
+              <Plus className="h-3.5 w-3.5" /> Add
+            </Button>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
+                <th className="text-left py-2 font-medium">Item</th>
+                <th className="text-right py-2 font-medium">POS cost</th>
+                <th className="text-right py-2 font-medium">Your recipe</th>
+                <th className="text-right py-2 font-medium">Δ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {recipes.map((r) => {
+                const d = r.recipeCost - r.posCost;
+                return (
+                  <tr key={r.id} className="border-b last:border-0">
+                    <td className="py-2">{r.name}</td>
+                    <td className="py-2 text-right font-mono text-muted-foreground">
+                      ${r.posCost.toFixed(2)}
+                    </td>
+                    <td className="py-2 text-right">
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={r.recipeCost}
+                        onChange={(e) =>
+                          setRecipes((rs) =>
+                            rs.map((x) =>
+                              x.id === r.id ? { ...x, recipeCost: Number(e.target.value) } : x,
+                            ),
+                          )
+                        }
+                        className="h-8 w-24 text-right font-mono ml-auto"
+                      />
+                    </td>
+                    <td
+                      className={`py-2 text-right text-xs font-mono ${d < 0 ? "text-[#5a7d4a]" : "text-[#a8453a]"}`}
+                    >
+                      {d >= 0 ? "+" : ""}
+                      {d.toFixed(2)}
+                    </td>
+                    <td className="py-2 text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setRecipes((rs) => rs.filter((x) => x.id !== r.id))}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+
+        {/* Item aliases / grouping */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">Grouping</p>
+              <h3 className="font-serif text-xl">Item aliases</h3>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1">
+              <Plus className="h-3.5 w-3.5" /> New alias
+            </Button>
+          </div>
+          <div className="space-y-3">
+            {aliases.map((a) => (
+              <div key={a.id} className="p-3 rounded-md border bg-muted/20">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-medium">{a.name}</div>
+                    <Badge variant="outline" className="mt-1 text-xs font-normal">
+                      {a.category}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setAliases((xs) => xs.filter((x) => x.id !== a.id))}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {a.merges.map((m) => (
+                    <Badge key={m} variant="outline" className="text-[10px] font-normal">
+                      {m}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Hidden items */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                Cleanup
+              </p>
+              <h3 className="font-serif text-xl">Hidden from mix</h3>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1">
+              <EyeOff className="h-3.5 w-3.5" /> Hide item
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {hidden.map((h) => (
+              <div
+                key={h.id}
+                className="flex items-center justify-between p-2.5 rounded-md border bg-muted/20"
+              >
+                <div>
+                  <div className="text-sm font-medium">{h.name}</div>
+                  <div className="text-xs text-muted-foreground">{h.reason}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHidden((xs) => xs.filter((x) => x.id !== h.id))}
+                >
+                  Unhide
+                </Button>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground mt-2">
+              Hidden items still post to revenue in Sales — they just don't pollute the menu
+              engineering quadrant.
+            </p>
+          </div>
+        </Card>
+
+        {/* Custom dayparts */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                Time buckets
+              </p>
+              <h3 className="font-serif text-xl">Custom dayparts</h3>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1">
+              <Plus className="h-3.5 w-3.5" /> New daypart
+            </Button>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
+                <th className="text-left py-2 font-medium">Name</th>
+                <th className="text-left py-2 font-medium">Days</th>
+                <th className="text-left py-2 font-medium">Window</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayparts.map((d) => (
+                <tr key={d.id} className="border-b last:border-0">
+                  <td className="py-2 font-medium">{d.name}</td>
+                  <td className="py-2 text-muted-foreground">{d.days}</td>
+                  <td className="py-2 text-muted-foreground font-mono text-xs">{d.window}</td>
+                  <td className="py-2 text-right">
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setDayparts((xs) => xs.filter((x) => x.id !== d.id))}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      <Card className="p-5 bg-gradient-to-br from-[#fbf5ee] to-[#f1e3d3] border-[#e8d5b9]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-[#5a7d4a]" />
+            <div>
+              <div className="font-medium">Changes apply on the next sync</div>
+              <div className="text-xs text-muted-foreground">
+                Next Toast pull in ~2 min · or hit "Sync now" above
+              </div>
+            </div>
+          </div>
+          <Button className="bg-[#c4654a] hover:bg-[#a8553e] text-white">Save all</Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
