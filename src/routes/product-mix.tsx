@@ -220,7 +220,7 @@ function ProductMixPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Topbar />
+      <Topbar eyebrow="Menu performance" title="Product Mix" />
       <main className="px-8 py-8 max-w-[1600px] mx-auto space-y-8">
         {/* Header */}
         <header className="flex flex-wrap items-end justify-between gap-6">
