@@ -255,6 +255,9 @@ function ProductMixPage() {
           </div>
         </header>
 
+        {/* POS sync strip */}
+        <PosSyncStrip />
+
         {/* KPI row */}
         <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Kpi label="Net revenue" value={usd(totals.revenue)} delta="+8.4%" up icon={DollarSign} />
