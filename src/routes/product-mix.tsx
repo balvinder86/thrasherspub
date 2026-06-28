@@ -1053,6 +1053,11 @@ function ProductMixPage() {
               </Card>
             </div>
           </TabsContent>
+
+          {/* CUSTOMIZE */}
+          <TabsContent value="customize">
+            <CustomizePanel />
+          </TabsContent>
         </Tabs>
       </main>
 
