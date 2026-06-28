@@ -502,8 +502,6 @@ function ProductMixPage() {
             <TabsTrigger value="dayparts">Dayparts</TabsTrigger>
             <TabsTrigger value="modifiers">Modifiers & attach</TabsTrigger>
             <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="engineer">AI engineer</TabsTrigger>
-            <TabsTrigger value="customize">Customize</TabsTrigger>
           </TabsList>
 
           {/* ITEMS */}
