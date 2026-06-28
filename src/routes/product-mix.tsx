@@ -43,12 +43,9 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
-  ZAxis,
 } from "recharts";
 
 import { Topbar } from "@/components/dashboard/Topbar";
