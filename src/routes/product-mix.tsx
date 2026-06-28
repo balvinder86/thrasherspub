@@ -4,7 +4,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Award,
-  Brain,
   CheckCircle2,
   ChefHat,
   Clock,
@@ -28,10 +27,8 @@ import {
   TrendingUp,
   Utensils,
   Wine,
-  Wand2,
   AlertTriangle,
   DollarSign,
-  Eye,
   Pencil,
 } from "lucide-react";
 import {
@@ -232,12 +229,12 @@ function ProductMixPage() {
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
-              Menu engineering
+              Menu performance
             </p>
             <h1 className="font-serif text-4xl text-foreground">Product Mix</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
               See which dishes carry the room, which ones drain it, and where the menu wants a
-              nudge. Engineered against last week's checks, voids, and ratings.
+              nudge. Tracked against last week's checks, voids, and ratings.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -279,37 +276,6 @@ function ProductMixPage() {
           <Kpi label="Star items" value={`${totals.stars}`} delta="2 new" up icon={Award} />
         </section>
 
-        {/* AI strip */}
-        <Card className="p-6 bg-gradient-to-br from-[#fbf5ee] to-[#f1e3d3] border-[#e8d5b9]">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="flex gap-4 items-start max-w-2xl">
-              <div className="h-11 w-11 rounded-full bg-[#c4654a] text-white grid place-items-center shrink-0">
-                <Brain className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-widest text-[#8b6f5e] mb-1">
-                  Menu engineer · live
-                </p>
-                <h3 className="font-serif text-xl text-foreground mb-1">
-                  3 menu moves could lift weekly margin by ~$1,840
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Re-price <strong>Espresso Martini</strong> +$1 (demand inelastic, 4.8★), retire{" "}
-                  <strong>BLT Wrap</strong> (low attach, 4.1★), and promote{" "}
-                  <strong>Sticky Toffee Pudding</strong> as a dessert upsell (4.9★, growing 18%).
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="bg-background gap-2">
-                <Eye className="h-4 w-4" /> See all 9 ideas
-              </Button>
-              <Button className="bg-[#c4654a] hover:bg-[#a8553e] text-white gap-2">
-                <Wand2 className="h-4 w-4" /> Apply top 3
-              </Button>
-            </div>
-          </div>
-        </Card>
 
         {/* Daily mix */}
         <section className="grid lg:grid-cols-3 gap-6">
