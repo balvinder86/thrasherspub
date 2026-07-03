@@ -1,6 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useVendors, useCreateVendor, useUpdateVendor, useDeleteVendor, type Vendor } from "@/lib/boh/queries";
+import {
+  useVendors,
+  useCreateVendor,
+  useUpdateVendor,
+  useDeleteVendor,
+  useInventoryItems,
+  useCreateInventoryItem,
+  useDeleteInventoryItem,
+  useUpdateOnHand,
+  useUpdatePar,
+  useMarkOrdered,
+  type Vendor,
+  type InventoryItem,
+} from "@/lib/boh/queries";
 import {
   AlertTriangle,
   Bot,
@@ -56,11 +69,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import {
   Table,
   TableBody,
   TableCell,
@@ -88,7 +96,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { deriveItem, type Derived } from "@/lib/inventory-derive";
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({
@@ -104,20 +111,11 @@ export const Route = createFileRoute("/inventory")({
   component: InventoryPage,
 });
 
-type Category = "Beverages" | "Alcohol" | "Food" | "Dry Goods" | "Miscellaneous";
-
-type Item = {
-  id: string;
-  name: string;
-  category: Category;
-  unit: string;
-  onHand: number;
-  par: number;
-  vendor: string;
-  cost: number;
-  weeklyUsage: number;
-  lastOrdered: string;
-};
+// A fixed category list still constrains the "Add item" form dropdown
+// (see the dialog below), but the type itself is a plain string since
+// ingredients.category is free-text in the schema.
+type Category = string;
+type Item = InventoryItem;
 
 const CATEGORIES: Category[] = [
   "Beverages",
@@ -126,61 +124,6 @@ const CATEGORIES: Category[] = [
   "Dry Goods",
   "Miscellaneous",
 ];
-
-const INITIAL_ITEMS: Item[] = [
-  // Alcohol
-  { id: "a1", name: "Tito's Handmade Vodka 1.75L", category: "Alcohol", unit: "btl", onHand: 4, par: 12, vendor: "Southern Glazer's", cost: 28.5, weeklyUsage: 9, lastOrdered: "Jun 18" },
-  { id: "a2", name: "Jameson Irish Whiskey 1L", category: "Alcohol", unit: "btl", onHand: 6, par: 10, vendor: "Southern Glazer's", cost: 32.1, weeklyUsage: 6, lastOrdered: "Jun 20" },
-  { id: "a3", name: "Don Julio Blanco 750ml", category: "Alcohol", unit: "btl", onHand: 2, par: 6, vendor: "Southern Glazer's", cost: 42.0, weeklyUsage: 4, lastOrdered: "Jun 15" },
-  { id: "a4", name: "Bulleit Bourbon 1L", category: "Alcohol", unit: "btl", onHand: 5, par: 8, vendor: "Southern Glazer's", cost: 36.8, weeklyUsage: 5, lastOrdered: "Jun 21" },
-  { id: "a5", name: "Guinness Draught 1/2 keg", category: "Alcohol", unit: "keg", onHand: 1, par: 3, vendor: "Columbia Distributing", cost: 195.0, weeklyUsage: 2, lastOrdered: "Jun 19" },
-  { id: "a6", name: "Stella Artois 1/2 keg", category: "Alcohol", unit: "keg", onHand: 2, par: 4, vendor: "Columbia Distributing", cost: 168.0, weeklyUsage: 3, lastOrdered: "Jun 22" },
-  { id: "a7", name: "Modelo Especial 24pk btl", category: "Alcohol", unit: "case", onHand: 3, par: 8, vendor: "Columbia Distributing", cost: 38.5, weeklyUsage: 6, lastOrdered: "Jun 21" },
-  // Beverages
-  { id: "b1", name: "Coke Syrup BIB", category: "Beverages", unit: "bag", onHand: 2, par: 6, vendor: "Pepsi Bottling", cost: 92.0, weeklyUsage: 3, lastOrdered: "Jun 17" },
-  { id: "b2", name: "Diet Coke Syrup BIB", category: "Beverages", unit: "bag", onHand: 3, par: 4, vendor: "Pepsi Bottling", cost: 92.0, weeklyUsage: 2, lastOrdered: "Jun 17" },
-  { id: "b3", name: "Sprite Syrup BIB", category: "Beverages", unit: "bag", onHand: 1, par: 3, vendor: "Pepsi Bottling", cost: 92.0, weeklyUsage: 2, lastOrdered: "Jun 17" },
-  { id: "b4", name: "Cranberry Juice 32oz", category: "Beverages", unit: "btl", onHand: 8, par: 12, vendor: "Sysco", cost: 4.2, weeklyUsage: 5, lastOrdered: "Jun 22" },
-  { id: "b5", name: "Fresh Lime Juice 1gal", category: "Beverages", unit: "gal", onHand: 1, par: 4, vendor: "Local Produce Co.", cost: 18.0, weeklyUsage: 3, lastOrdered: "Jun 23" },
-  // Food
-  { id: "f1", name: "Ground Beef 80/20 10lb", category: "Food", unit: "case", onHand: 4, par: 12, vendor: "Restaurant Depot", cost: 48.5, weeklyUsage: 8, lastOrdered: "Jun 20" },
-  { id: "f2", name: "Chicken Wings Jumbo 40lb", category: "Food", unit: "case", onHand: 2, par: 6, vendor: "Sysco", cost: 142.0, weeklyUsage: 4, lastOrdered: "Jun 21" },
-  { id: "f3", name: "Russet Potatoes 50lb", category: "Food", unit: "bag", onHand: 3, par: 8, vendor: "Local Produce Co.", cost: 24.0, weeklyUsage: 5, lastOrdered: "Jun 22" },
-  { id: "f4", name: "Brioche Burger Buns 12ct", category: "Food", unit: "pack", onHand: 6, par: 20, vendor: "Sysco", cost: 6.8, weeklyUsage: 14, lastOrdered: "Jun 22" },
-  { id: "f5", name: "Cheddar Slices 5lb", category: "Food", unit: "case", onHand: 4, par: 8, vendor: "Restaurant Depot", cost: 22.5, weeklyUsage: 5, lastOrdered: "Jun 19" },
-  { id: "f6", name: "Romaine Hearts 12ct", category: "Food", unit: "case", onHand: 1, par: 4, vendor: "Local Produce Co.", cost: 28.0, weeklyUsage: 3, lastOrdered: "Jun 23" },
-  // Dry Goods
-  { id: "d1", name: "All-Purpose Flour 50lb", category: "Dry Goods", unit: "bag", onHand: 2, par: 4, vendor: "Restaurant Depot", cost: 18.5, weeklyUsage: 1, lastOrdered: "Jun 10" },
-  { id: "d2", name: "Kosher Salt 3lb", category: "Dry Goods", unit: "box", onHand: 6, par: 8, vendor: "Restaurant Depot", cost: 4.2, weeklyUsage: 1, lastOrdered: "Jun 05" },
-  { id: "d3", name: "Canola Oil 35lb", category: "Dry Goods", unit: "jug", onHand: 1, par: 4, vendor: "US Foods", cost: 42.0, weeklyUsage: 2, lastOrdered: "Jun 18" },
-  { id: "d4", name: "Pasta Penne 20lb", category: "Dry Goods", unit: "case", onHand: 3, par: 5, vendor: "US Foods", cost: 26.0, weeklyUsage: 1, lastOrdered: "Jun 12" },
-  // Misc
-  { id: "m1", name: "Cocktail Napkins 4000ct", category: "Miscellaneous", unit: "case", onHand: 2, par: 4, vendor: "Restaurant Depot", cost: 38.0, weeklyUsage: 1, lastOrdered: "Jun 14" },
-  { id: "m2", name: "To-Go Boxes 200ct", category: "Miscellaneous", unit: "case", onHand: 3, par: 6, vendor: "Restaurant Depot", cost: 32.0, weeklyUsage: 2, lastOrdered: "Jun 18" },
-  { id: "m3", name: "Nitrile Gloves L 1000ct", category: "Miscellaneous", unit: "case", onHand: 1, par: 3, vendor: "US Foods", cost: 58.0, weeklyUsage: 1, lastOrdered: "Jun 16" },
-  { id: "m4", name: "Dish Detergent 5gal", category: "Miscellaneous", unit: "pail", onHand: 1, par: 2, vendor: "US Foods", cost: 64.0, weeklyUsage: 1, lastOrdered: "Jun 11" },
-];
-
-// Enrich seed items with cost & weekly usage derived from vendor invoices
-// (latest unit price) and product mix (menu items × yield per sale).
-const DERIVED: Record<string, Derived> = Object.fromEntries(
-  INITIAL_ITEMS.map((i) => [
-    i.id,
-    deriveItem({
-      id: i.id,
-      category: i.category,
-      vendor: i.vendor,
-      unit: i.unit,
-      seedCost: i.cost,
-      seedUsage: i.weeklyUsage,
-    }),
-  ])
-);
-const ENRICHED_ITEMS: Item[] = INITIAL_ITEMS.map((i) => ({
-  ...i,
-  cost: DERIVED[i.id].cost,
-  weeklyUsage: Math.round(DERIVED[i.id].weeklyUsage),
-}));
 
 const USAGE_TREND = [
   { week: "W19", usage: 14200 },
@@ -219,7 +162,12 @@ type ItemDraft = {
 };
 
 function InventoryPage() {
-  const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
+  const { data: items = [] } = useInventoryItems();
+  const createItem = useCreateInventoryItem();
+  const deleteItemMutation = useDeleteInventoryItem();
+  const updateOnHandMutation = useUpdateOnHand();
+  const updateParMutation = useUpdatePar();
+  const markOrdered = useMarkOrdered();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
@@ -303,10 +251,10 @@ function InventoryPage() {
     });
   };
   const updatePar = (id: string, par: number) => {
-    setItems((arr) => arr.map((i) => (i.id === id ? { ...i, par } : i)));
+    updateParMutation.mutate({ ingredientId: id, par });
   };
   const updateOnHand = (id: string, onHand: number) => {
-    setItems((arr) => arr.map((i) => (i.id === id ? { ...i, onHand } : i)));
+    updateOnHandMutation.mutate({ ingredientId: id, onHand });
   };
 
   // ----- Item CRUD -----
@@ -325,34 +273,21 @@ function InventoryPage() {
   };
   const saveNewItem = () => {
     if (!itemDraft.name.trim() || !itemDraft.vendor) return;
-    const id = `n${Date.now().toString(36)}`;
-    const derived = deriveItem({
-      id,
-      category: itemDraft.category,
-      vendor: itemDraft.vendor,
-      unit: itemDraft.unit,
-      seedCost: itemDraft.cost || 1,
-      seedUsage: itemDraft.weeklyUsage || 1,
-    });
-    DERIVED[id] = derived;
-    const newItem: Item = {
-      id,
+    const vendorId = vendors.find((v) => v.name === itemDraft.vendor)?.id ?? null;
+    createItem.mutate({
       name: itemDraft.name.trim(),
       category: itemDraft.category,
       unit: itemDraft.unit,
       onHand: itemDraft.onHand,
       par: itemDraft.par,
-      vendor: itemDraft.vendor,
-      cost: derived.cost,
-      weeklyUsage: Math.round(derived.weeklyUsage),
-      lastOrdered: "—",
-    };
-    setItems((arr) => [newItem, ...arr]);
+      vendorId,
+      costCents: itemDraft.cost ? Math.round(itemDraft.cost * 100) : null,
+    });
     setItemDialogOpen(false);
   };
   const confirmDeleteItem = () => {
     if (!itemToDelete) return;
-    setItems((arr) => arr.filter((i) => i.id !== itemToDelete.id));
+    deleteItemMutation.mutate(itemToDelete.id);
     setCart((c) => {
       const next = { ...c };
       delete next[itemToDelete.id];
@@ -432,6 +367,7 @@ function InventoryPage() {
 
   const sendToVendors = () => {
     const vendorCount = Object.keys(cartByVendor).length;
+    markOrdered.mutate(Object.keys(cart));
     setSentToast(`AI agent dispatched ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"} to vendors. Confirmations expected within 15 min.`);
     setCart({});
     setCartOpen(false);
@@ -623,20 +559,10 @@ function InventoryPage() {
                       <TableRow key={item.id} className="hover:bg-stone-50/50">
                         <TableCell>
                           <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                          <HoverCard openDelay={120}>
-                            <HoverCardTrigger asChild>
-                              <button
-                                type="button"
-                                className="text-xs text-stone-500 hover:text-[hsl(var(--ink))] underline decoration-dotted underline-offset-2 inline-flex items-center gap-1 mt-0.5"
-                              >
-                                <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                                ${item.cost.toFixed(2)} / {item.unit} · uses ~{item.weeklyUsage}/wk
-                              </button>
-                            </HoverCardTrigger>
-                            <HoverCardContent align="start" className="w-[360px] p-0 overflow-hidden">
-                              <DerivedBreakdown item={item} derived={DERIVED[item.id]} />
-                            </HoverCardContent>
-                          </HoverCard>
+                          <p className="text-xs text-stone-500 mt-0.5">
+                            ${item.cost.toFixed(2)} / {item.unit}
+                            {item.weeklyUsage > 0 && ` · uses ~${item.weeklyUsage}/wk`}
+                          </p>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="font-normal">
@@ -1242,86 +1168,6 @@ function KpiCard({
       <p className="font-serif text-3xl text-[hsl(var(--ink))] mt-2 tabular-nums">{value}</p>
       {hint && <p className="text-xs text-stone-500 mt-1">{hint}</p>}
     </Card>
-  );
-}
-
-function DerivedBreakdown({ item, derived }: { item: Item; derived: Derived }) {
-  const weeklyTotals = ["W22", "W23", "W24", "W25"].map((w) => ({
-    week: w,
-    units: +derived.mix
-      .filter((m) => m.week === w)
-      .reduce((s, m) => s + m.inventoryUnits, 0)
-      .toFixed(1),
-  }));
-  const costArrow = derived.costDeltaPct >= 0 ? "▲" : "▼";
-  const usageArrow = derived.usageDeltaPct >= 0 ? "▲" : "▼";
-  return (
-    <div className="text-xs">
-      <div className="px-4 py-3 bg-[hsl(var(--ink))] text-stone-100 flex items-center gap-2">
-        <Sparkles className="h-3.5 w-3.5 text-amber-200" />
-        <span className="font-serif text-sm">Live · derived value</span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-stone-200">
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-stone-500">Unit cost</p>
-          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
-            ${derived.cost.toFixed(2)}
-          </p>
-          <p
-            className={`text-[11px] tabular-nums ${derived.costDeltaPct >= 0 ? "text-[hsl(var(--terracotta))]" : "text-emerald-700"}`}
-          >
-            {costArrow} {Math.abs(derived.costDeltaPct).toFixed(1)}% vs 6 wk
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-stone-500">Weekly usage</p>
-          <p className="font-serif text-lg text-[hsl(var(--ink))] tabular-nums">
-            {derived.weeklyUsage} {item.unit}
-          </p>
-          <p
-            className={`text-[11px] tabular-nums ${derived.usageDeltaPct >= 0 ? "text-emerald-700" : "text-[hsl(var(--terracotta))]"}`}
-          >
-            {usageArrow} {Math.abs(derived.usageDeltaPct).toFixed(1)}% vs 4 wk
-          </p>
-        </div>
-      </div>
-      <div className="px-4 py-3 border-b border-stone-200">
-        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
-          From invoices · {item.vendor}
-        </p>
-        <ul className="space-y-1">
-          {derived.invoices.map((inv) => (
-            <li key={inv.invoiceNo} className="flex items-center justify-between">
-              <span className="text-stone-600">{inv.date} · {inv.invoiceNo}</span>
-              <span className="tabular-nums text-[hsl(var(--ink))]">
-                ${inv.unitPrice.toFixed(2)} × {inv.qty}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">
-          From product mix · last 4 wk
-        </p>
-        <div className="grid grid-cols-4 gap-1 mb-2">
-          {weeklyTotals.map((w) => (
-            <div key={w.week} className="text-center">
-              <p className="text-[10px] text-stone-500">{w.week}</p>
-              <p className="text-xs tabular-nums text-[hsl(var(--ink))]">{w.units}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-[10px] text-stone-500 mb-1">Driven by</p>
-        <div className="flex flex-wrap gap-1">
-          {derived.menuItems.map((m) => (
-            <Badge key={m} variant="outline" className="font-normal text-[10px] py-0">
-              {m}
-            </Badge>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
