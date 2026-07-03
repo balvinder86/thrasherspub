@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as SeoRouteImport } from './routes/seo'
 import { Route as SegmentsRouteImport } from './routes/segments'
 import { Route as SchedulingRouteImport } from './routes/scheduling'
@@ -17,6 +18,7 @@ import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as ProductMixRouteImport } from './routes/product-mix'
 import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -25,6 +27,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SeoRoute = SeoRouteImport.update({
@@ -62,6 +69,11 @@ const LoyaltyRoute = LoyaltyRouteImport.update({
   path: '/loyalty',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvoicesRoute = InvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -88,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/inventory': typeof InventoryRoute
   '/invoices': typeof InvoicesRoute
+  '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
   '/marketing': typeof MarketingRoute
   '/product-mix': typeof ProductMixRoute
@@ -95,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/scheduling': typeof SchedulingRoute
   '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
+  '/set-password': typeof SetPasswordRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRoutesByTo {
@@ -102,6 +116,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/inventory': typeof InventoryRoute
   '/invoices': typeof InvoicesRoute
+  '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
   '/marketing': typeof MarketingRoute
   '/product-mix': typeof ProductMixRoute
@@ -109,6 +124,7 @@ export interface FileRoutesByTo {
   '/scheduling': typeof SchedulingRoute
   '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
+  '/set-password': typeof SetPasswordRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRoutesById {
@@ -117,6 +133,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/inventory': typeof InventoryRoute
   '/invoices': typeof InvoicesRoute
+  '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
   '/marketing': typeof MarketingRoute
   '/product-mix': typeof ProductMixRoute
@@ -124,6 +141,7 @@ export interface FileRoutesById {
   '/scheduling': typeof SchedulingRoute
   '/segments': typeof SegmentsRoute
   '/seo': typeof SeoRoute
+  '/set-password': typeof SetPasswordRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRouteTypes {
@@ -133,6 +151,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/inventory'
     | '/invoices'
+    | '/login'
     | '/loyalty'
     | '/marketing'
     | '/product-mix'
@@ -140,6 +159,7 @@ export interface FileRouteTypes {
     | '/scheduling'
     | '/segments'
     | '/seo'
+    | '/set-password'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -147,6 +167,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/inventory'
     | '/invoices'
+    | '/login'
     | '/loyalty'
     | '/marketing'
     | '/product-mix'
@@ -154,6 +175,7 @@ export interface FileRouteTypes {
     | '/scheduling'
     | '/segments'
     | '/seo'
+    | '/set-password'
     | '/settings'
   id:
     | '__root__'
@@ -161,6 +183,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/inventory'
     | '/invoices'
+    | '/login'
     | '/loyalty'
     | '/marketing'
     | '/product-mix'
@@ -168,6 +191,7 @@ export interface FileRouteTypes {
     | '/scheduling'
     | '/segments'
     | '/seo'
+    | '/set-password'
     | '/settings'
   fileRoutesById: FileRoutesById
 }
@@ -176,6 +200,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   InventoryRoute: typeof InventoryRoute
   InvoicesRoute: typeof InvoicesRoute
+  LoginRoute: typeof LoginRoute
   LoyaltyRoute: typeof LoyaltyRoute
   MarketingRoute: typeof MarketingRoute
   ProductMixRoute: typeof ProductMixRoute
@@ -183,6 +208,7 @@ export interface RootRouteChildren {
   SchedulingRoute: typeof SchedulingRoute
   SegmentsRoute: typeof SegmentsRoute
   SeoRoute: typeof SeoRoute
+  SetPasswordRoute: typeof SetPasswordRoute
   SettingsRoute: typeof SettingsRoute
 }
 
@@ -193,6 +219,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/seo': {
@@ -244,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoyaltyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invoices': {
       id: '/invoices'
       path: '/invoices'
@@ -280,6 +320,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   InventoryRoute: InventoryRoute,
   InvoicesRoute: InvoicesRoute,
+  LoginRoute: LoginRoute,
   LoyaltyRoute: LoyaltyRoute,
   MarketingRoute: MarketingRoute,
   ProductMixRoute: ProductMixRoute,
@@ -287,6 +328,7 @@ const rootRouteChildren: RootRouteChildren = {
   SchedulingRoute: SchedulingRoute,
   SegmentsRoute: SegmentsRoute,
   SeoRoute: SeoRoute,
+  SetPasswordRoute: SetPasswordRoute,
   SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport

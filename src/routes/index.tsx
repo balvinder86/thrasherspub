@@ -38,6 +38,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { useSalesTrend, useTopItems } from "@/lib/pos/queries";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -55,28 +56,11 @@ export const Route = createFileRoute("/")({
 
 /* ---------- mock data, mirrors the other tabs ---------- */
 
-const revenueData = [
-  { day: "Mon", revenue: 4120, lastWeek: 3850 },
-  { day: "Tue", revenue: 4680, lastWeek: 4210 },
-  { day: "Wed", revenue: 5210, lastWeek: 4980 },
-  { day: "Thu", revenue: 6180, lastWeek: 5640 },
-  { day: "Fri", revenue: 8420, lastWeek: 7820 },
-  { day: "Sat", revenue: 9510, lastWeek: 8930 },
-  { day: "Sun", revenue: 7240, lastWeek: 6840 },
-];
-
 const channelMix = [
   { name: "Dine-in", value: 58, color: "var(--color-primary)" },
   { name: "Bar", value: 22, color: "oklch(0.72 0.13 55)" },
   { name: "Patio", value: 12, color: "oklch(0.82 0.09 80)" },
   { name: "Takeout", value: 8, color: "oklch(0.78 0.04 70)" },
-];
-
-const topItems = [
-  { name: "Tagliatelle al Ragù", sold: 84, revenue: 2016 },
-  { name: "Branzino al Forno", sold: 41, revenue: 1845 },
-  { name: "Negroni Sbagliato", sold: 92, revenue: 1196 },
-  { name: "Burrata & Stone Fruit", sold: 67, revenue: 1206 },
 ];
 
 const aiSignals = [
@@ -199,6 +183,9 @@ const toneTile: Record<string, string> = {
 };
 
 function Overview() {
+  const { data: revenueData = [] } = useSalesTrend(7);
+  const { data: topItems = [] } = useTopItems(7, 4);
+
   return (
     <>
       <Topbar eyebrow="Thursday · June 25 · West Village" title="Good evening, Bali" />

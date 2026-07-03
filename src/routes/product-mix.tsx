@@ -1,18 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useProductMix, useUpdateItemCost, useSalesTrend, useOrderCount, type RealMenuItem } from "@/lib/pos/queries";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Award,
   CheckCircle2,
-  ChefHat,
   Clock,
   Download,
   EyeOff,
   Filter,
-  Flame,
   GitCompare,
-  Layers,
   Link2,
   Plug,
   Plus,
@@ -23,11 +21,8 @@ import {
   Star,
   Tag,
   Trash2,
-  TrendingDown,
   TrendingUp,
   Utensils,
-  Wine,
-  AlertTriangle,
   DollarSign,
   Pencil,
 } from "lucide-react";
@@ -82,52 +77,27 @@ export const Route = createFileRoute("/product-mix")({
   component: ProductMixPage,
 });
 
-// ---------- Types & mock data ----------
-type Quadrant = "Star" | "Plowhorse" | "Puzzle" | "Dog";
-type Category = "Food" | "Beverages" | "Alcohol" | "Desserts";
+// ---------- Types ----------
+// "Unpriced" covers items with no cost_cents entered yet — quadrant
+// classification needs both popularity and margin, so an item with
+// unknown cost can't be placed until someone fills in a cost.
+type Quadrant = "Star" | "Plowhorse" | "Puzzle" | "Dog" | "Unpriced";
+type Category = string;
 
-type MenuItem = {
-  id: string;
-  name: string;
-  category: Category;
-  station: string;
-  price: number;
-  cost: number;
-  soldWk: number;
-  soldPrevWk: number;
-  attachRate?: number; // % of checks
-  rating?: number; // 1-5
-  voids?: number;
-  prepMin: number;
-  modifiers?: string[];
-};
+type MenuItem = RealMenuItem;
 
-const ITEMS: MenuItem[] = [
-  { id: "m1", name: "Pub Burger", category: "Food", station: "Grill", price: 18, cost: 5.2, soldWk: 412, soldPrevWk: 388, attachRate: 38, rating: 4.7, voids: 2, prepMin: 9, modifiers: ["Add bacon", "Sub gf bun", "Cheddar"] },
-  { id: "m2", name: "Wings (10pc)", category: "Food", station: "Fryer", price: 16, cost: 4.1, soldWk: 360, soldPrevWk: 305, attachRate: 31, rating: 4.6, voids: 1, prepMin: 11, modifiers: ["Buffalo", "BBQ", "Dry rub"] },
-  { id: "m3", name: "Hand-cut Fries", category: "Food", station: "Fryer", price: 7, cost: 1.1, soldWk: 540, soldPrevWk: 510, attachRate: 56, rating: 4.5, voids: 0, prepMin: 6 },
-  { id: "m4", name: "Beef Chili", category: "Food", station: "Sauté", price: 12, cost: 3.4, soldWk: 88, soldPrevWk: 102, attachRate: 6, rating: 4.2, voids: 4, prepMin: 7 },
-  { id: "m5", name: "Caesar Salad", category: "Food", station: "Cold", price: 13, cost: 2.6, soldWk: 142, soldPrevWk: 138, attachRate: 11, rating: 4.4, voids: 1, prepMin: 5 },
-  { id: "m6", name: "Fish & Chips", category: "Food", station: "Fryer", price: 22, cost: 6.8, soldWk: 168, soldPrevWk: 175, attachRate: 12, rating: 4.6, voids: 2, prepMin: 12 },
-  { id: "m7", name: "Loaded Fries", category: "Food", station: "Fryer", price: 11, cost: 2.4, soldWk: 220, soldPrevWk: 198, attachRate: 18, rating: 4.5, voids: 1, prepMin: 7 },
-  { id: "m8", name: "Grilled Cheese", category: "Food", station: "Grill", price: 10, cost: 2.0, soldWk: 64, soldPrevWk: 71, attachRate: 4, rating: 4.0, voids: 0, prepMin: 6 },
-  { id: "m9", name: "Chicken Sandwich", category: "Food", station: "Grill", price: 16, cost: 4.4, soldWk: 198, soldPrevWk: 182, attachRate: 14, rating: 4.5, voids: 1, prepMin: 9 },
-  { id: "m10", name: "BLT Wrap", category: "Food", station: "Cold", price: 12, cost: 3.0, soldWk: 76, soldPrevWk: 84, attachRate: 5, rating: 4.1, voids: 0, prepMin: 5 },
-
-  { id: "d1", name: "Guinness Pint", category: "Alcohol", station: "Bar", price: 9, cost: 1.8, soldWk: 612, soldPrevWk: 588, attachRate: 48, rating: 4.8, voids: 0, prepMin: 2 },
-  { id: "d2", name: "Stella Pint", category: "Alcohol", station: "Bar", price: 8, cost: 1.6, soldWk: 421, soldPrevWk: 410, attachRate: 32, rating: 4.6, voids: 0, prepMin: 1 },
-  { id: "d3", name: "Old Fashioned", category: "Alcohol", station: "Bar", price: 14, cost: 2.1, soldWk: 188, soldPrevWk: 162, attachRate: 14, rating: 4.7, voids: 1, prepMin: 4 },
-  { id: "d4", name: "Moscow Mule", category: "Alcohol", station: "Bar", price: 13, cost: 2.0, soldWk: 244, soldPrevWk: 220, attachRate: 19, rating: 4.6, voids: 0, prepMin: 3 },
-  { id: "d5", name: "Espresso Martini", category: "Alcohol", station: "Bar", price: 15, cost: 2.6, soldWk: 156, soldPrevWk: 122, attachRate: 11, rating: 4.8, voids: 0, prepMin: 4 },
-  { id: "d6", name: "Don Julio Margarita", category: "Alcohol", station: "Bar", price: 16, cost: 3.1, soldWk: 132, soldPrevWk: 142, attachRate: 9, rating: 4.5, voids: 1, prepMin: 4 },
-  { id: "d7", name: "Whiskey Sour", category: "Alcohol", station: "Bar", price: 12, cost: 1.9, soldWk: 84, soldPrevWk: 96, attachRate: 6, rating: 4.3, voids: 0, prepMin: 3 },
-
-  { id: "n1", name: "Fountain Coke", category: "Beverages", station: "Bar", price: 4, cost: 0.4, soldWk: 480, soldPrevWk: 472, attachRate: 38, rating: 4.5, voids: 0, prepMin: 1 },
-  { id: "n2", name: "Iced Tea", category: "Beverages", station: "Bar", price: 4, cost: 0.3, soldWk: 188, soldPrevWk: 192, attachRate: 14, rating: 4.4, voids: 0, prepMin: 1 },
-
-  { id: "x1", name: "Sticky Toffee Pudding", category: "Desserts", station: "Pastry", price: 9, cost: 2.1, soldWk: 92, soldPrevWk: 78, attachRate: 7, rating: 4.9, voids: 0, prepMin: 4 },
-  { id: "x2", name: "Brownie Sundae", category: "Desserts", station: "Pastry", price: 10, cost: 2.4, soldWk: 58, soldPrevWk: 64, attachRate: 4, rating: 4.6, voids: 1, prepMin: 5 },
-];
+function rangeToDays(range: string): number {
+  switch (range) {
+    case "Today":
+      return 1;
+    case "Last 28 days":
+      return 28;
+    case "Quarter":
+      return 90;
+    default:
+      return 7;
+  }
+}
 
 const PALETTE = {
   ink: "hsl(var(--foreground))",
@@ -143,9 +113,11 @@ const QUAD_COLOR: Record<Quadrant, string> = {
   Plowhorse: "#d4a574",
   Puzzle: "#7da3c2",
   Dog: "#c17c74",
+  Unpriced: "#9c9890",
 };
 
 function quadrant(item: MenuItem, popMedian: number, marginMedian: number): Quadrant {
+  if (item.cost == null) return "Unpriced";
   const margin = item.price - item.cost;
   const pop = item.soldWk;
   if (pop >= popMedian && margin >= marginMedian) return "Star";
@@ -168,58 +140,63 @@ function ProductMixPage() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<MenuItem | null>(null);
 
+  const days = rangeToDays(range);
+  const { data: items = [], isLoading, error } = useProductMix(days);
+  const { data: dailyRevenue = [] } = useSalesTrend(days);
+  const { data: orderCount = 0 } = useOrderCount(days);
+  const updateCost = useUpdateItemCost();
+
+  const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category))).sort(), [items]);
+
   const filtered = useMemo(() => {
-    return ITEMS.filter(
+    return items.filter(
       (i) =>
         (cat === "All" || i.category === cat) &&
         (q === "" || i.name.toLowerCase().includes(q.toLowerCase())),
     );
-  }, [cat, q]);
+  }, [items, cat, q]);
 
   const popMedian = useMemo(() => {
-    const arr = [...ITEMS].sort((a, b) => a.soldWk - b.soldWk);
+    if (items.length === 0) return 0;
+    const arr = [...items].sort((a, b) => a.soldWk - b.soldWk);
     return arr[Math.floor(arr.length / 2)].soldWk;
-  }, []);
+  }, [items]);
   const marginMedian = useMemo(() => {
-    const arr = [...ITEMS].sort((a, b) => a.price - a.cost - (b.price - b.cost));
+    const priced = items.filter((i) => i.cost != null);
+    if (priced.length === 0) return 0;
+    const arr = [...priced].sort((a, b) => a.price - a.cost! - (b.price - b.cost!));
     const mid = arr[Math.floor(arr.length / 2)];
-    return mid.price - mid.cost;
-  }, []);
+    return mid.price - mid.cost!;
+  }, [items]);
 
   const totals = useMemo(() => {
-    const revenue = ITEMS.reduce((s, i) => s + i.price * i.soldWk, 0);
-    const cogs = ITEMS.reduce((s, i) => s + i.cost * i.soldWk, 0);
-    const units = ITEMS.reduce((s, i) => s + i.soldWk, 0);
-    const stars = ITEMS.filter((i) => quadrant(i, popMedian, marginMedian) === "Star").length;
+    const revenue = items.reduce((s, i) => s + i.price * i.soldWk, 0);
+    const prevRevenue = items.reduce((s, i) => s + i.price * i.soldPrevWk, 0);
+    const cogs = items.reduce((s, i) => s + (i.cost ?? 0) * i.soldWk, 0);
+    const units = items.reduce((s, i) => s + i.soldWk, 0);
+    const prevUnits = items.reduce((s, i) => s + i.soldPrevWk, 0);
+    const stars = items.filter((i) => quadrant(i, popMedian, marginMedian) === "Star").length;
     return {
       revenue,
+      revenueDelta: prevRevenue > 0 ? ((revenue - prevRevenue) / prevRevenue) * 100 : null,
       cogs,
-      grossMargin: ((revenue - cogs) / revenue) * 100,
+      grossMargin: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : 0,
       units,
-      avgCheck: revenue / (units / 3.4), // ~3.4 items per check guesstimate
+      unitsDelta: prevUnits > 0 ? units - prevUnits : null,
+      avgCheck: orderCount > 0 ? revenue / orderCount : 0,
       stars,
     };
-  }, [popMedian, marginMedian]);
+  }, [items, popMedian, marginMedian, orderCount]);
 
   const topMovers = useMemo(() => {
-    return [...ITEMS]
+    return [...items]
       .map((i) => ({
         ...i,
-        delta: ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100,
+        delta: i.soldPrevWk > 0 ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100 : i.soldWk > 0 ? 100 : 0,
       }))
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 6);
-  }, []);
-
-  const dailyMix = [
-    { day: "Mon", food: 1620, drinks: 1180, dessert: 220 },
-    { day: "Tue", food: 1480, drinks: 1080, dessert: 180 },
-    { day: "Wed", food: 1820, drinks: 1380, dessert: 240 },
-    { day: "Thu", food: 2010, drinks: 1640, dessert: 280 },
-    { day: "Fri", food: 2880, drinks: 2840, dessert: 360 },
-    { day: "Sat", food: 3120, drinks: 3160, dessert: 410 },
-    { day: "Sun", food: 2240, drinks: 1880, dessert: 320 },
-  ];
+  }, [items]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -234,7 +211,7 @@ function ProductMixPage() {
             <h1 className="font-serif text-4xl text-foreground">Product Mix</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
               See which dishes carry the room, which ones drain it, and where the menu wants a
-              nudge. Tracked against last week's checks, voids, and ratings.
+              nudge. Tracked against the prior period's sales.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -261,32 +238,45 @@ function ProductMixPage() {
         {/* POS sync strip */}
         <PosSyncStrip />
 
+        {isLoading && (
+          <div className="text-sm text-muted-foreground">Loading sales data…</div>
+        )}
+        {error && (
+          <div className="text-sm text-[#a8453a]">Couldn't load sales data: {(error as Error).message}</div>
+        )}
+
         {/* KPI row */}
         <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <Kpi label="Net revenue" value={usd(totals.revenue)} delta="+8.4%" up icon={DollarSign} />
           <Kpi
-            label="Gross margin"
-            value={`${totals.grossMargin.toFixed(1)}%`}
-            delta="+1.2 pts"
-            up
-            icon={TrendingUp}
+            label="Net revenue"
+            value={usd(totals.revenue)}
+            delta={totals.revenueDelta != null ? `${totals.revenueDelta >= 0 ? "+" : ""}${totals.revenueDelta.toFixed(1)}%` : undefined}
+            up={totals.revenueDelta != null ? totals.revenueDelta >= 0 : undefined}
+            icon={DollarSign}
           />
-          <Kpi label="Items sold" value={fmt(totals.units)} delta="+312" up icon={Utensils} />
-          <Kpi label="Avg check" value={`$${(totals.revenue / 1180).toFixed(2)}`} delta="+$1.40" up icon={Tag} />
-          <Kpi label="Star items" value={`${totals.stars}`} delta="2 new" up icon={Award} />
+          <Kpi label="Gross margin" value={`${totals.grossMargin.toFixed(1)}%`} icon={TrendingUp} />
+          <Kpi
+            label="Items sold"
+            value={fmt(totals.units)}
+            delta={totals.unitsDelta != null ? `${totals.unitsDelta >= 0 ? "+" : ""}${fmt(totals.unitsDelta)}` : undefined}
+            up={totals.unitsDelta != null ? totals.unitsDelta >= 0 : undefined}
+            icon={Utensils}
+          />
+          <Kpi label="Avg check" value={`$${totals.avgCheck.toFixed(2)}`} icon={Tag} />
+          <Kpi label="Star items" value={`${totals.stars}`} icon={Award} />
         </section>
 
 
-        {/* Daily mix */}
+        {/* Daily revenue */}
         <section className="grid lg:grid-cols-3 gap-6">
           <Card className="p-6 lg:col-span-3">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-              Daily mix
+              Daily revenue
             </p>
-            <h3 className="font-serif text-2xl mb-4">Revenue by service</h3>
+            <h3 className="font-serif text-2xl mb-4">Net sales by day</h3>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyMix}>
+                <BarChart data={dailyRevenue}>
                   <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" vertical={false} />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
@@ -299,9 +289,8 @@ function ProductMixPage() {
                       fontSize: 12,
                     }}
                   />
-                  <Bar dataKey="food" stackId="a" fill={PALETTE.terracotta} radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="drinks" stackId="a" fill={PALETTE.olive} />
-                  <Bar dataKey="dessert" stackId="a" fill={PALETTE.amber} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenue" name="This period" fill={PALETTE.terracotta} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="lastWeek" name="Same day, prior week" fill={PALETTE.amber} radius={[4, 4, 0, 0]} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                 </BarChart>
               </ResponsiveContainer>
@@ -373,8 +362,8 @@ function ProductMixPage() {
                     className="pl-9 bg-background"
                   />
                 </div>
-                <div className="flex gap-1 text-xs">
-                  {(["All", "Food", "Beverages", "Alcohol", "Desserts"] as const).map((c) => (
+                <div className="flex flex-wrap gap-1 text-xs">
+                  {(["All", ...categories] as const).map((c) => (
                     <button
                       key={c}
                       onClick={() => setCat(c as Category | "All")}
@@ -406,15 +395,14 @@ function ProductMixPage() {
                       <th className="text-right py-2 px-3 font-medium">WoW</th>
                       <th className="text-right py-2 px-3 font-medium">Revenue</th>
                       <th className="text-left py-2 px-3 font-medium">Quadrant</th>
-                      <th className="text-right py-2 px-3 font-medium">Rating</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((i) => {
-                      const margin = i.price - i.cost;
-                      const marginPct = (margin / i.price) * 100;
-                      const wow = ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100;
+                      const margin = i.cost != null ? i.price - i.cost : null;
+                      const marginPct = margin != null ? (margin / i.price) * 100 : null;
+                      const wow = i.soldPrevWk > 0 ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100 : i.soldWk > 0 ? 100 : 0;
                       const q = quadrant(i, popMedian, marginMedian);
                       return (
                         <tr
@@ -424,7 +412,6 @@ function ProductMixPage() {
                         >
                           <td className="py-3 px-3">
                             <div className="font-medium">{i.name}</div>
-                            <div className="text-xs text-muted-foreground">{i.station}</div>
                           </td>
                           <td className="py-3 px-3">
                             <Badge variant="outline" className="font-normal">
@@ -433,13 +420,19 @@ function ProductMixPage() {
                           </td>
                           <td className="py-3 px-3 text-right font-mono">${i.price.toFixed(2)}</td>
                           <td className="py-3 px-3 text-right font-mono text-muted-foreground">
-                            ${i.cost.toFixed(2)}
+                            {i.cost != null ? `$${i.cost.toFixed(2)}` : "—"}
                           </td>
                           <td className="py-3 px-3 text-right">
-                            <div className="font-mono">${margin.toFixed(2)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {marginPct.toFixed(0)}%
-                            </div>
+                            {margin != null ? (
+                              <>
+                                <div className="font-mono">${margin.toFixed(2)}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {marginPct!.toFixed(0)}%
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Add cost</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-right font-mono">{i.soldWk}</td>
                           <td className="py-3 px-3 text-right">
@@ -466,12 +459,6 @@ function ProductMixPage() {
                             </Badge>
                           </td>
                           <td className="py-3 px-3 text-right">
-                            <span className="inline-flex items-center gap-1 text-xs">
-                              <Star className="h-3 w-3 fill-[#d4a574] text-[#d4a574]" />
-                              {i.rating?.toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
                             <Button variant="ghost" size="icon" className="h-7 w-7">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -488,27 +475,20 @@ function ProductMixPage() {
           {/* CATEGORIES */}
           <TabsContent value="categories">
             <div className="grid md:grid-cols-2 gap-4">
-              {(["Food", "Alcohol", "Beverages", "Desserts"] as Category[]).map((c) => {
-                const list = ITEMS.filter((i) => i.category === c);
+              {categories.map((c) => {
+                const list = items.filter((i) => i.category === c);
                 const rev = list.reduce((s, i) => s + i.price * i.soldWk, 0);
-                const cogs = list.reduce((s, i) => s + i.cost * i.soldWk, 0);
+                const cogs = list.reduce((s, i) => s + (i.cost ?? 0) * i.soldWk, 0);
                 const units = list.reduce((s, i) => s + i.soldWk, 0);
-                const share = (rev / totals.revenue) * 100;
+                const share = totals.revenue > 0 ? (rev / totals.revenue) * 100 : 0;
+                const priced = list.filter((i) => i.cost != null).length;
                 const top = [...list].sort((a, b) => b.soldWk * b.price - a.soldWk * a.price).slice(0, 3);
                 return (
                   <Card key={c} className="p-5">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-lg bg-muted grid place-items-center">
-                          {c === "Food" ? (
-                            <ChefHat className="h-5 w-5 text-[#c4654a]" />
-                          ) : c === "Alcohol" ? (
-                            <Wine className="h-5 w-5 text-[#c4654a]" />
-                          ) : c === "Beverages" ? (
-                            <Layers className="h-5 w-5 text-[#c4654a]" />
-                          ) : (
-                            <Flame className="h-5 w-5 text-[#c4654a]" />
-                          )}
+                          <Utensils className="h-5 w-5 text-[#c4654a]" />
                         </div>
                         <div>
                           <div className="font-serif text-lg">{c}</div>
@@ -537,7 +517,7 @@ function ProductMixPage() {
                       <div>
                         <div className="text-xs text-muted-foreground">Margin</div>
                         <div className="font-mono text-sm">
-                          {(((rev - cogs) / rev) * 100).toFixed(0)}%
+                          {rev > 0 ? `${(((rev - cogs) / rev) * 100).toFixed(0)}%` : "—"}
                         </div>
                       </div>
                       <div>
@@ -547,9 +527,9 @@ function ProductMixPage() {
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs text-muted-foreground">Stations</div>
+                        <div className="text-xs text-muted-foreground">Priced</div>
                         <div className="font-mono text-sm">
-                          {new Set(list.map((i) => i.station)).size}
+                          {priced}/{list.length}
                         </div>
                       </div>
                     </div>
@@ -689,44 +669,6 @@ function ProductMixPage() {
                 </div>
               </Card>
 
-              <Card className="p-5 md:col-span-2">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                  Voids & 86'd
-                </p>
-                <h3 className="font-serif text-xl mb-3">Friction signals</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
-                        <th className="text-left py-2 px-3 font-medium">Item</th>
-                        <th className="text-right py-2 px-3 font-medium">Voids / wk</th>
-                        <th className="text-right py-2 px-3 font-medium">Void rate</th>
-                        <th className="text-right py-2 px-3 font-medium">Avg prep</th>
-                        <th className="text-left py-2 px-3 font-medium">Likely cause</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ITEMS.filter((i) => (i.voids || 0) > 0)
-                        .sort((a, b) => (b.voids || 0) - (a.voids || 0))
-                        .map((i) => (
-                          <tr key={i.id} className="border-b last:border-0">
-                            <td className="py-2 px-3">{i.name}</td>
-                            <td className="py-2 px-3 text-right font-mono">{i.voids}</td>
-                            <td className="py-2 px-3 text-right font-mono">
-                              {(((i.voids || 0) / i.soldWk) * 100).toFixed(1)}%
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono">{i.prepMin}m</td>
-                            <td className="py-2 px-3 text-muted-foreground">
-                              {i.prepMin >= 10
-                                ? "Ticket time — kitchen bottleneck"
-                                : "Modifier confusion / wrong build"}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
             </div>
           </TabsContent>
 
@@ -799,19 +741,38 @@ function ProductMixPage() {
               <SheetHeader>
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline">{selected.category}</Badge>
-                  <Badge variant="outline">{selected.station}</Badge>
                 </div>
                 <SheetTitle className="font-serif text-2xl">{selected.name}</SheetTitle>
                 <SheetDescription>
-                  ${selected.price.toFixed(2)} · {selected.soldWk} sold / wk · {selected.rating}★
+                  ${selected.price.toFixed(2)} · {selected.soldWk} sold / wk
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-5">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+                    Cost per unit
+                  </div>
+                  <CostEditor
+                    key={selected.id}
+                    item={selected}
+                    saving={updateCost.isPending}
+                    onSave={(cents) =>
+                      updateCost.mutate({ locationId: selected.locationId, posId: selected.id, costCents: cents })
+                    }
+                  />
+                </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Stat label="Margin" value={`$${(selected.price - selected.cost).toFixed(2)}`} />
+                  <Stat
+                    label="Margin"
+                    value={selected.cost != null ? `$${(selected.price - selected.cost).toFixed(2)}` : "—"}
+                  />
                   <Stat
                     label="Margin %"
-                    value={`${(((selected.price - selected.cost) / selected.price) * 100).toFixed(0)}%`}
+                    value={
+                      selected.cost != null
+                        ? `${(((selected.price - selected.cost) / selected.price) * 100).toFixed(0)}%`
+                        : "—"
+                    }
                   />
                   <Stat label="Revenue / wk" value={usd(selected.soldWk * selected.price)} />
                 </div>
@@ -826,33 +787,27 @@ function ProductMixPage() {
                       borderColor: `${QUAD_COLOR[quadrant(selected, popMedian, marginMedian)]}55`,
                     }}
                   >
-                    <strong>{quadrant(selected, popMedian, marginMedian)}</strong> — popularity{" "}
-                    {selected.soldWk >= popMedian ? "above" : "below"} median, margin{" "}
-                    {selected.price - selected.cost >= marginMedian ? "above" : "below"} median.
+                    {selected.cost != null ? (
+                      <>
+                        <strong>{quadrant(selected, popMedian, marginMedian)}</strong> — popularity{" "}
+                        {selected.soldWk >= popMedian ? "above" : "below"} median, margin{" "}
+                        {selected.price - selected.cost >= marginMedian ? "above" : "below"} median.
+                      </>
+                    ) : (
+                      <>Add a cost above to classify this item.</>
+                    )}
                   </div>
                 </div>
-                {selected.modifiers && selected.modifiers.length > 0 && (
-                  <div>
-                    <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                      Top modifiers
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {selected.modifiers.map((m) => (
-                        <Badge key={m} variant="outline" className="font-normal">
-                          {m}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <div>
                   <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
                     AI suggestion
                   </div>
                   <div className="p-3 rounded-md bg-[#fbf5ee] border border-[#e8d5b9] text-sm">
-                    {selected.soldWk > selected.soldPrevWk
-                      ? `Demand growing ${(((selected.soldWk - selected.soldPrevWk) / selected.soldPrevWk) * 100).toFixed(0)}%. Consider +$1 price test or feature on QR menu.`
-                      : `Slipping ${(((selected.soldPrevWk - selected.soldWk) / selected.soldPrevWk) * 100).toFixed(0)}%. Try repositioning on menu or pairing with a fast attach item.`}
+                    {selected.soldPrevWk === 0
+                      ? "No prior-period sales to compare yet."
+                      : selected.soldWk > selected.soldPrevWk
+                        ? `Demand growing ${(((selected.soldWk - selected.soldPrevWk) / selected.soldPrevWk) * 100).toFixed(0)}%. Consider +$1 price test or feature on QR menu.`
+                        : `Slipping ${(((selected.soldPrevWk - selected.soldWk) / selected.soldPrevWk) * 100).toFixed(0)}%. Try repositioning on menu or pairing with a fast attach item.`}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -881,7 +836,7 @@ function Kpi({
 }: {
   label: string;
   value: string;
-  delta: string;
+  delta?: string;
   up?: boolean;
   icon: React.ComponentType<{ className?: string }>;
 }) {
@@ -896,12 +851,14 @@ function Kpi({
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div
-        className={`mt-2 inline-flex items-center gap-1 text-xs ${up ? "text-[#5a7d4a]" : "text-[#a8453a]"}`}
-      >
-        {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-        {delta}
-      </div>
+      {delta && (
+        <div
+          className={`mt-2 inline-flex items-center gap-1 text-xs ${up ? "text-[#5a7d4a]" : "text-[#a8453a]"}`}
+        >
+          {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+          {delta}
+        </div>
+      )}
     </Card>
   );
 }
@@ -920,6 +877,46 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="p-3 rounded-md border bg-muted/20">
       <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
       <div className="font-mono text-base mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+// Toast doesn't expose item cost via the Orders/Menus API, so margin
+// needs a manually-entered cost per item — this writes it straight to
+// menu_items.cost_cents (RLS-scoped to the signed-in user's restaurant).
+function CostEditor({
+  item,
+  onSave,
+  saving,
+}: {
+  item: MenuItem;
+  onSave: (cents: number | null) => void;
+  saving: boolean;
+}) {
+  const [value, setValue] = useState(item.cost != null ? item.cost.toFixed(2) : "");
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-muted-foreground">$</span>
+      <Input
+        type="number"
+        step="0.01"
+        min="0"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="h-8 w-24"
+        placeholder="0.00"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={saving}
+        onClick={() => {
+          const num = parseFloat(value);
+          onSave(Number.isFinite(num) && num >= 0 ? Math.round(num * 100) : null);
+        }}
+      >
+        {saving ? "Saving…" : "Save cost"}
+      </Button>
     </div>
   );
 }

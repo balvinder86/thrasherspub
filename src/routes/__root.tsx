@@ -20,6 +20,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { AuthProvider, useAuth } from "@/lib/supabase/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -130,15 +131,60 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SidebarProvider>
-        <div className="flex min-h-screen w-full bg-background">
-          <AppSidebar />
-          <SidebarInset className="min-w-0 flex-1 bg-background">
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            <Outlet />
-          </SidebarInset>
-        </div>
-      </SidebarProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+function AuthGate() {
+  const { session, loading } = useAuth();
+  const router = useRouter();
+  const pathname = router.state.location.pathname;
+  const onLoginPage = pathname === "/login";
+  // /set-password is reached via an invite/recovery link — the session
+  // lands asynchronously as supabase-js parses tokens out of the URL
+  // hash, so this route must never bounce to /login while that's in
+  // flight, and must never auto-redirect to "/" once it lands either
+  // (the user still needs to actually set a password).
+  const onSetPasswordPage = pathname === "/set-password";
+
+  useEffect(() => {
+    if (loading) return;
+    if (!session && !onLoginPage && !onSetPasswordPage) {
+      router.navigate({ to: "/login" });
+    } else if (session && onLoginPage) {
+      router.navigate({ to: "/" });
+    }
+  }, [loading, session, onLoginPage, onSetPasswordPage]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  if (onLoginPage || onSetPasswordPage) {
+    return <Outlet />;
+  }
+
+  if (!session) {
+    // Redirect is in flight (useEffect above) — render nothing.
+    return null;
+  }
+
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar />
+        <SidebarInset className="min-w-0 flex-1 bg-background">
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
   );
 }
