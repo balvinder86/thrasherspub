@@ -234,14 +234,17 @@ otp_length = 8
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "resend"
+pass = "env(RESEND_SMTP_PASS)"
+# Resend's shared sandbox sender — works without a verified custom domain,
+# but can only deliver to the email address the Resend account itself was
+# signed up with until a domain is verified.
+admin_email = "onboarding@resend.dev"
+sender_name = "Thrasher's Pub"
 
 # Custom templates: link to our own /set-password page with a token_hash
 # instead of Supabase's default single-click verify link. Email security
