@@ -25,7 +25,10 @@ export type RealMenuItem = {
 };
 
 // Popularity for `days` (default a week) vs. the prior equal-length period,
-// joined against the current menu + any manually-entered cost.
+// joined against the current menu + cost. Cost prefers the real recipe
+// bridge (sum of recipe_lines quantity x ingredient cost) when an item
+// has one, falling back to the manual per-item override, then undefined
+// ("Unpriced") if neither exists yet.
 export function useProductMix(days = 7) {
   const { data: locationIds } = useLocationIds();
 
@@ -37,7 +40,7 @@ export function useProductMix(days = 7) {
       const periodStart = addDays(today, -days);
       const prevStart = addDays(today, -days * 2);
 
-      const [menuItemsRes, currentRes, prevRes] = await Promise.all([
+      const [menuItemsRes, currentRes, prevRes, recipeRes] = await Promise.all([
         supabase
           .from("menu_items")
           .select("pos_id, location_id, name, category, price_cents, cost_cents")
@@ -55,10 +58,15 @@ export function useProductMix(days = 7) {
           .in("location_id", locationIds!)
           .gte("business_date", isoDate(prevStart))
           .lt("business_date", isoDate(periodStart)),
+        supabase
+          .from("recipe_lines")
+          .select("menu_item_pos_id, quantity, ingredients (unit_cost_cents)")
+          .in("location_id", locationIds!),
       ]);
       if (menuItemsRes.error) throw menuItemsRes.error;
       if (currentRes.error) throw currentRes.error;
       if (prevRes.error) throw prevRes.error;
+      if (recipeRes.error) throw recipeRes.error;
 
       const sumBy = (rows: { menu_item_pos_id: string; quantity_sold: number }[]) => {
         const map = new Map<string, number>();
@@ -68,16 +76,28 @@ export function useProductMix(days = 7) {
       const current = sumBy(currentRes.data ?? []);
       const prev = sumBy(prevRes.data ?? []);
 
-      return (menuItemsRes.data ?? []).map((m) => ({
-        id: m.pos_id,
-        locationId: m.location_id,
-        name: m.name,
-        category: m.category ?? "Uncategorized",
-        price: (m.price_cents ?? 0) / 100,
-        cost: m.cost_cents != null ? m.cost_cents / 100 : undefined,
-        soldWk: current.get(m.pos_id) ?? 0,
-        soldPrevWk: prev.get(m.pos_id) ?? 0,
-      }));
+      const recipeCostCents = new Map<string, number>();
+      for (const row of (recipeRes.data ?? []) as any[]) {
+        const unitCost = row.ingredients?.unit_cost_cents;
+        if (unitCost == null) continue; // an ingredient with no cost yet can't total this item
+        const cur = recipeCostCents.get(row.menu_item_pos_id) ?? 0;
+        recipeCostCents.set(row.menu_item_pos_id, cur + Number(row.quantity) * unitCost);
+      }
+
+      return (menuItemsRes.data ?? []).map((m) => {
+        const recipeCents = recipeCostCents.get(m.pos_id);
+        const costCents = recipeCents ?? m.cost_cents ?? undefined;
+        return {
+          id: m.pos_id,
+          locationId: m.location_id,
+          name: m.name,
+          category: m.category ?? "Uncategorized",
+          price: (m.price_cents ?? 0) / 100,
+          cost: costCents != null ? costCents / 100 : undefined,
+          soldWk: current.get(m.pos_id) ?? 0,
+          soldPrevWk: prev.get(m.pos_id) ?? 0,
+        };
+      });
     },
   });
 }

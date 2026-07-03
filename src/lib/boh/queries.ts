@@ -386,3 +386,111 @@ export function useUpdatePar() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory-items"] }),
   });
 }
+
+// ------------------------------------------------------------
+// Recipe bridge — maps a menu item to the ingredients it consumes.
+// This is what turns "sold 40 burgers" (real Toast sales) into
+// "used 40 buns, 13.3 lbs ground beef" — required for both real
+// food cost % and real par-level usage, neither of which exist yet
+// (see pos/queries.ts's useProductMix: cost falls back to a manual
+// override until an item has recipe lines).
+// ------------------------------------------------------------
+export type RecipeLine = {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  ingredientUnit: string;
+  ingredientCostCents: number | null;
+  quantity: number;
+  unit: string;
+};
+
+export function useRecipeLinesForItem(menuItemPosId: string | undefined) {
+  const locationId = useCurrentLocationId();
+  return useQuery({
+    queryKey: ["recipe-lines", locationId, menuItemPosId],
+    enabled: !!locationId && !!menuItemPosId,
+    queryFn: async (): Promise<RecipeLine[]> => {
+      const { data, error } = await supabase
+        .from("recipe_lines")
+        .select("id, quantity, unit, ingredients (id, name, unit, unit_cost_cents)")
+        .eq("location_id", locationId!)
+        .eq("menu_item_pos_id", menuItemPosId!);
+      if (error) throw error;
+      return (data ?? []).map((row: any) => ({
+        id: row.id,
+        ingredientId: row.ingredients.id,
+        ingredientName: row.ingredients.name,
+        ingredientUnit: row.ingredients.unit,
+        ingredientCostCents: row.ingredients.unit_cost_cents,
+        quantity: Number(row.quantity),
+        unit: row.unit,
+      }));
+    },
+  });
+}
+
+// Bulk: total recipe cost (cents) per menu item across the whole
+// location, for the item table's cost column — one query instead of
+// one per item.
+export function useRecipeCostsByItem() {
+  const locationId = useCurrentLocationId();
+  return useQuery({
+    queryKey: ["recipe-costs-by-item", locationId],
+    enabled: !!locationId,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const { data, error } = await supabase
+        .from("recipe_lines")
+        .select("menu_item_pos_id, quantity, ingredients (unit_cost_cents)")
+        .eq("location_id", locationId!);
+      if (error) throw error;
+
+      const costs = new Map<string, number>();
+      for (const row of (data ?? []) as any[]) {
+        const unitCost = row.ingredients?.unit_cost_cents;
+        if (unitCost == null) continue; // ingredient has no cost yet — can't total this item
+        const current = costs.get(row.menu_item_pos_id) ?? 0;
+        costs.set(row.menu_item_pos_id, current + Number(row.quantity) * unitCost);
+      }
+      return costs;
+    },
+  });
+}
+
+export function useAddRecipeLine() {
+  const restaurantId = useCurrentRestaurantId();
+  const locationId = useCurrentLocationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { menuItemPosId: string; ingredientId: string; quantity: number; unit: string }) => {
+      if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+      const { error } = await supabase.from("recipe_lines").insert({
+        restaurant_id: restaurantId,
+        location_id: locationId,
+        menu_item_pos_id: input.menuItemPosId,
+        ingredient_id: input.ingredientId,
+        quantity: input.quantity,
+        unit: input.unit,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipe-lines"] });
+      queryClient.invalidateQueries({ queryKey: ["recipe-costs-by-item"] });
+    },
+  });
+}
+
+export function useDeleteRecipeLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("recipe_lines").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipe-lines"] });
+      queryClient.invalidateQueries({ queryKey: ["recipe-costs-by-item"] });
+    },
+  });
+}
