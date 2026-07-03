@@ -51,6 +51,9 @@ jobs:
       - name: Apply schema
         run: $PSQL -f db/phase0/01_schema.sql
 
+      - name: Apply Phase 1 POS schema
+        run: $PSQL -f db/phase1/10_pos_schema.sql
+
       - name: Seed test tenants
         run: $PSQL -f db/phase0/02_seed.sql
 
