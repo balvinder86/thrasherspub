@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useVendors, useCreateVendor, useUpdateVendor, useDeleteVendor, type Vendor } from "@/lib/boh/queries";
 import {
   AlertTriangle,
   Bot,
@@ -126,28 +127,6 @@ const CATEGORIES: Category[] = [
   "Miscellaneous",
 ];
 
-type Vendor = {
-  id: string;
-  name: string;
-  contactName: string;
-  email: string;
-  phone: string;
-  accountNo: string;
-  deliveryDays: string; // e.g. "Mon, Wed, Fri"
-  terms: string; // e.g. "Net 30"
-  notes?: string;
-};
-
-const INITIAL_VENDORS: Vendor[] = [
-  { id: "v1", name: "Southern Glazer's", contactName: "Marcus Reed", email: "orders@sgws.com", phone: "(503) 555-0142", accountNo: "SGW-44218", deliveryDays: "Tue, Fri", terms: "Net 30" },
-  { id: "v2", name: "Columbia Distributing", contactName: "Priya Naidu", email: "po@coldist.com", phone: "(503) 555-0177", accountNo: "CD-9912", deliveryDays: "Mon, Thu", terms: "Net 21" },
-  { id: "v3", name: "Sysco", contactName: "Tom Albright", email: "sysco.pdx@sysco.com", phone: "(503) 555-0211", accountNo: "SYS-77140", deliveryDays: "Mon, Wed, Fri", terms: "Net 30" },
-  { id: "v4", name: "Restaurant Depot", contactName: "—", email: "noreply@restaurantdepot.com", phone: "(503) 555-0188", accountNo: "RD-30221", deliveryDays: "Pickup", terms: "COD" },
-  { id: "v5", name: "US Foods", contactName: "Janelle Cho", email: "orders@usfoods.com", phone: "(503) 555-0166", accountNo: "USF-58811", deliveryDays: "Tue, Fri", terms: "Net 30" },
-  { id: "v6", name: "Pepsi Bottling", contactName: "Diego Ramos", email: "fountain@pepsi.com", phone: "(503) 555-0199", accountNo: "PEP-2204", deliveryDays: "Wed", terms: "Net 15" },
-  { id: "v7", name: "Local Produce Co.", contactName: "Hannah Ortiz", email: "hannah@localproduce.co", phone: "(503) 555-0125", accountNo: "LP-118", deliveryDays: "Tue, Thu, Sat", terms: "Net 7", notes: "Farm-direct seasonal produce" },
-];
-
 const INITIAL_ITEMS: Item[] = [
   // Alcohol
   { id: "a1", name: "Tito's Handmade Vodka 1.75L", category: "Alcohol", unit: "btl", onHand: 4, par: 12, vendor: "Southern Glazer's", cost: 28.5, weeklyUsage: 9, lastOrdered: "Jun 18" },
@@ -241,7 +220,10 @@ type ItemDraft = {
 
 function InventoryPage() {
   const [items, setItems] = useState<Item[]>(ENRICHED_ITEMS);
-  const [vendors, setVendors] = useState<Vendor[]>(INITIAL_VENDORS);
+  const { data: vendors = [] } = useVendors();
+  const createVendor = useCreateVendor();
+  const updateVendor = useUpdateVendor();
+  const deleteVendorMutation = useDeleteVendor();
   const [view, setView] = useState<"items" | "vendors">("items");
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
@@ -262,7 +244,7 @@ function InventoryPage() {
     unit: "case",
     onHand: 0,
     par: 1,
-    vendor: INITIAL_VENDORS[0]?.name ?? "",
+    vendor: vendors[0]?.name ?? "",
     cost: 0,
     weeklyUsage: 0,
   });
@@ -402,24 +384,21 @@ function InventoryPage() {
   };
   const saveVendor = () => {
     if (!vendorDraft.name.trim()) return;
+    const name = vendorDraft.name.trim();
     if (vendorEditing) {
-      const oldName = vendorEditing.name;
-      const newName = vendorDraft.name.trim();
-      setVendors((arr) =>
-        arr.map((v) => (v.id === vendorEditing.id ? { ...vendorEditing, ...vendorDraft, name: newName } : v))
-      );
-      if (oldName !== newName) {
-        setItems((arr) => arr.map((i) => (i.vendor === oldName ? { ...i, vendor: newName } : i)));
-      }
+      updateVendor.mutate({ id: vendorEditing.id, ...vendorDraft, name });
+      // Items still reference vendors by name (mock data, not yet wired
+      // to real ingredients) — this cascade is dropped since it can't
+      // stay correct once vendors are real and items aren't. Revisit
+      // when ingredients/items are wired to real data.
     } else {
-      const id = `v${Date.now().toString(36)}`;
-      setVendors((arr) => [...arr, { id, ...vendorDraft, name: vendorDraft.name.trim() }]);
+      createVendor.mutate({ ...vendorDraft, name });
     }
     setVendorDialogOpen(false);
   };
   const confirmDeleteVendor = () => {
     if (!vendorToDelete) return;
-    setVendors((arr) => arr.filter((v) => v.id !== vendorToDelete.id));
+    deleteVendorMutation.mutate(vendorToDelete.id);
     setVendorToDelete(null);
   };
   const vendorItemCount = (name: string) => items.filter((i) => i.vendor === name).length;

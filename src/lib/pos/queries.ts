@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/supabase/auth-context";
+import { useLocationIds } from "@/lib/supabase/scope";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -11,23 +11,6 @@ function addDays(d: Date, n: number): Date {
   const out = new Date(d);
   out.setDate(out.getDate() + n);
   return out;
-}
-
-// RLS already scopes every query below to the signed-in user's own
-// restaurants — this just resolves which location_id(s) to filter on
-// (a restaurant can have more than one location).
-function useLocationIds() {
-  const { memberships } = useAuth();
-  const restaurantIds = memberships.map((m) => m.restaurant_id);
-  return useQuery({
-    queryKey: ["locations", restaurantIds],
-    enabled: restaurantIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("locations").select("id").in("restaurant_id", restaurantIds);
-      if (error) throw error;
-      return (data ?? []).map((l) => l.id as string);
-    },
-  });
 }
 
 export type RealMenuItem = {
