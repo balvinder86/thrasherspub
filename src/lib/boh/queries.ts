@@ -494,3 +494,206 @@ export function useDeleteRecipeLine() {
     },
   });
 }
+
+// =====================================================
+// Invoice OCR — upload a vendor invoice PDF, run it through
+// Mindee (via the invoice-ocr Edge Function → Railway service),
+// and review/approve the extracted line items.
+// =====================================================
+
+export type RealInvoice = {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  totalCents: number | null;
+  status: "pending_review" | "approved";
+  ocrStatus: string | null;
+  sourceFileUrl: string | null;
+  createdAt: string;
+};
+
+export function useRealInvoices() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["real-invoices", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<RealInvoice[]> => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(
+          "id, vendor_id, invoice_number, invoice_date, total_cents, status, ocr_status, source_file_url, created_at, vendors(name)",
+        )
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      type Row = {
+        id: string;
+        vendor_id: string;
+        invoice_number: string | null;
+        invoice_date: string | null;
+        total_cents: number | null;
+        status: "pending_review" | "approved";
+        ocr_status: string | null;
+        source_file_url: string | null;
+        created_at: string;
+        vendors: { name: string } | null;
+      };
+      return ((data ?? []) as unknown as Row[]).map((row) => ({
+        id: row.id,
+        vendorId: row.vendor_id,
+        vendorName: row.vendors?.name ?? "Unknown vendor",
+        invoiceNumber: row.invoice_number,
+        invoiceDate: row.invoice_date,
+        totalCents: row.total_cents,
+        status: row.status,
+        ocrStatus: row.ocr_status,
+        sourceFileUrl: row.source_file_url,
+        createdAt: row.created_at,
+      }));
+    },
+  });
+}
+
+export type RealInvoiceLine = {
+  id: string;
+  ingredientId: string | null;
+  rawDescription: string;
+  quantity: number | null;
+  unit: string | null;
+  unitCostCents: number | null;
+  lineTotalCents: number | null;
+};
+
+export function useRealInvoiceLines(invoiceId: string | undefined) {
+  return useQuery({
+    queryKey: ["real-invoice-lines", invoiceId],
+    enabled: !!invoiceId,
+    queryFn: async (): Promise<RealInvoiceLine[]> => {
+      const { data, error } = await supabase
+        .from("invoice_lines")
+        .select("*")
+        .eq("invoice_id", invoiceId!)
+        .order("raw_description");
+      if (error) throw error;
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        ingredientId: row.ingredient_id,
+        rawDescription: row.raw_description,
+        quantity: row.quantity,
+        unit: row.unit,
+        unitCostCents: row.unit_cost_cents,
+        lineTotalCents: row.line_total_cents,
+      }));
+    },
+  });
+}
+
+export function useUploadInvoice() {
+  const restaurantId = useCurrentRestaurantId();
+  const locationId = useCurrentLocationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ vendorId, file }: { vendorId: string; file: File }): Promise<string> => {
+      if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+      const path = `${restaurantId}/${crypto.randomUUID()}-${file.name}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("invoice-uploads")
+        .upload(path, file, { contentType: file.type || "application/pdf" });
+      if (uploadErr) throw uploadErr;
+
+      const { data, error: insertErr } = await supabase
+        .from("invoices")
+        .insert({
+          restaurant_id: restaurantId,
+          location_id: locationId,
+          vendor_id: vendorId,
+          status: "pending_review",
+          source_file_url: path,
+        })
+        .select("id")
+        .single();
+      if (insertErr) throw insertErr;
+      return data.id as string;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+  });
+}
+
+export type OcrCheckResult = {
+  status: "processing" | "ready" | "failed";
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  date?: string | null;
+  totalAmount?: number | null;
+  lineItemsExtracted?: number;
+  lineItemsAutoMatched?: number;
+  error?: unknown;
+};
+
+export function useEnqueueOcr() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data, error } = await supabase.functions.invoke("invoice-ocr", {
+        body: { invoice_id: invoiceId, action: "enqueue" },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "enqueue failed");
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+  });
+}
+
+export function useCheckOcr() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (invoiceId: string): Promise<OcrCheckResult> => {
+      const { data, error } = await supabase.functions.invoke("invoice-ocr", {
+        body: { invoice_id: invoiceId, action: "check" },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "check failed");
+      return data as OcrCheckResult;
+    },
+    onSuccess: (_result, invoiceId) => {
+      queryClient.invalidateQueries({ queryKey: ["real-invoice-lines", invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["real-invoices"] });
+    },
+  });
+}
+
+export function useApproveInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: "approved" })
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+  });
+}
+
+export function useUpdateInvoiceLineIngredient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      lineId,
+      ingredientId,
+    }: {
+      lineId: string;
+      ingredientId: string | null;
+    }) => {
+      const { error } = await supabase
+        .from("invoice_lines")
+        .update({ ingredient_id: ingredientId })
+        .eq("id", lineId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoice-lines"] }),
+  });
+}

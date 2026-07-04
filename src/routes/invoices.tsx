@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -15,6 +15,7 @@ import {
   Filter,
   Globe,
   Inbox,
+  Loader2,
   Mail,
   PiggyBank,
   Plug,
@@ -70,6 +71,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  useApproveInvoice,
+  useCheckOcr,
+  useEnqueueOcr,
+  useIngredients,
+  useRealInvoiceLines,
+  useRealInvoices,
+  useUpdateInvoiceLineIngredient,
+  useUploadInvoice,
+  useVendors as useRealVendors,
+} from "@/lib/boh/queries";
 
 export const Route = createFileRoute("/invoices")({
   head: () => ({
@@ -531,6 +543,7 @@ function InvoicesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
+  const [ocrSheetInvoiceId, setOcrSheetInvoiceId] = useState<string | null | undefined>(undefined);
 
   const filtered = useMemo(() => {
     return INVOICES.filter((inv) => {
@@ -732,7 +745,12 @@ function InvoicesPage() {
               </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-9 gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={() => setOcrSheetInvoiceId(null)}
+              >
                 <Upload className="h-3.5 w-3.5" /> Upload invoice
               </Button>
               <Button variant="outline" size="sm" className="h-9 gap-1.5">
@@ -746,6 +764,8 @@ function InvoicesPage() {
 
           {/* Invoices tab */}
           <TabsContent value="invoices" className="space-y-4">
+            <RealInvoiceUploadsCard onOpenInvoice={(id) => setOcrSheetInvoiceId(id)} />
+
             <Card className="p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-[220px]">
@@ -1191,7 +1211,357 @@ function InvoicesPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <InvoiceOcrSheet
+        invoiceId={ocrSheetInvoiceId}
+        onClose={() => setOcrSheetInvoiceId(undefined)}
+      />
     </>
+  );
+}
+
+// =====================================================
+// Real invoice OCR — upload + review, wired to the actual
+// vendors/invoices/invoice_lines tables and the invoice-ocr
+// Edge Function → Railway service. Everything else on this page
+// (KPIs, the "All invoices" list below, vendor cards, savings,
+// automation feed) is still Lovable-generated placeholder data —
+// this section is the one real, working slice.
+// =====================================================
+
+function ocrStatusBadge(ocrStatus: string | null, status: "pending_review" | "approved") {
+  if (status === "approved")
+    return (
+      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+        Approved
+      </Badge>
+    );
+  if (ocrStatus === "ready")
+    return (
+      <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+        Ready for review
+      </Badge>
+    );
+  if (ocrStatus === "failed")
+    return (
+      <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">
+        Extraction failed
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+      <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing
+    </Badge>
+  );
+}
+
+function RealInvoiceUploadsCard({ onOpenInvoice }: { onOpenInvoice: (id: string) => void }) {
+  const { data: invoices = [], isLoading } = useRealInvoices();
+
+  if (!isLoading && invoices.length === 0) return null;
+
+  return (
+    <Card className="overflow-hidden border-primary/30">
+      <div className="flex items-center gap-2 border-b bg-primary/[0.04] px-4 py-3">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-primary">
+          <FileSearch className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-primary/80">OCR uploads</div>
+          <div className="text-sm font-medium">Invoices uploaded and extracted for review</div>
+        </div>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40">
+            <TableHead>Vendor</TableHead>
+            <TableHead>Invoice #</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead className="text-right">Total</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {invoices.map((inv) => (
+            <TableRow key={inv.id} className="cursor-pointer" onClick={() => onOpenInvoice(inv.id)}>
+              <TableCell className="font-medium">{inv.vendorName}</TableCell>
+              <TableCell className="text-sm">{inv.invoiceNumber ?? "—"}</TableCell>
+              <TableCell className="text-sm">{inv.invoiceDate ?? "—"}</TableCell>
+              <TableCell className="text-right font-medium">
+                {inv.totalCents != null ? formatMoney(inv.totalCents / 100) : "—"}
+              </TableCell>
+              <TableCell>{ocrStatusBadge(inv.ocrStatus, inv.status)}</TableCell>
+              <TableCell className="text-right">
+                <Button size="sm" variant="ghost" className="h-8">
+                  Review
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}
+
+// `invoiceId === undefined` → sheet closed. `null` → upload a new
+// invoice. A real id → review that invoice's extraction.
+function InvoiceOcrSheet({
+  invoiceId,
+  onClose,
+}: {
+  invoiceId: string | null | undefined;
+  onClose: () => void;
+}) {
+  const [vendorId, setVendorId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadedId, setUploadedId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
+  const { data: vendors = [] } = useRealVendors();
+  const { data: ingredients = [] } = useIngredients();
+  const { data: invoices = [] } = useRealInvoices();
+  const activeId = uploadedId ?? (typeof invoiceId === "string" ? invoiceId : null);
+  const invoice = invoices.find((i) => i.id === activeId);
+  const { data: lines = [] } = useRealInvoiceLines(activeId ?? undefined);
+  const isExtracting = !invoice || invoice.ocrStatus === "processing" || invoice.ocrStatus == null;
+
+  const uploadInvoice = useUploadInvoice();
+  const enqueueOcr = useEnqueueOcr();
+  const checkOcr = useCheckOcr();
+  const approveInvoice = useApproveInvoice();
+  const updateLineIngredient = useUpdateInvoiceLineIngredient();
+
+  const open = invoiceId !== undefined;
+
+  useEffect(() => {
+    if (open) {
+      setVendorId("");
+      setFile(null);
+      setUploadedId(null);
+      setStarting(false);
+      setStartError(null);
+    }
+  }, [open, invoiceId]);
+
+  // Poll for a result only while the invoice is genuinely still
+  // processing — re-checking an already-ready/failed job would just
+  // re-insert its line items every time (the Railway service doesn't
+  // dedupe on check).
+  useEffect(() => {
+    if (!activeId || invoice?.ocrStatus !== "processing") return;
+    const t = setTimeout(() => {
+      checkOcr.mutate(activeId);
+    }, 3000);
+    return () => clearTimeout(t);
+    // checkOcr's identity changes every render; only isPending should re-arm the poll
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, invoice?.ocrStatus, checkOcr.isPending]);
+
+  async function handleStart() {
+    if (!vendorId || !file) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const id = await uploadInvoice.mutateAsync({ vendorId, file });
+      await enqueueOcr.mutateAsync(id);
+      setUploadedId(id);
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle className="font-display text-2xl">
+            {activeId ? "Invoice review" : "Upload invoice"}
+          </SheetTitle>
+          <SheetDescription>
+            {activeId
+              ? "Extracted with Mindee OCR — confirm the ingredient match on each line before approving."
+              : "Upload a vendor invoice PDF. It's sent to Mindee for extraction, then you review the line items before approving."}
+          </SheetDescription>
+        </SheetHeader>
+
+        {!activeId && (
+          <div className="mt-5 space-y-4">
+            <div>
+              <Label>Vendor</Label>
+              <select
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
+                className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select a vendor…</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+              {vendors.length === 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  No vendors yet — add one in the Vendors tab of Inventory first.
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>Invoice PDF</Label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="mt-1.5 block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary"
+              />
+            </div>
+            {startError && <p className="text-sm text-rose-600">{startError}</p>}
+            <Button
+              onClick={handleStart}
+              disabled={!vendorId || !file || starting}
+              className="gap-1.5"
+            >
+              {starting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
+              {starting ? "Uploading…" : "Upload & extract"}
+            </Button>
+          </div>
+        )}
+
+        {activeId && isExtracting && (
+          <div className="mt-8 flex flex-col items-center gap-3 py-12 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <div className="text-sm font-medium">Extracting with Mindee…</div>
+            <div className="text-xs text-muted-foreground">This usually takes 10–20 seconds.</div>
+          </div>
+        )}
+
+        {activeId && invoice?.ocrStatus === "failed" && (
+          <div className="mt-8 flex flex-col items-center gap-3 py-12 text-center">
+            <XCircle className="h-6 w-6 text-rose-600" />
+            <div className="text-sm font-medium">Extraction failed</div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => enqueueOcr.mutate(activeId)}
+              className="gap-1.5"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {activeId && invoice?.ocrStatus === "ready" && (
+          <>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <div className="rounded-xl border bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Total
+                </div>
+                <div className="font-display text-xl">
+                  {invoice.totalCents != null ? formatMoney(invoice.totalCents / 100) : "—"}
+                </div>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Invoice #
+                </div>
+                <div className="font-display text-xl">{invoice.invoiceNumber ?? "—"}</div>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Items
+                </div>
+                <div className="font-display text-xl">{lines.length}</div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Line items — match to an ingredient
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Extracted description</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Ingredient match</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell>
+                        <div className="font-medium">{l.rawDescription || "—"}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {l.quantity != null ? `${l.quantity} ${l.unit ?? ""}` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {l.lineTotalCents != null ? formatMoney(l.lineTotalCents / 100) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          value={l.ingredientId ?? ""}
+                          onChange={(e) =>
+                            updateLineIngredient.mutate({
+                              lineId: l.id,
+                              ingredientId: e.target.value || null,
+                            })
+                          }
+                          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                        >
+                          <option value="">Unmatched</option>
+                          {ingredients.map((ing) => (
+                            <option key={ing.id} value={ing.id}>
+                              {ing.name}
+                            </option>
+                          ))}
+                        </select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <Separator className="my-5" />
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {lines.filter((l) => l.ingredientId).length}/{lines.length} lines matched
+              </span>
+              {invoice.status === "approved" ? (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                >
+                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Approved
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => approveInvoice.mutate(activeId)}
+                  disabled={approveInvoice.isPending}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Approve invoice
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 

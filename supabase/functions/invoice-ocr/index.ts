@@ -23,22 +23,38 @@ const supabase = createClient(
 const OCR_SERVICE_URL = Deno.env.get("OCR_SERVICE_URL")!;
 const OCR_SERVICE_TOKEN = Deno.env.get("OCR_SERVICE_TOKEN")!;
 
+// Called directly from the browser (see src/lib/boh/queries.ts), so it
+// needs to handle CORS itself — Supabase doesn't add these headers
+// automatically.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(body: unknown, status: number) {
+  return Response.json(body, { status, headers: CORS_HEADERS });
+}
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
     const accessToken = authHeader.replace(/^Bearer\s+/i, "");
     if (!accessToken) {
-      return Response.json({ ok: false, step: "auth", error: "missing Authorization header" }, { status: 401 });
+      return json({ ok: false, step: "auth", error: "missing Authorization header" }, 401);
     }
 
     const { data: userData, error: userErr } = await supabase.auth.getUser(accessToken);
     if (userErr || !userData?.user) {
-      return Response.json({ ok: false, step: "auth", error: "invalid session" }, { status: 401 });
+      return json({ ok: false, step: "auth", error: "invalid session" }, 401);
     }
 
     const { invoice_id, action } = await req.json();
     if (!invoice_id || !action || (action !== "enqueue" && action !== "check")) {
-      return Response.json({ ok: false, step: "input", error: "invoice_id and a valid action are required" }, { status: 400 });
+      return json({ ok: false, step: "input", error: "invoice_id and a valid action are required" }, 400);
     }
 
     const { data: invoice, error: invoiceErr } = await supabase
@@ -47,7 +63,7 @@ Deno.serve(async (req) => {
       .eq("id", invoice_id)
       .single();
     if (invoiceErr || !invoice) {
-      return Response.json({ ok: false, step: "load_invoice", error: invoiceErr?.message ?? "not found" }, { status: 404 });
+      return json({ ok: false, step: "load_invoice", error: invoiceErr?.message ?? "not found" }, 404);
     }
 
     const { data: membership } = await supabase
@@ -57,7 +73,7 @@ Deno.serve(async (req) => {
       .eq("restaurant_id", invoice.restaurant_id)
       .maybeSingle();
     if (!membership) {
-      return Response.json({ ok: false, step: "auth", error: "not a member of this restaurant" }, { status: 403 });
+      return json({ ok: false, step: "auth", error: "not a member of this restaurant" }, 403);
     }
 
     const railwayRes = await fetch(`${OCR_SERVICE_URL}/${action}`, {
@@ -69,8 +85,8 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ invoice_id }),
     });
     const railwayBody = await railwayRes.json().catch(() => null);
-    return Response.json(railwayBody ?? { ok: false, error: "empty response from OCR service" }, { status: railwayRes.status });
+    return json(railwayBody ?? { ok: false, error: "empty response from OCR service" }, railwayRes.status);
   } catch (e) {
-    return Response.json({ ok: false, step: "unexpected", error: String(e) }, { status: 500 });
+    return json({ ok: false, step: "unexpected", error: String(e) }, 500);
   }
 });
