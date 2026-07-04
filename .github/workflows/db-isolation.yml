@@ -77,6 +77,9 @@ jobs:
       - name: Apply Phase 2 invoice OCR job tracking columns
         run: $PSQL -f db/phase2/25_invoice_ocr_job.sql
 
+      - name: Apply Phase 2 par-level computation
+        run: $PSQL -f db/phase2/26_par_level_computation.sql
+
       # Note: db/phase2/24_invoice_ocr_support.sql is NOT applied here —
       # it touches storage.buckets/storage.objects (Supabase-managed
       # schemas that don't exist on a bare Postgres) and requires the

@@ -184,9 +184,11 @@ export function useDeleteIngredient() {
 // Inventory items — the shape inventory.tsx's UI expects: an
 // ingredient joined with its current on-hand quantity (ingredient_stock),
 // its par target (par_levels), and its preferred vendor's name.
-// weeklyUsage is always 0 for now — real usage needs recipe_lines
-// (menu item -> ingredients) joined against pmix_sales, which doesn't
-// exist until the recipe bridge is built (the next Phase 2 step).
+// weeklyUsage and suggestedPar come from par_levels.avg_daily_usage /
+// suggested_par_quantity, computed by the compute_par_levels() SQL
+// function (see useRecomputeParLevels below) from real recipe_lines x
+// pmix_sales — null until that's been run at least once for this
+// ingredient (e.g. no recipe_lines mapped to it yet).
 // ------------------------------------------------------------
 export type InventoryItem = {
   id: string;
@@ -199,6 +201,7 @@ export type InventoryItem = {
   vendorId: string | null;
   cost: number;
   weeklyUsage: number;
+  suggestedPar: number | null;
   lastOrdered: string;
 };
 
@@ -232,6 +235,7 @@ export function useInventoryItems() {
       return (ingredientsRes.data ?? []).map((ing) => {
         const stock = stockByIngredient.get(ing.id);
         const par = parByIngredient.get(ing.id);
+        const avgDailyUsage = par?.avg_daily_usage != null ? Number(par.avg_daily_usage) : null;
         return {
           id: ing.id,
           name: ing.name,
@@ -242,11 +246,31 @@ export function useInventoryItems() {
           vendor: ing.vendor_id ? (vendorNameById.get(ing.vendor_id) ?? "") : "",
           vendorId: ing.vendor_id,
           cost: (ing.unit_cost_cents ?? 0) / 100,
-          weeklyUsage: 0,
+          weeklyUsage: avgDailyUsage != null ? Math.round(avgDailyUsage * 7) : 0,
+          suggestedPar:
+            par?.suggested_par_quantity != null ? Number(par.suggested_par_quantity) : null,
           lastOrdered: formatLastOrdered(stock?.last_ordered_at ?? null),
         };
       });
     },
+  });
+}
+
+export function useRecomputeParLevels() {
+  const restaurantId = useCurrentRestaurantId();
+  const locationId = useCurrentLocationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+      const { error } = await supabase.rpc("compute_par_levels", {
+        p_restaurant_id: restaurantId,
+        p_location_id: locationId,
+        p_window_days: 28,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory-items"] }),
   });
 }
 

@@ -11,6 +11,7 @@ import {
   useUpdateOnHand,
   useUpdatePar,
   useMarkOrdered,
+  useRecomputeParLevels,
   type Vendor,
   type InventoryItem,
 } from "@/lib/boh/queries";
@@ -28,6 +29,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -167,6 +169,7 @@ function InventoryPage() {
   const deleteItemMutation = useDeleteInventoryItem();
   const updateOnHandMutation = useUpdateOnHand();
   const updateParMutation = useUpdatePar();
+  const recomputeParLevels = useRecomputeParLevels();
   const markOrdered = useMarkOrdered();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
@@ -514,6 +517,16 @@ function InventoryPage() {
                 </select>
               </div>
               <div className="flex items-center gap-2 ml-auto">
+                <Button
+                  variant="outline"
+                  onClick={() => recomputeParLevels.mutate()}
+                  disabled={recomputeParLevels.isPending}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${recomputeParLevels.isPending ? "animate-spin" : ""}`}
+                  />
+                  Recompute par levels
+                </Button>
                 <Button variant="outline" onClick={openAddItem}>
                   <Plus className="h-4 w-4" /> Add item
                 </Button>
@@ -584,6 +597,15 @@ function InventoryPage() {
                             unit={item.unit}
                             onChange={(v) => updatePar(item.id, v)}
                           />
+                          {item.suggestedPar != null &&
+                            Math.abs(item.suggestedPar - item.par) >= 1 && (
+                              <button
+                                className="mt-1 block w-full text-[11px] text-[hsl(var(--terracotta))] hover:underline"
+                                onClick={() => updatePar(item.id, Math.round(item.suggestedPar!))}
+                              >
+                                suggested {Math.round(item.suggestedPar)} — apply
+                              </button>
+                            )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={state.tone}>
