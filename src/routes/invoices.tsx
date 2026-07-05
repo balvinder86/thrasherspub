@@ -70,11 +70,13 @@ import {
   useEmailIngestionStatus,
   useEnqueueOcr,
   useIngredients,
+  useCategorySpend,
   useRealInvoiceLines,
   useRealInvoices,
   useSavingsSummary,
   useSetInvoiceDiscount,
   useSetInvoiceVendor,
+  useTopLineItems,
   useUpdateInvoiceLineIngredient,
   useUploadInvoice,
   useVendors as useRealVendors,
@@ -541,29 +543,6 @@ const CATEGORY_MIX = [
   { name: "Paper & Chem", value: 8, color: "hsl(220 15% 55%)" },
 ];
 
-const TOP_ITEMS = [
-  { name: "Olive oil · 3L tin", vendor: "Restaurant Depot", spend: 4820, savings: 380, change: -4 },
-  { name: "Branzino whole · 1lb", vendor: "Pacific Seafood", spend: 4280, savings: 0, change: 8 },
-  { name: "Parmigiano 24mo · wheel", vendor: "Sysco", spend: 3960, savings: 320, change: -2 },
-  { name: "Bavette steak", vendor: "Niman Ranch", spend: 3640, savings: 240, change: 3 },
-  { name: "Heirloom tomatoes", vendor: "Sysco / Veritable", spend: 3120, savings: 180, change: 12 },
-  {
-    name: "Hendrick's Gin 750ml",
-    vendor: "Southern Glazer's",
-    spend: 2840,
-    savings: 220,
-    change: -6,
-  },
-  { name: "Burrata 8oz", vendor: "Sysco", spend: 2680, savings: 160, change: 0 },
-  {
-    name: "To-go containers 16oz",
-    vendor: "Restaurant Depot",
-    spend: 2120,
-    savings: 280,
-    change: -8,
-  },
-];
-
 const AI_FLAGS = [
   {
     icon: AlertTriangle,
@@ -693,6 +672,8 @@ function InvoicesPage() {
   const { data: realInvoices = [] } = useRealInvoices();
   const { data: realVendors = [] } = useRealVendors();
   const { data: vendorSpend = [] } = useVendorSpendSummary();
+  const { data: topLineItems = [] } = useTopLineItems();
+  const { data: categorySpend = [] } = useCategorySpend();
 
   const realKpis = useMemo(() => {
     const approved = realInvoices.filter((i) => i.status === "approved");
@@ -1126,20 +1107,23 @@ function InvoicesPage() {
             </div>
           </TabsContent>
 
-          {/* Line items tab */}
+          {/* Line items tab — real spend/price-trend from invoice_lines
+              on approved invoices. No time window applied (see
+              useTopLineItems) since real invoice volume is still too
+              low for "last 30 days"/"MTD" to be meaningful rather than
+              just hiding real spend. "Savings" per item is dropped —
+              discounts are only tracked at the invoice level. */}
           <TabsContent value="items" className="space-y-4">
             <div className="grid gap-4 lg:grid-cols-3">
               <Card className="p-5 lg:col-span-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Top line items
-                    </div>
-                    <h3 className="mt-1 font-display text-xl">Where you're spending the most</h3>
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    Top line items
                   </div>
-                  <Button variant="outline" size="sm" className="h-8">
-                    Last 30 days
-                  </Button>
+                  <h3 className="mt-1 font-display text-xl">Where you're spending the most</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    All approved invoices — matched line items only
+                  </p>
                 </div>
                 <Table className="mt-3">
                   <TableHeader>
@@ -1147,73 +1131,97 @@ function InvoicesPage() {
                       <TableHead>Item</TableHead>
                       <TableHead>Vendor</TableHead>
                       <TableHead className="text-right">Spend</TableHead>
-                      <TableHead className="text-right">Savings</TableHead>
                       <TableHead className="text-right">Δ price</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {TOP_ITEMS.map((i) => (
-                      <TableRow key={i.name}>
+                    {topLineItems.map((i) => (
+                      <TableRow key={i.ingredientId}>
                         <TableCell className="font-medium">{i.name}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{i.vendor}</TableCell>
-                        <TableCell className="text-right">{formatMoney(i.spend)}</TableCell>
-                        <TableCell className="text-right text-emerald-700">
-                          {i.savings ? formatMoney(i.savings) : "—"}
+                        <TableCell className="text-xs text-muted-foreground">
+                          {i.vendorLabel}
                         </TableCell>
                         <TableCell className="text-right">
-                          <span
-                            className={`inline-flex items-center gap-0.5 text-xs font-medium ${
-                              i.change > 0
-                                ? "text-rose-600"
-                                : i.change < 0
-                                  ? "text-emerald-600"
-                                  : "text-muted-foreground"
-                            }`}
-                          >
-                            {i.change > 0 ? (
-                              <ArrowUpRight className="h-3 w-3" />
-                            ) : i.change < 0 ? (
-                              <ArrowDownRight className="h-3 w-3" />
-                            ) : null}
-                            {i.change === 0 ? "—" : `${Math.abs(i.change)}%`}
-                          </span>
+                          {formatMoney(i.spendCents / 100)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {i.priceChangePct == null ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+                                i.priceChangePct > 0
+                                  ? "text-rose-600"
+                                  : i.priceChangePct < 0
+                                    ? "text-emerald-600"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              {i.priceChangePct > 0 ? (
+                                <ArrowUpRight className="h-3 w-3" />
+                              ) : i.priceChangePct < 0 ? (
+                                <ArrowDownRight className="h-3 w-3" />
+                              ) : null}
+                              {i.priceChangePct === 0 ? "—" : `${Math.abs(i.priceChangePct)}%`}
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
+                    {topLineItems.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="py-10 text-center text-sm text-muted-foreground"
+                        >
+                          No matched line items on approved invoices yet.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </Card>
 
               <Card className="p-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  Category spend · MTD
+                  Category spend
                 </div>
                 <h3 className="mt-1 font-display text-xl">By category</h3>
-                <div className="mt-3 h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={CATEGORY_MIX.map((c) => ({ name: c.name, value: c.value * 480 }))}
-                      layout="vertical"
-                      margin={{ left: 10, right: 10 }}
-                    >
-                      <CartesianGrid
-                        stroke="hsl(var(--border))"
-                        strokeDasharray="3 3"
-                        horizontal={false}
-                      />
-                      <XAxis type="number" hide />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        stroke="hsl(var(--muted-foreground))"
-                        fontSize={11}
-                        width={100}
-                      />
-                      <Tooltip formatter={(v: number) => formatMoney(v)} />
-                      <Bar dataKey="value" radius={[0, 6, 6, 0]} fill="hsl(var(--primary))" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">All approved invoices</p>
+                {categorySpend.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">
+                    No matched line items yet.
+                  </p>
+                ) : (
+                  <div className="mt-3 h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={categorySpend.map((c) => ({
+                          name: c.category,
+                          value: c.spendCents / 100,
+                        }))}
+                        layout="vertical"
+                        margin={{ left: 10, right: 10 }}
+                      >
+                        <CartesianGrid
+                          stroke="hsl(var(--border))"
+                          strokeDasharray="3 3"
+                          horizontal={false}
+                        />
+                        <XAxis type="number" hide />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          stroke="hsl(var(--muted-foreground))"
+                          fontSize={11}
+                          width={100}
+                        />
+                        <Tooltip formatter={(v: number) => formatMoney(v)} />
+                        <Bar dataKey="value" radius={[0, 6, 6, 0]} fill="hsl(var(--primary))" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </Card>
             </div>
           </TabsContent>
@@ -1685,9 +1693,7 @@ function SavingsTab() {
           <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
             Total savings captured
           </div>
-          <div className="mt-1 font-display text-3xl">
-            ${(totalDiscountCents / 100).toFixed(2)}
-          </div>
+          <div className="mt-1 font-display text-3xl">${(totalDiscountCents / 100).toFixed(2)}</div>
           <div className="mt-1 text-xs text-muted-foreground">from approved invoices</div>
         </Card>
         <Card className="p-5">

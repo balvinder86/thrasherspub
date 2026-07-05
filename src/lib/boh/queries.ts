@@ -790,6 +790,142 @@ export function useSavingsSummary() {
   });
 }
 
+// Real top line items + category spend, computed from invoice_lines on
+// approved invoices. No time window (last-30-days/MTD) is applied —
+// with only a handful of real invoices spanning several months so
+// far, a strict window would hide real spend rather than reveal a
+// trend. Only lines matched to an ingredient are included, since an
+// unmatched line's raw_description isn't a stable identity to
+// aggregate across invoices. "Savings per item" from the old mock is
+// dropped entirely — discounts are only tracked at the invoice level,
+// there's no real per-line-item discount to show.
+export type TopLineItem = {
+  ingredientId: string;
+  name: string;
+  vendorLabel: string;
+  spendCents: number;
+  priceChangePct: number | null;
+};
+
+export type CategorySpend = { category: string; spendCents: number };
+
+export function useTopLineItems() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["top-line-items", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<TopLineItem[]> => {
+      const { data, error } = await supabase
+        .from("invoice_lines")
+        .select(
+          "line_total_cents, ingredient_id, ingredients(name), invoices!inner(status, vendors(name))",
+        );
+      if (error) throw error;
+      type Row = {
+        line_total_cents: number | null;
+        ingredient_id: string | null;
+        ingredients: { name: string } | null;
+        invoices: { status: string; vendors: { name: string } | null } | null;
+      };
+      const rows = ((data ?? []) as unknown as Row[]).filter(
+        (r) => r.invoices?.status === "approved" && r.ingredient_id,
+      );
+
+      const byIngredient = new Map<
+        string,
+        { name: string; spendCents: number; vendors: Set<string> }
+      >();
+      for (const r of rows) {
+        const id = r.ingredient_id!;
+        const cur = byIngredient.get(id) ?? {
+          name: r.ingredients?.name ?? "Unknown item",
+          spendCents: 0,
+          vendors: new Set<string>(),
+        };
+        cur.spendCents += r.line_total_cents ?? 0;
+        if (r.invoices?.vendors?.name) cur.vendors.add(r.invoices.vendors.name);
+        byIngredient.set(id, cur);
+      }
+
+      const ingredientIds = Array.from(byIngredient.keys());
+      const priceChangeByIngredient = new Map<string, number | null>();
+      if (ingredientIds.length > 0) {
+        const { data: historyData, error: historyError } = await supabase
+          .from("ingredient_cost_history")
+          .select("ingredient_id, unit_cost_cents, effective_date, created_at")
+          .in("ingredient_id", ingredientIds)
+          .order("effective_date", { ascending: true })
+          .order("created_at", { ascending: true });
+        if (historyError) throw historyError;
+        const history = new Map<string, { unit_cost_cents: number }[]>();
+        for (const h of historyData ?? []) {
+          const list = history.get(h.ingredient_id) ?? [];
+          list.push({ unit_cost_cents: h.unit_cost_cents });
+          history.set(h.ingredient_id, list);
+        }
+        for (const [id, entries] of history) {
+          if (entries.length < 2) {
+            priceChangeByIngredient.set(id, null);
+            continue;
+          }
+          const prev = entries[entries.length - 2].unit_cost_cents;
+          const latest = entries[entries.length - 1].unit_cost_cents;
+          priceChangeByIngredient.set(
+            id,
+            prev > 0 ? Math.round(((latest - prev) / prev) * 100) : null,
+          );
+        }
+      }
+
+      return Array.from(byIngredient.entries())
+        .map(([ingredientId, v]) => ({
+          ingredientId,
+          name: v.name,
+          vendorLabel:
+            v.vendors.size === 0
+              ? "—"
+              : v.vendors.size === 1
+                ? Array.from(v.vendors)[0]
+                : "Multiple vendors",
+          spendCents: v.spendCents,
+          priceChangePct: priceChangeByIngredient.get(ingredientId) ?? null,
+        }))
+        .sort((a, b) => b.spendCents - a.spendCents)
+        .slice(0, 8);
+    },
+  });
+}
+
+export function useCategorySpend() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["category-spend", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<CategorySpend[]> => {
+      const { data, error } = await supabase
+        .from("invoice_lines")
+        .select("line_total_cents, ingredients(category), invoices!inner(status)");
+      if (error) throw error;
+      type Row = {
+        line_total_cents: number | null;
+        ingredients: { category: string | null } | null;
+        invoices: { status: string } | null;
+      };
+      const rows = ((data ?? []) as unknown as Row[]).filter(
+        (r) => r.invoices?.status === "approved" && r.ingredients?.category,
+      );
+      const byCategory = new Map<string, number>();
+      for (const r of rows) {
+        const cat = r.ingredients!.category!;
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + (r.line_total_cents ?? 0));
+      }
+      return Array.from(byCategory.entries())
+        .map(([category, spendCents]) => ({ category, spendCents }))
+        .sort((a, b) => b.spendCents - a.spendCents);
+    },
+  });
+}
+
 // Real Gmail ingestion status — surfaced instead of the fictional
 // multi-source (email/portal/API/EDI) automation mockup, since Gmail
 // is the one real connected source right now.
