@@ -5,32 +5,24 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Bot,
-  Brain,
   CheckCircle2,
   Clock,
   Download,
-  Eye,
   FileSearch,
   FileText,
-  Filter,
-  Globe,
   Inbox,
   Loader2,
   Mail,
   PiggyBank,
-  Plug,
   Plus,
   Receipt,
   RefreshCw,
   Search,
-  ShieldCheck,
   Sparkles,
   Truck,
   Upload,
   Wallet,
-  Wand2,
   XCircle,
-  Zap,
 } from "lucide-react";
 import {
   Area,
@@ -74,6 +66,8 @@ import {
 import {
   useApproveInvoice,
   useCheckOcr,
+  useEmailIngestionActivity,
+  useEmailIngestionStatus,
   useEnqueueOcr,
   useIngredients,
   useRealInvoiceLines,
@@ -82,6 +76,7 @@ import {
   useUpdateInvoiceLineIngredient,
   useUploadInvoice,
   useVendors as useRealVendors,
+  useVendorSpendSummary,
 } from "@/lib/boh/queries";
 
 export const Route = createFileRoute("/invoices")({
@@ -265,10 +260,31 @@ const INVOICES: Invoice[] = [
     category: "Beer & Wine",
     po: "PO-1184",
     lines: [
-      { item: "Hendrick's Gin 750ml", qty: "12 btl", unitPrice: 28.4, total: 340.8, category: "Beer & Wine", savings: 24 },
+      {
+        item: "Hendrick's Gin 750ml",
+        qty: "12 btl",
+        unitPrice: 28.4,
+        total: 340.8,
+        category: "Beer & Wine",
+        savings: 24,
+      },
       { item: "Aperol 1L", qty: "6 btl", unitPrice: 22.1, total: 132.6, category: "Beer & Wine" },
-      { item: "Lambrusco · case", qty: "8 cs", unitPrice: 96.0, total: 768.0, category: "Beer & Wine", savings: 96, flag: "credit" },
-      { item: "Negroni pre-mix · keg", qty: "2 kg", unitPrice: 142.0, total: 284.0, category: "Beer & Wine" },
+      {
+        item: "Lambrusco · case",
+        qty: "8 cs",
+        unitPrice: 96.0,
+        total: 768.0,
+        category: "Beer & Wine",
+        savings: 96,
+        flag: "credit",
+      },
+      {
+        item: "Negroni pre-mix · keg",
+        qty: "2 kg",
+        unitPrice: 142.0,
+        total: 284.0,
+        category: "Beer & Wine",
+      },
     ],
   },
   {
@@ -281,10 +297,36 @@ const INVOICES: Invoice[] = [
     status: "paid",
     category: "Dry Goods",
     lines: [
-      { item: "Olive oil · 3L tin", qty: "8 tin", unitPrice: 38.2, total: 305.6, category: "Dry Goods", savings: 32 },
-      { item: "Semolina flour 50lb", qty: "4 bag", unitPrice: 42.5, total: 170.0, category: "Dry Goods" },
-      { item: "Nitrile gloves L · 1000ct", qty: "3 cs", unitPrice: 56.0, total: 168.0, category: "Paper & Chem" },
-      { item: "To-go containers 16oz", qty: "10 cs", unitPrice: 38.4, total: 384.0, category: "Paper & Chem", savings: 48 },
+      {
+        item: "Olive oil · 3L tin",
+        qty: "8 tin",
+        unitPrice: 38.2,
+        total: 305.6,
+        category: "Dry Goods",
+        savings: 32,
+      },
+      {
+        item: "Semolina flour 50lb",
+        qty: "4 bag",
+        unitPrice: 42.5,
+        total: 170.0,
+        category: "Dry Goods",
+      },
+      {
+        item: "Nitrile gloves L · 1000ct",
+        qty: "3 cs",
+        unitPrice: 56.0,
+        total: 168.0,
+        category: "Paper & Chem",
+      },
+      {
+        item: "To-go containers 16oz",
+        qty: "10 cs",
+        unitPrice: 38.4,
+        total: 384.0,
+        category: "Paper & Chem",
+        savings: 48,
+      },
     ],
   },
   {
@@ -298,10 +340,31 @@ const INVOICES: Invoice[] = [
     category: "Produce",
     po: "PO-1182",
     lines: [
-      { item: "Heirloom tomatoes · 20lb", qty: "6 cs", unitPrice: 64.0, total: 384.0, category: "Produce", flag: "price-up" },
+      {
+        item: "Heirloom tomatoes · 20lb",
+        qty: "6 cs",
+        unitPrice: 64.0,
+        total: 384.0,
+        category: "Produce",
+        flag: "price-up",
+      },
       { item: "Burrata 8oz", qty: "24 ea", unitPrice: 6.8, total: 163.2, category: "Dairy" },
-      { item: "EVOO 5L · house", qty: "4 jug", unitPrice: 72.0, total: 288.0, category: "Dry Goods", savings: 36 },
-      { item: "Parmigiano 24mo · wheel", qty: "1 ea", unitPrice: 482.0, total: 482.0, category: "Dairy", savings: 48 },
+      {
+        item: "EVOO 5L · house",
+        qty: "4 jug",
+        unitPrice: 72.0,
+        total: 288.0,
+        category: "Dry Goods",
+        savings: 36,
+      },
+      {
+        item: "Parmigiano 24mo · wheel",
+        qty: "1 ea",
+        unitPrice: 482.0,
+        total: 482.0,
+        category: "Dairy",
+        savings: 48,
+      },
     ],
   },
   {
@@ -314,9 +377,28 @@ const INVOICES: Invoice[] = [
     status: "disputed",
     category: "Meat & Seafood",
     lines: [
-      { item: "Branzino whole · 1lb", qty: "18 ea", unitPrice: 14.2, total: 255.6, category: "Meat & Seafood", flag: "short" },
-      { item: "Diver scallops U10", qty: "8 lb", unitPrice: 38.0, total: 304.0, category: "Meat & Seafood" },
-      { item: "Live mussels · 5lb", qty: "6 bag", unitPrice: 18.0, total: 108.0, category: "Meat & Seafood" },
+      {
+        item: "Branzino whole · 1lb",
+        qty: "18 ea",
+        unitPrice: 14.2,
+        total: 255.6,
+        category: "Meat & Seafood",
+        flag: "short",
+      },
+      {
+        item: "Diver scallops U10",
+        qty: "8 lb",
+        unitPrice: 38.0,
+        total: 304.0,
+        category: "Meat & Seafood",
+      },
+      {
+        item: "Live mussels · 5lb",
+        qty: "6 bag",
+        unitPrice: 18.0,
+        total: 108.0,
+        category: "Meat & Seafood",
+      },
     ],
   },
   {
@@ -330,9 +412,28 @@ const INVOICES: Invoice[] = [
     category: "Beverage",
     po: "PO-1180",
     lines: [
-      { item: "Anchor Steam · 1/2 bbl", qty: "2 kg", unitPrice: 184.0, total: 368.0, category: "Beverage" },
-      { item: "Topo Chico · 24pk", qty: "10 cs", unitPrice: 32.4, total: 324.0, category: "Beverage", savings: 36 },
-      { item: "Fever-Tree tonic", qty: "6 cs", unitPrice: 48.0, total: 288.0, category: "Beverage" },
+      {
+        item: "Anchor Steam · 1/2 bbl",
+        qty: "2 kg",
+        unitPrice: 184.0,
+        total: 368.0,
+        category: "Beverage",
+      },
+      {
+        item: "Topo Chico · 24pk",
+        qty: "10 cs",
+        unitPrice: 32.4,
+        total: 324.0,
+        category: "Beverage",
+        savings: 36,
+      },
+      {
+        item: "Fever-Tree tonic",
+        qty: "6 cs",
+        unitPrice: 48.0,
+        total: 288.0,
+        category: "Beverage",
+      },
     ],
   },
   {
@@ -345,9 +446,28 @@ const INVOICES: Invoice[] = [
     status: "approved",
     category: "Meat & Seafood",
     lines: [
-      { item: "Pork shoulder · whole", qty: "32 lb", unitPrice: 7.8, total: 249.6, category: "Meat & Seafood" },
-      { item: "Bavette steak", qty: "24 lb", unitPrice: 18.4, total: 441.6, category: "Meat & Seafood", savings: 24 },
-      { item: "Sweet Italian sausage", qty: "20 lb", unitPrice: 9.2, total: 184.0, category: "Meat & Seafood" },
+      {
+        item: "Pork shoulder · whole",
+        qty: "32 lb",
+        unitPrice: 7.8,
+        total: 249.6,
+        category: "Meat & Seafood",
+      },
+      {
+        item: "Bavette steak",
+        qty: "24 lb",
+        unitPrice: 18.4,
+        total: 441.6,
+        category: "Meat & Seafood",
+        savings: 24,
+      },
+      {
+        item: "Sweet Italian sausage",
+        qty: "20 lb",
+        unitPrice: 9.2,
+        total: 184.0,
+        category: "Meat & Seafood",
+      },
     ],
   },
   {
@@ -360,8 +480,21 @@ const INVOICES: Invoice[] = [
     status: "paid",
     category: "Produce",
     lines: [
-      { item: "Little gem lettuce", qty: "12 cs", unitPrice: 28.0, total: 336.0, category: "Produce", savings: 24 },
-      { item: "Stone fruit medley", qty: "8 flt", unitPrice: 36.0, total: 288.0, category: "Produce" },
+      {
+        item: "Little gem lettuce",
+        qty: "12 cs",
+        unitPrice: 28.0,
+        total: 336.0,
+        category: "Produce",
+        savings: 24,
+      },
+      {
+        item: "Stone fruit medley",
+        qty: "8 flt",
+        unitPrice: 36.0,
+        total: 288.0,
+        category: "Produce",
+      },
     ],
   },
   {
@@ -375,7 +508,13 @@ const INVOICES: Invoice[] = [
     category: "Dry Goods",
     lines: [
       { item: "Pugliese loaf", qty: "60 ea", unitPrice: 4.2, total: 252.0, category: "Dry Goods" },
-      { item: "Focaccia sheet", qty: "20 ea", unitPrice: 11.5, total: 230.0, category: "Dry Goods" },
+      {
+        item: "Focaccia sheet",
+        qty: "20 ea",
+        unitPrice: 11.5,
+        total: 230.0,
+        category: "Dry Goods",
+      },
     ],
   },
 ];
@@ -406,17 +545,21 @@ const TOP_ITEMS = [
   { name: "Parmigiano 24mo · wheel", vendor: "Sysco", spend: 3960, savings: 320, change: -2 },
   { name: "Bavette steak", vendor: "Niman Ranch", spend: 3640, savings: 240, change: 3 },
   { name: "Heirloom tomatoes", vendor: "Sysco / Veritable", spend: 3120, savings: 180, change: 12 },
-  { name: "Hendrick's Gin 750ml", vendor: "Southern Glazer's", spend: 2840, savings: 220, change: -6 },
+  {
+    name: "Hendrick's Gin 750ml",
+    vendor: "Southern Glazer's",
+    spend: 2840,
+    savings: 220,
+    change: -6,
+  },
   { name: "Burrata 8oz", vendor: "Sysco", spend: 2680, savings: 160, change: 0 },
-  { name: "To-go containers 16oz", vendor: "Restaurant Depot", spend: 2120, savings: 280, change: -8 },
-];
-
-const SAVINGS_SOURCES = [
-  { label: "Negotiated contract pricing", amount: 8420, share: 38 },
-  { label: "Promo & rebate captures", amount: 5240, share: 24 },
-  { label: "Vendor swap (cheaper SKU)", amount: 3840, share: 17 },
-  { label: "Credit memos & returns", amount: 2680, share: 12 },
-  { label: "Volume / case break", amount: 1980, share: 9 },
+  {
+    name: "To-go containers 16oz",
+    vendor: "Restaurant Depot",
+    spend: 2120,
+    savings: 280,
+    change: -8,
+  },
 ];
 
 const AI_FLAGS = [
@@ -540,21 +683,43 @@ function KPI({
 }
 
 function InvoicesPage() {
-  const [open, setOpen] = useState<Invoice | null>(null);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending_review" | "approved">("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
   const [ocrSheetInvoiceId, setOcrSheetInvoiceId] = useState<string | null | undefined>(undefined);
 
-  const filtered = useMemo(() => {
-    return INVOICES.filter((inv) => {
+  const { data: realInvoices = [] } = useRealInvoices();
+  const { data: realVendors = [] } = useRealVendors();
+  const { data: vendorSpend = [] } = useVendorSpendSummary();
+
+  const realKpis = useMemo(() => {
+    const approved = realInvoices.filter((i) => i.status === "approved");
+    const pending = realInvoices.filter((i) => i.status === "pending_review");
+    const now = new Date();
+    const thisMonthCount = realInvoices.filter((i) => {
+      const d = new Date(i.createdAt);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length;
+    return {
+      approvedSpendCents: approved.reduce((a, b) => a + (b.totalCents ?? 0), 0),
+      approvedCount: approved.length,
+      pendingCents: pending.reduce((a, b) => a + (b.totalCents ?? 0), 0),
+      pendingCount: pending.length,
+      thisMonthCount,
+    };
+  }, [realInvoices]);
+
+  const filteredInvoices = useMemo(() => {
+    return realInvoices.filter((inv) => {
       if (statusFilter !== "all" && inv.status !== statusFilter) return false;
-      if (vendorFilter !== "all" && inv.vendor !== vendorFilter) return false;
-      if (query && !`${inv.id} ${inv.vendor}`.toLowerCase().includes(query.toLowerCase()))
-        return false;
+      if (vendorFilter !== "all" && inv.vendorName !== vendorFilter) return false;
+      if (query) {
+        const haystack = `${inv.invoiceNumber ?? ""} ${inv.vendorName ?? ""}`.toLowerCase();
+        if (!haystack.includes(query.toLowerCase())) return false;
+      }
       return true;
     });
-  }, [query, statusFilter, vendorFilter]);
+  }, [realInvoices, query, statusFilter, vendorFilter]);
 
   return (
     <>
@@ -563,32 +728,29 @@ function InvoicesPage() {
         {/* KPI row */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <KPI
-            label="YTD spend · all vendors"
-            value={formatMoney(ytdSpend, { compact: true })}
-            delta={{ value: "6.4% vs LY", positive: false }}
-            hint="across 8 vendors"
+            label="Total spend · approved"
+            value={formatMoney(realKpis.approvedSpendCents / 100, { compact: true })}
+            hint={`${realKpis.approvedCount} approved invoice${realKpis.approvedCount === 1 ? "" : "s"}`}
             icon={Wallet}
           />
           <KPI
-            label="YTD savings captured"
-            value={formatMoney(ytdSavings, { compact: true })}
-            delta={{ value: `${savingsRate.toFixed(1)}% of spend`, positive: true }}
-            hint="contracts, rebates, credits"
-            icon={PiggyBank}
-            tone="success"
-          />
-          <KPI
-            label="Outstanding payables"
-            value={formatMoney(totals.outstanding)}
-            hint={`${INVOICES.filter((i) => i.status === "pending" || i.status === "approved").length} invoices`}
+            label="Pending review"
+            value={formatMoney(realKpis.pendingCents / 100, { compact: true })}
+            hint={`${realKpis.pendingCount} invoice${realKpis.pendingCount === 1 ? "" : "s"}`}
             icon={FileText}
+            tone={realKpis.pendingCount > 0 ? "warning" : "default"}
           />
           <KPI
-            label="Overdue / disputed"
-            value={formatMoney(totals.overdue + INVOICES.filter((i) => i.status === "disputed").reduce((a, b) => a + b.total, 0))}
-            hint="needs attention this week"
-            icon={AlertTriangle}
-            tone="warning"
+            label="Active vendors"
+            value={String(realVendors.length)}
+            hint="in your vendor list"
+            icon={Truck}
+          />
+          <KPI
+            label="Invoices this month"
+            value={String(realKpis.thisMonthCount)}
+            hint="uploaded or emailed in"
+            icon={Inbox}
           />
         </div>
 
@@ -624,15 +786,35 @@ function InvoicesPage() {
                       <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
                   <XAxis dataKey="week" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={(v) => `$${v / 1000}k`} />
+                  <YAxis
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={11}
+                    tickFormatter={(v) => `$${v / 1000}k`}
+                  />
                   <Tooltip
                     formatter={(v: number) => formatMoney(v)}
                     contentStyle={{ borderRadius: 10, border: "1px solid hsl(var(--border))" }}
                   />
-                  <Area type="monotone" dataKey="spend" stroke="hsl(var(--primary))" fill="url(#sp)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="savings" stroke="#10b981" fill="url(#sv)" strokeWidth={2} />
+                  <Area
+                    type="monotone"
+                    dataKey="spend"
+                    stroke="hsl(var(--primary))"
+                    fill="url(#sp)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="savings"
+                    stroke="#10b981"
+                    fill="url(#sv)"
+                    strokeWidth={2}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -708,13 +890,19 @@ function InvoicesPage() {
               return (
                 <div key={f.title} className={`rounded-xl border p-4 ${toneCls}`}>
                   <div className="flex items-start gap-3">
-                    <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${iconCls}`}>
+                    <div
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${iconCls}`}
+                    >
                       <f.icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-medium">{f.title}</div>
                       <div className="mt-1 text-xs text-muted-foreground">{f.detail}</div>
-                      <Button size="sm" variant="ghost" className="mt-2 h-7 gap-1 px-2 text-xs text-primary hover:bg-primary/10">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="mt-2 h-7 gap-1 px-2 text-xs text-primary hover:bg-primary/10"
+                      >
                         {f.action} <ArrowUpRight className="h-3 w-3" />
                       </Button>
                     </div>
@@ -737,9 +925,6 @@ function InvoicesPage() {
               </TabsTrigger>
               <TabsTrigger value="items" className="gap-1.5">
                 <Receipt className="h-3.5 w-3.5" /> Line items
-              </TabsTrigger>
-              <TabsTrigger value="savings" className="gap-1.5">
-                <PiggyBank className="h-3.5 w-3.5" /> Savings
               </TabsTrigger>
               <TabsTrigger value="automation" className="gap-1.5">
                 <Bot className="h-3.5 w-3.5" /> Automation
@@ -765,8 +950,6 @@ function InvoicesPage() {
 
           {/* Invoices tab */}
           <TabsContent value="invoices" className="space-y-4">
-            <RealInvoiceUploadsCard onOpenInvoice={(id) => setOcrSheetInvoiceId(id)} />
-
             <Card className="p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-[220px]">
@@ -779,7 +962,7 @@ function InvoicesPage() {
                   />
                 </div>
                 <div className="flex items-center gap-1">
-                  {(["all", "pending", "approved", "paid", "disputed", "overdue"] as const).map((s) => (
+                  {(["all", "pending_review", "approved"] as const).map((s) => (
                     <Button
                       key={s}
                       size="sm"
@@ -787,7 +970,7 @@ function InvoicesPage() {
                       onClick={() => setStatusFilter(s)}
                       className="h-8 px-3 text-xs capitalize"
                     >
-                      {s}
+                      {s === "pending_review" ? "Pending review" : s}
                     </Button>
                   ))}
                 </div>
@@ -797,15 +980,12 @@ function InvoicesPage() {
                   className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="all">All vendors</option>
-                  {VENDORS.map((v) => (
+                  {realVendors.map((v) => (
                     <option key={v.id} value={v.name}>
                       {v.name}
                     </option>
                   ))}
                 </select>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5">
-                  <Filter className="h-3.5 w-3.5" /> More
-                </Button>
               </div>
             </Card>
 
@@ -813,64 +993,68 @@ function InvoicesPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40">
-                    <TableHead>Invoice</TableHead>
                     <TableHead>Vendor</TableHead>
+                    <TableHead>Invoice #</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead>Due</TableHead>
                     <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Savings</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((inv) => (
+                  {filteredInvoices.map((inv) => (
                     <TableRow
                       key={inv.id}
                       className="cursor-pointer"
-                      onClick={() => setOpen(inv)}
+                      onClick={() => setOcrSheetInvoiceId(inv.id)}
                     >
-                      <TableCell className="font-medium">{inv.id}</TableCell>
-                      <TableCell>
-                        <div>{inv.vendor}</div>
-                        <div className="text-xs text-muted-foreground">{inv.category}{inv.po ? ` · ${inv.po}` : ""}</div>
+                      <TableCell className="font-medium">
+                        {inv.vendorName ?? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 text-amber-800"
+                          >
+                            Needs vendor
+                          </Badge>
+                        )}
                       </TableCell>
-                      <TableCell className="text-sm">{inv.date}</TableCell>
-                      <TableCell className="text-sm">{inv.due}</TableCell>
-                      <TableCell className="text-right font-medium">{formatMoney(inv.total)}</TableCell>
-                      <TableCell className="text-right text-emerald-700">
-                        {inv.savings > 0 ? formatMoney(inv.savings) : "—"}
+                      <TableCell className="text-sm">{inv.invoiceNumber ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{inv.invoiceDate ?? "—"}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {inv.totalCents != null ? formatMoney(inv.totalCents / 100) : "—"}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`capitalize ${statusStyles(inv.status)}`}>
-                          {inv.status}
-                        </Badge>
-                      </TableCell>
+                      <TableCell>{ocrStatusBadge(inv.ocrStatus, inv.status)}</TableCell>
                       <TableCell className="text-right">
                         <Button size="sm" variant="ghost" className="h-8">
-                          View
+                          Review
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {filteredInvoices.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="py-10 text-center text-sm text-muted-foreground"
+                      >
+                        No invoices yet — upload one or connect email ingestion to get started.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
               <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-3 text-sm">
-                <span className="text-muted-foreground">{filtered.length} invoices</span>
-                <div className="flex items-center gap-6">
-                  <span>
-                    Total spend:{" "}
-                    <span className="font-medium text-foreground">
-                      {formatMoney(filtered.reduce((a, b) => a + b.total, 0))}
-                    </span>
+                <span className="text-muted-foreground">
+                  {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? "" : "s"}
+                </span>
+                <span>
+                  Total:{" "}
+                  <span className="font-medium text-foreground">
+                    {formatMoney(
+                      filteredInvoices.reduce((a, b) => a + (b.totalCents ?? 0), 0) / 100,
+                    )}
                   </span>
-                  <span>
-                    Savings:{" "}
-                    <span className="font-medium text-emerald-700">
-                      {formatMoney(filtered.reduce((a, b) => a + b.savings, 0))}
-                    </span>
-                  </span>
-                </div>
+                </span>
               </div>
             </Card>
           </TabsContent>
@@ -878,55 +1062,62 @@ function InvoicesPage() {
           {/* Vendors tab */}
           <TabsContent value="vendors" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {VENDORS.map((v) => {
-                const savingRate = (v.savings / v.ytdSpend) * 100;
-                return (
-                  <Card key={v.id} className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-display text-lg">{v.name}</div>
-                        <div className="text-xs text-muted-foreground">{v.category}</div>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
+              {vendorSpend.map((v) => (
+                <Card key={v.vendorId} className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0">
+                      <div className="font-display text-lg">{v.name}</div>
+                      {v.contactName && (
+                        <div className="truncate text-xs text-muted-foreground">
+                          {v.contactName}
+                        </div>
+                      )}
+                    </div>
+                    {v.terms && (
+                      <Badge variant="outline" className="shrink-0 text-xs">
                         {v.terms}
                       </Badge>
-                    </div>
+                    )}
+                  </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">YTD spend</div>
-                        <div className="font-display text-lg">{formatMoney(v.ytdSpend, { compact: true })}</div>
-                        <div className="text-xs text-muted-foreground">MTD {formatMoney(v.mtdSpend, { compact: true })}</div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Approved spend
                       </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Savings</div>
-                        <div className="font-display text-lg text-emerald-700">{formatMoney(v.savings, { compact: true })}</div>
-                        <div className="text-xs text-muted-foreground">{savingRate.toFixed(1)}% of spend</div>
+                      <div className="font-display text-lg">
+                        {formatMoney(v.approvedSpendCents / 100, { compact: true })}
                       </div>
                     </div>
-
-                    <Separator className="my-4" />
-
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">On-time delivery</span>
-                        <span className="font-medium">{v.onTime}%</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Invoices
                       </div>
-                      <Progress value={v.onTime} className="h-1.5" />
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-muted-foreground">Price accuracy</span>
-                        <span className="font-medium">{v.priceAccuracy}%</span>
-                      </div>
-                      <Progress value={v.priceAccuracy} className="h-1.5" />
+                      <div className="font-display text-lg">{v.approvedInvoiceCount}</div>
+                      {v.pendingInvoiceCount > 0 && (
+                        <div className="text-xs text-amber-700">
+                          {v.pendingInvoiceCount} pending review
+                        </div>
+                      )}
                     </div>
+                  </div>
 
-                    <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{v.invoices} invoices · YTD</span>
-                      <span>{v.rep}</span>
-                    </div>
-                  </Card>
-                );
-              })}
+                  {(v.email || v.phone) && (
+                    <>
+                      <Separator className="my-4" />
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {v.email && <div>{v.email}</div>}
+                        {v.phone && <div>{v.phone}</div>}
+                      </div>
+                    </>
+                  )}
+                </Card>
+              ))}
+              {vendorSpend.length === 0 && (
+                <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
+                  No vendors yet — add one in Inventory &amp; Ordering.
+                </p>
+              )}
             </div>
           </TabsContent>
 
@@ -941,7 +1132,9 @@ function InvoicesPage() {
                     </div>
                     <h3 className="mt-1 font-display text-xl">Where you're spending the most</h3>
                   </div>
-                  <Button variant="outline" size="sm" className="h-8">Last 30 days</Button>
+                  <Button variant="outline" size="sm" className="h-8">
+                    Last 30 days
+                  </Button>
                 </div>
                 <Table className="mt-3">
                   <TableHeader>
@@ -965,7 +1158,11 @@ function InvoicesPage() {
                         <TableCell className="text-right">
                           <span
                             className={`inline-flex items-center gap-0.5 text-xs font-medium ${
-                              i.change > 0 ? "text-rose-600" : i.change < 0 ? "text-emerald-600" : "text-muted-foreground"
+                              i.change > 0
+                                ? "text-rose-600"
+                                : i.change < 0
+                                  ? "text-emerald-600"
+                                  : "text-muted-foreground"
                             }`}
                           >
                             {i.change > 0 ? (
@@ -994,7 +1191,11 @@ function InvoicesPage() {
                       layout="vertical"
                       margin={{ left: 10, right: 10 }}
                     >
-                      <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" horizontal={false} />
+                      <CartesianGrid
+                        stroke="hsl(var(--border))"
+                        strokeDasharray="3 3"
+                        horizontal={false}
+                      />
                       <XAxis type="number" hide />
                       <YAxis
                         type="category"
@@ -1012,206 +1213,12 @@ function InvoicesPage() {
             </div>
           </TabsContent>
 
-          {/* Savings tab */}
-          <TabsContent value="savings" className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Card className="p-5 lg:col-span-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  Savings by source
-                </div>
-                <h3 className="mt-1 font-display text-xl">How you saved {formatMoney(ytdSavings, { compact: true })} YTD</h3>
-                <div className="mt-5 space-y-4">
-                  {SAVINGS_SOURCES.map((s) => (
-                    <div key={s.label}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>{s.label}</span>
-                        <span className="font-medium">{formatMoney(s.amount)} <span className="text-muted-foreground">· {s.share}%</span></span>
-                      </div>
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-emerald-500"
-                          style={{ width: `${s.share * 2.5}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="p-5">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    Top savings — vendors
-                  </div>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {[...VENDORS]
-                    .sort((a, b) => b.savings - a.savings)
-                    .slice(0, 5)
-                    .map((v) => (
-                      <div key={v.id} className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium">{v.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {((v.savings / v.ytdSpend) * 100).toFixed(1)}% of spend
-                          </div>
-                        </div>
-                        <div className="font-display text-emerald-700">
-                          {formatMoney(v.savings, { compact: true })}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </Card>
-            </div>
-
-            <Card className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    AI opportunities
-                  </div>
-                  <h3 className="mt-1 font-display text-xl">Projected savings · next 30 days</h3>
-                </div>
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                  +{formatMoney(4280, { compact: true })} opportunity
-                </Badge>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {[
-                  { title: "Switch tomatoes to Veritable", value: 186, why: "$0.42/lb cheaper this week" },
-                  { title: "Bundle Aperol promo", value: 312, why: "Buy 6 cs get 1 free · ends Fri" },
-                  { title: "Negotiate paper contract", value: 640, why: "RD pricing up 8% over 90 days" },
-                  { title: "Move dairy to weekly drop", value: 280, why: "Cuts spoilage 4% based on POS waste" },
-                  { title: "Claim Pacific credit memo", value: 64, why: "Branzino short on INV-2838" },
-                  { title: "Wine list re-bid Q3", value: 2800, why: "3 distributors actively pitching" },
-                ].map((o) => (
-                  <div key={o.title} className="rounded-xl border bg-card p-4">
-                    <div className="text-sm font-medium">{o.title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{o.why}</div>
-                    <div className="mt-3 flex items-center justify-between">
-                      <span className="font-display text-emerald-700">+{formatMoney(o.value)}</span>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs">
-                        Action <ArrowUpRight className="ml-1 h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </TabsContent>
-
           {/* Automation tab */}
           <TabsContent value="automation" className="space-y-4">
             <AutomationTab />
           </TabsContent>
         </Tabs>
       </main>
-
-      {/* Invoice drawer */}
-      <Sheet open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-          {open && (
-            <>
-              <SheetHeader>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={`capitalize ${statusStyles(open.status)}`}>
-                    {open.status}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">{open.id}{open.po ? ` · ${open.po}` : ""}</span>
-                </div>
-                <SheetTitle className="font-display text-2xl">{open.vendor}</SheetTitle>
-                <SheetDescription>
-                  Delivered {open.date} · Due {open.due} · {open.category}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                <div className="rounded-xl border bg-muted/30 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</div>
-                  <div className="font-display text-xl">{formatMoney(open.total)}</div>
-                </div>
-                <div className="rounded-xl border bg-emerald-50/50 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Saved</div>
-                  <div className="font-display text-xl text-emerald-700">{formatMoney(open.savings)}</div>
-                </div>
-                <div className="rounded-xl border bg-muted/30 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Items</div>
-                  <div className="font-display text-xl">{open.lines.length}</div>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  Line items
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead className="text-right">Unit</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {open.lines.map((l) => (
-                      <TableRow key={l.item}>
-                        <TableCell>
-                          <div className="font-medium">{l.item}</div>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>{l.category}</span>
-                            {l.flag === "price-up" && (
-                              <Badge variant="outline" className="border-rose-200 bg-rose-50 px-1.5 py-0 text-[10px] text-rose-700">
-                                price ↑
-                              </Badge>
-                            )}
-                            {l.flag === "short" && (
-                              <Badge variant="outline" className="border-amber-200 bg-amber-50 px-1.5 py-0 text-[10px] text-amber-700">
-                                short
-                              </Badge>
-                            )}
-                            {l.flag === "credit" && (
-                              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[10px] text-emerald-700">
-                                credit
-                              </Badge>
-                            )}
-                            {l.savings ? (
-                              <span className="text-emerald-700">· saved {formatMoney(l.savings)}</span>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{l.qty}</TableCell>
-                        <TableCell className="text-right text-sm">${l.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatMoney(l.total)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <Separator className="my-5" />
-
-              <div className="flex items-center justify-between gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Download className="h-3.5 w-3.5" /> Download PDF
-                </Button>
-                <div className="flex items-center gap-2">
-                  {open.status === "disputed" && (
-                    <Button variant="outline" size="sm">Send credit request</Button>
-                  )}
-                  {open.status !== "paid" && (
-                    <Button size="sm" className="gap-1.5">
-                      <Wallet className="h-3.5 w-3.5" /> Pay {formatMoney(open.total)}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
       <InvoiceOcrSheet
         invoiceId={ocrSheetInvoiceId}
@@ -1224,10 +1231,11 @@ function InvoicesPage() {
 // =====================================================
 // Real invoice OCR — upload + review, wired to the actual
 // vendors/invoices/invoice_lines tables and the invoice-ocr
-// Edge Function → Railway service. Everything else on this page
-// (KPIs, the "All invoices" list below, vendor cards, savings,
-// automation feed) is still Lovable-generated placeholder data —
-// this section is the one real, working slice.
+// Edge Function → Railway service. KPIs, the "All invoices" list,
+// vendor cards, and the Automation tab are now also wired to real
+// data (see InvoicesPage / AutomationTab below) — the Weekly trend
+// chart, Category mix, and AI flags card above the tabs are still
+// Lovable-generated placeholder, out of scope for now.
 // =====================================================
 
 function ocrStatusBadge(ocrStatus: string | null, status: "pending_review" | "approved") {
@@ -1605,602 +1613,117 @@ function InvoiceOcrSheet({
 }
 
 // =====================================================
-// Automation tab — auto-ingestion of vendor invoices
+// =====================================================
+// Automation tab — real Gmail-based invoice ingestion.
+// Replaces the old email/portal/API/EDI mockup with the one real
+// connected source (Gmail), a real recent-activity feed from
+// processed_email_messages, and the real pending-review queue.
 // =====================================================
 
-type SourceKind = "email" | "portal" | "edi" | "api";
-type SourceStatus = "connected" | "syncing" | "needs-auth" | "disconnected";
-
-type IngestionSource = {
-  id: string;
-  name: string;
-  kind: SourceKind;
-  status: SourceStatus;
-  detail: string;
-  lastSync: string;
-  ingested30d: number;
-  accuracy: number;
-};
-
-const SOURCES: IngestionSource[] = [
-  {
-    id: "s1",
-    name: "Gmail · invoices@thrasherspub.com",
-    kind: "email",
-    status: "connected",
-    detail: "Watching label: AP/Inbox · 14 vendors auto-detected",
-    lastSync: "1m ago",
-    ingested30d: 184,
-    accuracy: 98.4,
-  },
-  {
-    id: "s2",
-    name: "Southern Glazer's · eInvoice portal",
-    kind: "portal",
-    status: "connected",
-    detail: "Nightly login at 3:00am · headless agent",
-    lastSync: "6h ago",
-    ingested30d: 42,
-    accuracy: 99.1,
-  },
-  {
-    id: "s3",
-    name: "Sysco · Sysco Now API",
-    kind: "api",
-    status: "connected",
-    detail: "OAuth direct feed · webhook + nightly reconcile",
-    lastSync: "12m ago",
-    ingested30d: 38,
-    accuracy: 99.6,
-  },
-  {
-    id: "s4",
-    name: "Columbia Distributing · portal",
-    kind: "portal",
-    status: "syncing",
-    detail: "Pulling 4 new invoices…",
-    lastSync: "just now",
-    ingested30d: 22,
-    accuracy: 97.2,
-  },
-  {
-    id: "s5",
-    name: "Restaurant Depot · receipt scan",
-    kind: "email",
-    status: "connected",
-    detail: "OCR on PDF receipts forwarded from inbox",
-    lastSync: "2h ago",
-    ingested30d: 18,
-    accuracy: 94.0,
-  },
-  {
-    id: "s6",
-    name: "Pacific Seafood · EDI 810",
-    kind: "edi",
-    status: "needs-auth",
-    detail: "VAN credentials expired · reconnect to resume",
-    lastSync: "3d ago",
-    ingested30d: 12,
-    accuracy: 99.8,
-  },
-];
-
-type FeedEvent = {
-  id: string;
-  time: string;
-  vendor: string;
-  source: string;
-  step: string;
-  result: "auto-approved" | "queued" | "flagged" | "matched";
-  detail: string;
-};
-
-const FEED: FeedEvent[] = [
-  {
-    id: "f1",
-    time: "2m ago",
-    vendor: "Sysco Foods",
-    source: "API webhook",
-    step: "Parsed INV-2841 · matched to PO-1184",
-    result: "auto-approved",
-    detail: "$3,284.60 · 12 line items · 100% confidence",
-  },
-  {
-    id: "f2",
-    time: "14m ago",
-    vendor: "Pacific Seafood",
-    source: "Gmail attachment",
-    step: "Parsed INV-2838",
-    result: "flagged",
-    detail: "Short 4 branzino vs delivery sheet — credit memo drafted",
-  },
-  {
-    id: "f3",
-    time: "38m ago",
-    vendor: "Southern Glazer's",
-    source: "Portal scrape",
-    step: "Downloaded 3 PDFs · OCR + extracted",
-    result: "auto-approved",
-    detail: "Aperol promo credit recognized — $96 savings posted",
-  },
-  {
-    id: "f4",
-    time: "1h ago",
-    vendor: "Acme Bread",
-    source: "Gmail attachment",
-    step: "Parsed INV-2834",
-    result: "queued",
-    detail: "Net 7 overdue 2d — awaiting your payment approval",
-  },
-  {
-    id: "f5",
-    time: "2h ago",
-    vendor: "Veritable Vegetable",
-    source: "Gmail attachment",
-    step: "Parsed INV-2835 · matched PO-1178",
-    result: "matched",
-    detail: "All quantities & prices match · auto-posted",
-  },
-  {
-    id: "f6",
-    time: "3h ago",
-    vendor: "Niman Ranch",
-    source: "Gmail attachment",
-    step: "Parsed INV-2836",
-    result: "auto-approved",
-    detail: "$1,842.00 · 6 line items",
-  },
-];
-
-type ReviewItem = {
-  id: string;
-  vendor: string;
-  invoice: string;
-  total: number;
-  reason: string;
-  confidence: number;
-  arrived: string;
-};
-
-const REVIEW_QUEUE: ReviewItem[] = [
-  {
-    id: "rq1",
-    vendor: "Pacific Seafood",
-    invoice: "INV-2838",
-    total: 1284.4,
-    reason: "Quantity mismatch · billed 22 branzino, delivery sheet 18",
-    confidence: 88,
-    arrived: "14m ago",
-  },
-  {
-    id: "rq2",
-    vendor: "Sysco Foods",
-    invoice: "INV-2839",
-    total: 3284.6,
-    reason: "Heirloom tomato unit price +18% vs 30d avg",
-    confidence: 92,
-    arrived: "1h ago",
-  },
-  {
-    id: "rq3",
-    vendor: "New vendor: Olio Verde",
-    invoice: "OV-00214",
-    total: 482.0,
-    reason: "First invoice from this vendor — confirm mapping",
-    confidence: 71,
-    arrived: "4h ago",
-  },
-  {
-    id: "rq4",
-    vendor: "Restaurant Depot",
-    invoice: "RD-887421",
-    total: 1842.18,
-    reason: "PO not found · ad-hoc purchase confirmation",
-    confidence: 95,
-    arrived: "6h ago",
-  },
-];
-
-function sourceStatusBadge(s: SourceStatus) {
-  if (s === "connected")
-    return (
-      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-500" /> Connected
-      </Badge>
-    );
-  if (s === "syncing")
-    return (
-      <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
-        <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Syncing
-      </Badge>
-    );
-  if (s === "needs-auth")
-    return (
-      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
-        <AlertTriangle className="mr-1 h-3 w-3" /> Reconnect
-      </Badge>
-    );
-  return (
-    <Badge variant="outline" className="border-muted bg-muted/40 text-muted-foreground">
-      Disconnected
-    </Badge>
-  );
-}
-
-function kindIcon(k: SourceKind) {
-  if (k === "email") return Mail;
-  if (k === "portal") return Globe;
-  if (k === "edi") return Plug;
-  return Zap;
-}
-
-function resultBadge(r: FeedEvent["result"]) {
-  const map = {
-    "auto-approved": "border-emerald-200 bg-emerald-50 text-emerald-700",
-    matched: "border-sky-200 bg-sky-50 text-sky-700",
-    queued: "border-amber-200 bg-amber-50 text-amber-800",
-    flagged: "border-rose-200 bg-rose-50 text-rose-700",
-  } as const;
-  return (
-    <Badge variant="outline" className={`capitalize ${map[r]}`}>
-      {r.replace("-", " ")}
-    </Badge>
-  );
-}
-
 function AutomationTab() {
-  const connected = SOURCES.filter((s) => s.status === "connected" || s.status === "syncing").length;
-  const total30d = FEED.length + REVIEW_QUEUE.length + 168;
-  const autoRate = 92;
+  const { data: status } = useEmailIngestionStatus();
+  const { data: activity = [] } = useEmailIngestionActivity();
+  const { data: allInvoices = [] } = useRealInvoices();
+  const pending = allInvoices.filter((i) => i.status === "pending_review");
 
   return (
     <div className="space-y-4">
-      {/* Hero strip */}
       <Card className="border-primary/30 bg-primary/[0.04] p-5">
         <div className="flex flex-wrap items-start gap-4">
           <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary">
-            <Bot className="h-5 w-5" />
+            <Mail className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] uppercase tracking-[0.18em] text-primary/80">
-              Invoice ingestion agent
+              Email ingestion
             </div>
-            <h3 className="font-display text-xl">
-              Pulling invoices automatically from email, vendor portals, and EDI feeds
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Every PDF, email, and portal upload is OCR'd, matched to a PO and delivery receipt,
-              then auto-approved or queued for your eye. You stop entering invoices.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" /> Sync now
-            </Button>
-            <Button size="sm" className="h-9 gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> Connect source
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          <div className="rounded-xl border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Sources live</div>
-            <div className="font-display text-2xl">{connected}/{SOURCES.length}</div>
-          </div>
-          <div className="rounded-xl border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Ingested · 30d</div>
-            <div className="font-display text-2xl">{total30d}</div>
-            <div className="text-xs text-emerald-700">+24% vs last month</div>
-          </div>
-          <div className="rounded-xl border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Auto-approved</div>
-            <div className="font-display text-2xl">{autoRate}%</div>
-            <div className="text-xs text-muted-foreground">{100 - autoRate}% routed to review</div>
-          </div>
-          <div className="rounded-xl border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Time saved</div>
-            <div className="font-display text-2xl">14.2 hrs</div>
-            <div className="text-xs text-muted-foreground">vs manual entry · 30d</div>
+            {status ? (
+              <>
+                <h3 className="font-display text-xl">{status.connectedEmail}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {status.labelFilter
+                    ? `Watching the "${status.labelFilter}" label · checks every 15 minutes`
+                    : "No label set — checks every message with a PDF attachment"}
+                  {status.lastSyncedAt &&
+                    ` · last ran ${new Date(status.lastSyncedAt).toLocaleString()}`}
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="font-display text-xl">No inbox connected</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Email ingestion hasn't been set up for this restaurant yet.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Sources */}
         <Card className="p-5 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Inbox sources
-              </div>
-              <h3 className="mt-1 font-display text-xl">Where invoices come from</h3>
-            </div>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> Add source
-            </Button>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            Recent activity
           </div>
-
-          <div className="mt-4 space-y-2">
-            {SOURCES.map((s) => {
-              const Icon = kindIcon(s.kind);
-              return (
-                <div key={s.id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="truncate font-medium">{s.name}</div>
-                      <Badge variant="outline" className="text-[10px] uppercase">
-                        {s.kind}
-                      </Badge>
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">{s.detail}</div>
-                  </div>
-                  <div className="hidden text-right text-xs text-muted-foreground sm:block">
-                    <div>{s.ingested30d} · 30d</div>
-                    <div>{s.accuracy}% acc.</div>
-                  </div>
-                  <div className="hidden text-xs text-muted-foreground md:block">{s.lastSync}</div>
-                  {sourceStatusBadge(s.status)}
-                </div>
-              );
-            })}
-          </div>
-
-          <Separator className="my-5" />
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { label: "Gmail / Google Workspace", icon: Mail },
-              { label: "Outlook / Microsoft 365", icon: Mail },
-              { label: "Vendor portal (custom)", icon: Globe },
-              { label: "EDI 810 / VAN", icon: Plug },
-            ].map((c) => (
-              <button
-                key={c.label}
-                className="flex items-center gap-2 rounded-xl border border-dashed bg-card/60 p-3 text-left text-sm hover:bg-accent"
-              >
-                <c.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="truncate">{c.label}</span>
-                <Plus className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        {/* Live activity feed */}
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Live activity
-              </div>
-              <h3 className="mt-1 font-display text-xl">Ingestion feed</h3>
-            </div>
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
-            </span>
-          </div>
+          <h3 className="mt-1 font-display text-xl">Emails processed</h3>
           <div className="mt-4 space-y-3">
-            {FEED.map((f) => (
-              <div key={f.id} className="border-l-2 border-primary/40 pl-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{f.time}</span>
-                  <span>·</span>
-                  <span>{f.source}</span>
+            {activity.map((e) => (
+              <div key={e.id} className="border-l-2 border-primary/40 pl-3">
+                <div className="text-xs text-muted-foreground">
+                  {new Date(e.processedAt).toLocaleString()}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <span className="text-sm font-medium">{f.vendor}</span>
-                  {resultBadge(f.result)}
+                  <span className="text-sm font-medium">
+                    {e.vendorName ?? (e.invoiceId ? "Needs vendor" : "No PDF found")}
+                  </span>
+                  {e.invoiceId ? (
+                    <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+                      Invoice created
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="border-muted bg-muted/40 text-muted-foreground"
+                    >
+                      Skipped
+                    </Badge>
+                  )}
                 </div>
-                <div className="text-xs text-muted-foreground">{f.step}</div>
-                <div className="text-xs">{f.detail}</div>
+                {e.totalCents != null && (
+                  <div className="text-xs text-muted-foreground">
+                    {formatMoney(e.totalCents / 100)}
+                  </div>
+                )}
               </div>
             ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* Review queue */}
-      <Card className="p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <FileSearch className="h-3.5 w-3.5" /> Needs your eye
-            </div>
-            <h3 className="mt-1 font-display text-xl">Review queue · {REVIEW_QUEUE.length}</h3>
-          </div>
-          <Button variant="outline" size="sm" className="h-8">
-            Approve all matching rules
-          </Button>
-        </div>
-        <Table className="mt-3">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Vendor / Invoice</TableHead>
-              <TableHead>Why flagged</TableHead>
-              <TableHead>Confidence</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead>Arrived</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {REVIEW_QUEUE.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell>
-                  <div className="font-medium">{r.vendor}</div>
-                  <div className="text-xs text-muted-foreground">{r.invoice}</div>
-                </TableCell>
-                <TableCell className="text-sm">{r.reason}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Progress value={r.confidence} className="h-1.5 w-20" />
-                    <span className="text-xs font-medium">{r.confidence}%</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-medium">{formatMoney(r.total)}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{r.arrived}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-600">
-                      <XCircle className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" className="h-7 gap-1 px-2">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Approve
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
-
-      {/* Agent settings + pipeline */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-5">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Agent rules & guardrails
-            </div>
-          </div>
-          <h3 className="mt-1 font-display text-xl">How aggressively to automate</h3>
-
-          <div className="mt-4 space-y-4 text-sm">
-            <div>
-              <div className="flex items-center justify-between">
-                <Label>Auto-approve confidence threshold</Label>
-                <span className="font-medium">95%</span>
-              </div>
-              <Progress value={95} className="mt-2 h-1.5" />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Anything below 95% extraction confidence goes to your review queue.
+            {activity.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No emails processed yet.
               </p>
-            </div>
-
-            {[
-              {
-                label: "Auto-approve trusted vendors under $500 with matching PO",
-                desc: "Sysco, Niman Ranch, Veritable, Acme Bread, Columbia",
-                on: true,
-              },
-              {
-                label: "Auto-approve 3-way matched invoices (PO + delivery + invoice)",
-                desc: "All quantities and prices within 2% tolerance",
-                on: true,
-              },
-              {
-                label: "Require approval for invoices >$2,500",
-                desc: "Regardless of vendor or PO match",
-                on: true,
-              },
-              {
-                label: "Require approval on price increase >10%",
-                desc: "Compared to trailing 30-day average unit price",
-                on: true,
-              },
-              {
-                label: "Always review first 3 invoices from new vendor",
-                desc: "Helps the agent learn each vendor's layout",
-                on: true,
-              },
-              {
-                label: "Auto-pay invoices marked approved on due date",
-                desc: "Uses your default payment account",
-                on: false,
-              },
-            ].map((r) => (
-              <div key={r.label} className="flex items-start justify-between gap-3 rounded-lg border bg-card p-3">
-                <div>
-                  <div className="text-sm font-medium">{r.label}</div>
-                  <div className="text-xs text-muted-foreground">{r.desc}</div>
-                </div>
-                <Switch defaultChecked={r.on} />
-              </div>
-            ))}
-          </div>
-
-          <Separator className="my-5" />
-
-          <div className="space-y-2 text-sm">
-            <Label>Notify on exceptions</Label>
-            <Input defaultValue="bali@thrasherspub.com, ap@thrasherspub.com" />
-            <p className="text-xs text-muted-foreground">
-              Email + push when something needs review. Daily digest at 9am.
-            </p>
+            )}
           </div>
         </Card>
 
         <Card className="p-5">
-          <div className="flex items-center gap-2">
-            <Brain className="h-4 w-4 text-primary" />
-            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              How the agent works
-            </div>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            <FileSearch className="h-3.5 w-3.5" /> Needs your eye
           </div>
-          <h3 className="mt-1 font-display text-xl">Extraction pipeline</h3>
-
-          <ol className="mt-4 space-y-3">
-            {[
-              {
-                icon: Mail,
-                title: "1 · Collect",
-                detail: "Watches inbox, portals, and EDI feeds 24/7 for new invoices.",
-              },
-              {
-                icon: FileSearch,
-                title: "2 · OCR + parse",
-                detail: "Reads PDFs, photos, scans. Recovers line items even from messy layouts.",
-              },
-              {
-                icon: Wand2,
-                title: "3 · Extract",
-                detail:
-                  "AI pulls vendor, invoice #, dates, line items, unit prices, taxes, totals into structured JSON.",
-              },
-              {
-                icon: CheckCircle2,
-                title: "4 · 3-way match",
-                detail: "Cross-checks invoice ↔ purchase order ↔ delivery receipt.",
-              },
-              {
-                icon: AlertTriangle,
-                title: "5 · Flag exceptions",
-                detail:
-                  "Catches price hikes, short qty, duplicates, missing POs, new vendors.",
-              },
-              {
-                icon: Sparkles,
-                title: "6 · Post or route",
-                detail: "Auto-posts if confident, otherwise queues for your 1-click approval.",
-              },
-            ].map((step) => (
-              <li key={step.title} className="flex items-start gap-3">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                  <step.icon className="h-4 w-4" />
-                </div>
+          <h3 className="mt-1 font-display text-xl">Pending review · {pending.length}</h3>
+          <div className="mt-4 space-y-3">
+            {pending.map((i) => (
+              <div key={i.id} className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium">{step.title}</div>
-                  <div className="text-xs text-muted-foreground">{step.detail}</div>
+                  <div className="text-sm font-medium">{i.vendorName ?? "Needs vendor"}</div>
+                  <div className="text-xs text-muted-foreground">{i.invoiceNumber ?? "—"}</div>
                 </div>
-              </li>
+                <div className="font-display">
+                  {i.totalCents != null ? formatMoney(i.totalCents / 100) : "—"}
+                </div>
+              </div>
             ))}
-          </ol>
-
-          <Separator className="my-5" />
-
-          <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-            <div className="font-medium text-foreground">For your Claude backend</div>
-            Suggested stack: Gmail / Microsoft Graph for email watch, Mistral OCR or Google
-            Document AI for layout, Claude 3.5 Sonnet for line-item extraction, Playwright for
-            portal scraping, and your DB to dedupe by invoice #.
+            {pending.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nothing pending.</p>
+            )}
           </div>
         </Card>
       </div>

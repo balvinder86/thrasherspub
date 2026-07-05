@@ -81,7 +81,9 @@ export function useCreateVendor() {
   return useMutation({
     mutationFn: async (input: VendorInput) => {
       if (!restaurantId) throw new Error("no current restaurant");
-      const { error } = await supabase.from("vendors").insert({ restaurant_id: restaurantId, ...toRow(input) });
+      const { error } = await supabase
+        .from("vendors")
+        .insert({ restaurant_id: restaurantId, ...toRow(input) });
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vendors"] }),
@@ -161,7 +163,11 @@ export function useUpdateIngredient() {
     mutationFn: async ({ id, ...input }: IngredientInput & { id: string }) => {
       const { error } = await supabase
         .from("ingredients")
-        .update({ name: input.name, unit: input.unit, unit_cost_cents: input.unitCostCents ?? null })
+        .update({
+          name: input.name,
+          unit: input.unit,
+          unit_cost_cents: input.unitCostCents ?? null,
+        })
         .eq("id", id);
       if (error) throw error;
     },
@@ -486,7 +492,12 @@ export function useAddRecipeLine() {
   const locationId = useCurrentLocationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { menuItemPosId: string; ingredientId: string; quantity: number; unit: string }) => {
+    mutationFn: async (input: {
+      menuItemPosId: string;
+      ingredientId: string;
+      quantity: number;
+      unit: string;
+    }) => {
       if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
       const { error } = await supabase.from("recipe_lines").insert({
         restaurant_id: restaurantId,
@@ -599,6 +610,141 @@ export function useSetInvoiceVendor() {
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+  });
+}
+
+// Real per-vendor spend, computed from approved invoices only (spend
+// that's actually been confirmed, not just drafted). No on-time
+// delivery % or price-accuracy score — those aren't tracked anywhere
+// in the schema, so they're not surfaced rather than being faked.
+export type VendorSpendSummary = {
+  vendorId: string;
+  name: string;
+  terms: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  approvedSpendCents: number;
+  approvedInvoiceCount: number;
+  pendingInvoiceCount: number;
+};
+
+export function useVendorSpendSummary() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["vendor-spend-summary", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<VendorSpendSummary[]> => {
+      const [vendorsRes, invoicesRes] = await Promise.all([
+        supabase.from("vendors").select("*").order("name"),
+        supabase.from("invoices").select("vendor_id, status, total_cents"),
+      ]);
+      if (vendorsRes.error) throw vendorsRes.error;
+      if (invoicesRes.error) throw invoicesRes.error;
+
+      const byVendor = new Map<
+        string,
+        { approvedCents: number; approvedCount: number; pendingCount: number }
+      >();
+      for (const inv of invoicesRes.data ?? []) {
+        if (!inv.vendor_id) continue;
+        const cur = byVendor.get(inv.vendor_id) ?? {
+          approvedCents: 0,
+          approvedCount: 0,
+          pendingCount: 0,
+        };
+        if (inv.status === "approved") {
+          cur.approvedCents += inv.total_cents ?? 0;
+          cur.approvedCount += 1;
+        } else {
+          cur.pendingCount += 1;
+        }
+        byVendor.set(inv.vendor_id, cur);
+      }
+
+      return (vendorsRes.data ?? []).map((v) => {
+        const stats = byVendor.get(v.id) ?? { approvedCents: 0, approvedCount: 0, pendingCount: 0 };
+        return {
+          vendorId: v.id,
+          name: v.name,
+          terms: v.payment_terms ?? "",
+          contactName: v.contact_name ?? "",
+          email: v.contact_email ?? "",
+          phone: v.phone ?? "",
+          approvedSpendCents: stats.approvedCents,
+          approvedInvoiceCount: stats.approvedCount,
+          pendingInvoiceCount: stats.pendingCount,
+        };
+      });
+    },
+  });
+}
+
+// Real Gmail ingestion status — surfaced instead of the fictional
+// multi-source (email/portal/API/EDI) automation mockup, since Gmail
+// is the one real connected source right now.
+export type EmailIngestionStatus = {
+  connectedEmail: string;
+  labelFilter: string | null;
+  lastSyncedAt: string | null;
+};
+
+export function useEmailIngestionStatus() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["email-ingestion-status", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<EmailIngestionStatus | null> => {
+      const { data, error } = await supabase
+        .from("email_ingestion_credentials")
+        .select("connected_email, label_filter, last_synced_at")
+        .eq("provider", "gmail")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return {
+        connectedEmail: data.connected_email,
+        labelFilter: data.label_filter,
+        lastSyncedAt: data.last_synced_at,
+      };
+    },
+  });
+}
+
+export type EmailIngestionEvent = {
+  id: string;
+  processedAt: string;
+  invoiceId: string | null;
+  vendorName: string | null;
+  totalCents: number | null;
+};
+
+export function useEmailIngestionActivity() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["email-ingestion-activity", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<EmailIngestionEvent[]> => {
+      const { data, error } = await supabase
+        .from("processed_email_messages")
+        .select("id, processed_at, invoice_id, invoices(total_cents, vendors(name))")
+        .order("processed_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      type Row = {
+        id: string;
+        processed_at: string;
+        invoice_id: string | null;
+        invoices: { total_cents: number | null; vendors: { name: string } | null } | null;
+      };
+      return ((data ?? []) as unknown as Row[]).map((row) => ({
+        id: row.id,
+        processedAt: row.processed_at,
+        invoiceId: row.invoice_id,
+        vendorName: row.invoices?.vendors?.name ?? null,
+        totalCents: row.invoices?.total_cents ?? null,
+      }));
+    },
   });
 }
 
