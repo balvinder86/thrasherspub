@@ -534,13 +534,13 @@ const SPEND_TREND = [
   { week: "W26", spend: 27680, savings: 2920 },
 ];
 
-const CATEGORY_MIX = [
-  { name: "Beer & Wine", value: 28, color: "hsl(var(--primary))" },
-  { name: "Meat & Seafood", value: 22, color: "hsl(15 65% 52%)" },
-  { name: "Produce", value: 16, color: "hsl(120 25% 45%)" },
-  { name: "Dairy", value: 12, color: "hsl(38 60% 55%)" },
-  { name: "Dry Goods", value: 14, color: "hsl(25 40% 40%)" },
-  { name: "Paper & Chem", value: 8, color: "hsl(220 15% 55%)" },
+const CATEGORY_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(15 65% 52%)",
+  "hsl(120 25% 45%)",
+  "hsl(38 60% 55%)",
+  "hsl(25 40% 40%)",
+  "hsl(220 15% 55%)",
 ];
 
 const AI_FLAGS = [
@@ -808,35 +808,57 @@ function InvoicesPage() {
               Category mix
             </div>
             <h3 className="mt-1 font-display text-xl">Where your dollars go</h3>
-            <div className="mt-2 h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={CATEGORY_MIX}
-                    dataKey="value"
-                    innerRadius={48}
-                    outerRadius={72}
-                    paddingAngle={2}
-                  >
-                    {CATEGORY_MIX.map((c) => (
-                      <Cell key={c.name} fill={c.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => `${v}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-1.5">
-              {CATEGORY_MIX.map((c) => (
-                <div key={c.name} className="flex items-center justify-between text-xs">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
-                    {c.name}
-                  </span>
-                  <span className="font-medium text-foreground">{c.value}%</span>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Matched line items, all approved invoices
+            </p>
+            {categorySpend.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No matched line items yet.
+              </p>
+            ) : (
+              <>
+                <div className="mt-2 h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categorySpend}
+                        dataKey="spendCents"
+                        nameKey="category"
+                        innerRadius={48}
+                        outerRadius={72}
+                        paddingAngle={2}
+                      >
+                        {categorySpend.map((c, i) => (
+                          <Cell
+                            key={c.category}
+                            fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatMoney(v / 100)} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1.5">
+                  {categorySpend.map((c, i) => {
+                    const total = categorySpend.reduce((sum, x) => sum + x.spendCents, 0);
+                    const pct = total > 0 ? Math.round((c.spendCents / total) * 100) : 0;
+                    return (
+                      <div key={c.category} className="flex items-center justify-between text-xs">
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }}
+                          />
+                          {c.category}
+                        </span>
+                        <span className="font-medium text-foreground">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </Card>
         </div>
 
@@ -1251,9 +1273,10 @@ function InvoicesPage() {
 // Real invoice OCR — upload + review, wired to the actual
 // vendors/invoices/invoice_lines tables and the invoice-ocr
 // Edge Function → Railway service. KPIs, the "All invoices" list,
-// vendor cards, and the Automation tab are now also wired to real
-// data (see InvoicesPage / AutomationTab below) — the Weekly trend
-// chart, Category mix, and AI flags card above the tabs are still
+// vendor cards, the Automation/Savings/Line items tabs, and the
+// "Where your dollars go" category mix are now also wired to real
+// data (see InvoicesPage / AutomationTab / SavingsTab below) — the
+// Weekly trend chart and AI flags card above the tabs are still
 // Lovable-generated placeholder, out of scope for now.
 // =====================================================
 
