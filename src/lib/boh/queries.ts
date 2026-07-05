@@ -527,8 +527,8 @@ export function useDeleteRecipeLine() {
 
 export type RealInvoice = {
   id: string;
-  vendorId: string;
-  vendorName: string;
+  vendorId: string | null;
+  vendorName: string | null;
   invoiceNumber: string | null;
   invoiceDate: string | null;
   totalCents: number | null;
@@ -536,6 +536,11 @@ export type RealInvoice = {
   ocrStatus: string | null;
   sourceFileUrl: string | null;
   createdAt: string;
+  // Set when this invoice arrived via email ingestion (no vendor was
+  // known at creation time) — surfaced so a reviewer has something to
+  // go on when picking the vendor, instead of guessing blind.
+  sourceEmailFrom: string | null;
+  sourceEmailSubject: string | null;
 };
 
 export function useRealInvoices() {
@@ -547,13 +552,13 @@ export function useRealInvoices() {
       const { data, error } = await supabase
         .from("invoices")
         .select(
-          "id, vendor_id, invoice_number, invoice_date, total_cents, status, ocr_status, source_file_url, created_at, vendors(name)",
+          "id, vendor_id, invoice_number, invoice_date, total_cents, status, ocr_status, source_file_url, created_at, source_email_from, source_email_subject, vendors(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
       type Row = {
         id: string;
-        vendor_id: string;
+        vendor_id: string | null;
         invoice_number: string | null;
         invoice_date: string | null;
         total_cents: number | null;
@@ -561,12 +566,14 @@ export function useRealInvoices() {
         ocr_status: string | null;
         source_file_url: string | null;
         created_at: string;
+        source_email_from: string | null;
+        source_email_subject: string | null;
         vendors: { name: string } | null;
       };
       return ((data ?? []) as unknown as Row[]).map((row) => ({
         id: row.id,
         vendorId: row.vendor_id,
-        vendorName: row.vendors?.name ?? "Unknown vendor",
+        vendorName: row.vendors?.name ?? null,
         invoiceNumber: row.invoice_number,
         invoiceDate: row.invoice_date,
         totalCents: row.total_cents,
@@ -574,8 +581,24 @@ export function useRealInvoices() {
         ocrStatus: row.ocr_status,
         sourceFileUrl: row.source_file_url,
         createdAt: row.created_at,
+        sourceEmailFrom: row.source_email_from,
+        sourceEmailSubject: row.source_email_subject,
       }));
     },
+  });
+}
+
+export function useSetInvoiceVendor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ invoiceId, vendorId }: { invoiceId: string; vendorId: string }) => {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ vendor_id: vendorId })
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
   });
 }
 

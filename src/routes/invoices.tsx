@@ -78,6 +78,7 @@ import {
   useIngredients,
   useRealInvoiceLines,
   useRealInvoices,
+  useSetInvoiceVendor,
   useUpdateInvoiceLineIngredient,
   useUploadInvoice,
   useVendors as useRealVendors,
@@ -1285,7 +1286,13 @@ function RealInvoiceUploadsCard({ onOpenInvoice }: { onOpenInvoice: (id: string)
         <TableBody>
           {invoices.map((inv) => (
             <TableRow key={inv.id} className="cursor-pointer" onClick={() => onOpenInvoice(inv.id)}>
-              <TableCell className="font-medium">{inv.vendorName}</TableCell>
+              <TableCell className="font-medium">
+                {inv.vendorName ?? (
+                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                    Needs vendor
+                  </Badge>
+                )}
+              </TableCell>
               <TableCell className="text-sm">{inv.invoiceNumber ?? "—"}</TableCell>
               <TableCell className="text-sm">{inv.invoiceDate ?? "—"}</TableCell>
               <TableCell className="text-right font-medium">
@@ -1333,6 +1340,7 @@ function InvoiceOcrSheet({
   const checkOcr = useCheckOcr();
   const approveInvoice = useApproveInvoice();
   const updateLineIngredient = useUpdateInvoiceLineIngredient();
+  const setInvoiceVendor = useSetInvoiceVendor();
 
   const open = invoiceId !== undefined;
 
@@ -1459,6 +1467,36 @@ function InvoiceOcrSheet({
           </div>
         )}
 
+        {activeId && invoice?.ocrStatus === "ready" && !invoice.vendorId && (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-amber-800">
+              This invoice arrived by email — pick the vendor
+            </div>
+            {(invoice.sourceEmailFrom || invoice.sourceEmailSubject) && (
+              <div className="mt-1.5 text-xs text-amber-900">
+                {invoice.sourceEmailFrom && <div>From: {invoice.sourceEmailFrom}</div>}
+                {invoice.sourceEmailSubject && <div>Subject: {invoice.sourceEmailSubject}</div>}
+              </div>
+            )}
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  setInvoiceVendor.mutate({ invoiceId: activeId, vendorId: e.target.value });
+                }
+              }}
+              className="mt-2.5 h-9 w-full rounded-md border border-amber-300 bg-white px-3 text-sm"
+            >
+              <option value="">Select a vendor…</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {activeId && invoice?.ocrStatus === "ready" && (
           <>
             <div className="mt-5 grid grid-cols-3 gap-3">
@@ -1552,7 +1590,8 @@ function InvoiceOcrSheet({
                   size="sm"
                   className="gap-1.5"
                   onClick={() => approveInvoice.mutate(activeId)}
-                  disabled={approveInvoice.isPending}
+                  disabled={approveInvoice.isPending || !invoice.vendorId}
+                  title={!invoice.vendorId ? "Pick a vendor above before approving" : undefined}
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" /> Approve invoice
                 </Button>
