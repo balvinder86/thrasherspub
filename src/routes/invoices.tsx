@@ -311,8 +311,8 @@ function InvoicesPage() {
             </div>
             {totalSpendInWindow === 0 ? (
               <div className="mt-4 flex h-[260px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
-                No approved invoices in the last 8 weeks yet — approve invoices
-                to see weekly spend and savings appear here.
+                No approved invoices in the last 8 weeks yet — approve invoices to see weekly spend
+                and savings appear here.
               </div>
             ) : (
               <div className="mt-4 h-[260px]">
@@ -370,8 +370,8 @@ function InvoicesPage() {
             <h3 className="mt-1 font-display text-xl">Where your dollars go</h3>
             {categoryMix.length === 0 ? (
               <div className="mt-4 flex h-[180px] items-center justify-center rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
-                Category mix appears once invoice line items are matched to
-                ingredients with a category.
+                Category mix appears once invoice line items are matched to ingredients with a
+                category.
               </div>
             ) : (
               <>
@@ -408,7 +408,6 @@ function InvoicesPage() {
             )}
           </Card>
         </div>
-
 
         {/* Tabs */}
         <Tabs defaultValue="invoices" className="space-y-4">
