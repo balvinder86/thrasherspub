@@ -309,51 +309,58 @@ function InvoicesPage() {
                 </span>
               </div>
             </div>
-            <div className="mt-4 h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={SPEND_TREND}>
-                  <defs>
-                    <linearGradient id="sp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="sv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    stroke="hsl(var(--border))"
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
-                  <XAxis dataKey="week" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                  <YAxis
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={11}
-                    tickFormatter={(v) => `$${v / 1000}k`}
-                  />
-                  <Tooltip
-                    formatter={(v: number) => formatMoney(v)}
-                    contentStyle={{ borderRadius: 10, border: "1px solid hsl(var(--border))" }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="spend"
-                    stroke="hsl(var(--primary))"
-                    fill="url(#sp)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="savings"
-                    stroke="#10b981"
-                    fill="url(#sv)"
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {totalSpendInWindow === 0 ? (
+              <div className="mt-4 flex h-[260px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
+                No approved invoices in the last 8 weeks yet — approve invoices
+                to see weekly spend and savings appear here.
+              </div>
+            ) : (
+              <div className="mt-4 h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={spendTrend}>
+                    <defs>
+                      <linearGradient id="sp" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="sv" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      stroke="hsl(var(--border))"
+                      strokeDasharray="3 3"
+                      vertical={false}
+                    />
+                    <XAxis dataKey="week" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      tickFormatter={(v) => `$${v / 1000}k`}
+                    />
+                    <Tooltip
+                      formatter={(v: number) => formatMoney(v)}
+                      contentStyle={{ borderRadius: 10, border: "1px solid hsl(var(--border))" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="spend"
+                      stroke="hsl(var(--primary))"
+                      fill="url(#sp)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="savings"
+                      stroke="#10b981"
+                      fill="url(#sv)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </Card>
 
           <Card className="p-5">
@@ -361,93 +368,47 @@ function InvoicesPage() {
               Category mix
             </div>
             <h3 className="mt-1 font-display text-xl">Where your dollars go</h3>
-            <div className="mt-2 h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={CATEGORY_MIX}
-                    dataKey="value"
-                    innerRadius={48}
-                    outerRadius={72}
-                    paddingAngle={2}
-                  >
-                    {CATEGORY_MIX.map((c) => (
-                      <Cell key={c.name} fill={c.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => `${v}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-1.5">
-              {CATEGORY_MIX.map((c) => (
-                <div key={c.name} className="flex items-center justify-between text-xs">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
-                    {c.name}
-                  </span>
-                  <span className="font-medium text-foreground">{c.value}%</span>
+            {categoryMix.length === 0 ? (
+              <div className="mt-4 flex h-[180px] items-center justify-center rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
+                Category mix appears once invoice line items are matched to
+                ingredients with a category.
+              </div>
+            ) : (
+              <>
+                <div className="mt-2 h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryMix}
+                        dataKey="value"
+                        innerRadius={48}
+                        outerRadius={72}
+                        paddingAngle={2}
+                      >
+                        {categoryMix.map((c) => (
+                          <Cell key={c.name} fill={c.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatMoney(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1.5">
+                  {categoryMix.map((c) => (
+                    <div key={c.name} className="flex items-center justify-between text-xs">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
+                        {c.name}
+                      </span>
+                      <span className="font-medium text-foreground">{c.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </Card>
         </div>
 
-        {/* AI flags */}
-        <Card className="border-primary/30 bg-primary/[0.04] p-5">
-          <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
-              <Bot className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-primary/80">
-                AP Co-pilot
-              </div>
-              <div className="font-display text-lg">4 things worth your attention this week</div>
-            </div>
-            <Button size="sm" variant="outline" className="ml-auto h-8 gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" /> Run weekly audit
-            </Button>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {AI_FLAGS.map((f) => {
-              const toneCls =
-                f.tone === "danger"
-                  ? "border-rose-200 bg-rose-50/40"
-                  : f.tone === "success"
-                    ? "border-emerald-200 bg-emerald-50/40"
-                    : "border-amber-200 bg-amber-50/40";
-              const iconCls =
-                f.tone === "danger"
-                  ? "bg-rose-100 text-rose-700"
-                  : f.tone === "success"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-amber-100 text-amber-700";
-              return (
-                <div key={f.title} className={`rounded-xl border p-4 ${toneCls}`}>
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${iconCls}`}
-                    >
-                      <f.icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{f.title}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{f.detail}</div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="mt-2 h-7 gap-1 px-2 text-xs text-primary hover:bg-primary/10"
-                      >
-                        {f.action} <ArrowUpRight className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
 
         {/* Tabs */}
         <Tabs defaultValue="invoices" className="space-y-4">
