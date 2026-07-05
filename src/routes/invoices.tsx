@@ -195,6 +195,56 @@ function InvoicesPage() {
     };
   }, [realInvoices]);
 
+  // Real 8-week spend + savings trend, computed from approved invoices.
+  // Bucketed by ISO week (Mon-based) using invoice_date when present,
+  // falling back to created_at.
+  const spendTrend = useMemo(() => {
+    const buckets = new Map<string, { spend: number; savings: number; date: Date }>();
+    const now = new Date();
+    const startOfWeek = (d: Date) => {
+      const c = new Date(d);
+      c.setHours(0, 0, 0, 0);
+      const day = c.getDay();
+      const diff = (day + 6) % 7; // days since Monday
+      c.setDate(c.getDate() - diff);
+      return c;
+    };
+    // Pre-seed the last 8 weeks so gaps still render.
+    for (let i = 7; i >= 0; i--) {
+      const w = startOfWeek(new Date(now.getTime() - i * 7 * 86400000));
+      buckets.set(w.toISOString().slice(0, 10), { spend: 0, savings: 0, date: w });
+    }
+    for (const inv of realInvoices) {
+      if (inv.status !== "approved") continue;
+      const raw = inv.invoiceDate ?? inv.createdAt;
+      if (!raw) continue;
+      const w = startOfWeek(new Date(raw));
+      const key = w.toISOString().slice(0, 10);
+      const bucket = buckets.get(key);
+      if (!bucket) continue; // outside the 8-week window
+      bucket.spend += (inv.totalCents ?? 0) / 100;
+      bucket.savings += (inv.discountCents ?? 0) / 100;
+    }
+    return Array.from(buckets.values()).map((b) => ({
+      week: b.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      spend: Math.round(b.spend),
+      savings: Math.round(b.savings),
+    }));
+  }, [realInvoices]);
+
+  const totalSpendInWindow = spendTrend.reduce((a, b) => a + b.spend, 0);
+
+  const categoryMix = useMemo(() => {
+    const total = categorySpend.reduce((a, b) => a + b.spendCents, 0);
+    if (total === 0) return [] as { name: string; value: number; color: string; pct: number }[];
+    return categorySpend.map((c, i) => ({
+      name: c.category,
+      value: c.spendCents / 100,
+      pct: Math.round((c.spendCents / total) * 100),
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }));
+  }, [categorySpend]);
+
   const filteredInvoices = useMemo(() => {
     return realInvoices.filter((inv) => {
       if (statusFilter !== "all" && inv.status !== statusFilter) return false;
