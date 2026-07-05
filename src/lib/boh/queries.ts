@@ -543,6 +543,10 @@ export type RealInvoice = {
   invoiceNumber: string | null;
   invoiceDate: string | null;
   totalCents: number | null;
+  // Entered by the reviewer at approve time (e.g. the "TOTAL
+  // DISCOUNTS"/"Discount$" figure vendors print on the invoice) — not
+  // OCR-extracted, since the Mindee model wasn't trained on this field.
+  discountCents: number | null;
   status: "pending_review" | "approved";
   ocrStatus: string | null;
   sourceFileUrl: string | null;
@@ -563,7 +567,7 @@ export function useRealInvoices() {
       const { data, error } = await supabase
         .from("invoices")
         .select(
-          "id, vendor_id, invoice_number, invoice_date, total_cents, status, ocr_status, source_file_url, created_at, source_email_from, source_email_subject, vendors(name)",
+          "id, vendor_id, invoice_number, invoice_date, total_cents, discount_cents, status, ocr_status, source_file_url, created_at, source_email_from, source_email_subject, vendors(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -573,6 +577,7 @@ export function useRealInvoices() {
         invoice_number: string | null;
         invoice_date: string | null;
         total_cents: number | null;
+        discount_cents: number | null;
         status: "pending_review" | "approved";
         ocr_status: string | null;
         source_file_url: string | null;
@@ -588,6 +593,7 @@ export function useRealInvoices() {
         invoiceNumber: row.invoice_number,
         invoiceDate: row.invoice_date,
         totalCents: row.total_cents,
+        discountCents: row.discount_cents,
         status: row.status,
         ocrStatus: row.ocr_status,
         sourceFileUrl: row.source_file_url,
@@ -606,6 +612,26 @@ export function useSetInvoiceVendor() {
       const { error } = await supabase
         .from("invoices")
         .update({ vendor_id: vendorId })
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+  });
+}
+
+export function useSetInvoiceDiscount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      invoiceId,
+      discountCents,
+    }: {
+      invoiceId: string;
+      discountCents: number | null;
+    }) => {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ discount_cents: discountCents })
         .eq("id", invoiceId);
       if (error) throw error;
     },
@@ -676,6 +702,90 @@ export function useVendorSpendSummary() {
           pendingInvoiceCount: stats.pendingCount,
         };
       });
+    },
+  });
+}
+
+// Real savings, built entirely from discount_cents values a reviewer
+// typed in off the actual invoice (see useSetInvoiceDiscount) — not
+// projected/AI-estimated. Only approved invoices count, and only ones
+// where a discount was actually entered; invoices with no discount
+// entered yet are excluded rather than treated as $0 savings, since
+// "not yet reviewed for a discount" and "genuinely had none" aren't
+// the same thing.
+export type SavingsSummary = {
+  totalDiscountCents: number;
+  invoicesWithDiscountCount: number;
+  approvedInvoiceCount: number;
+  byVendor: { vendorId: string; name: string; discountCents: number; invoiceCount: number }[];
+  invoices: {
+    id: string;
+    vendorName: string | null;
+    invoiceNumber: string | null;
+    invoiceDate: string | null;
+    discountCents: number;
+    totalCents: number | null;
+  }[];
+};
+
+export function useSavingsSummary() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["savings-summary", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<SavingsSummary> => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(
+          "id, invoice_number, invoice_date, total_cents, discount_cents, status, vendor_id, vendors(name)",
+        )
+        .eq("status", "approved")
+        .order("invoice_date", { ascending: false });
+      if (error) throw error;
+      type Row = {
+        id: string;
+        invoice_number: string | null;
+        invoice_date: string | null;
+        total_cents: number | null;
+        discount_cents: number | null;
+        vendor_id: string | null;
+        vendors: { name: string } | null;
+      };
+      const rows = (data ?? []) as unknown as Row[];
+      const withDiscount = rows.filter((r) => r.discount_cents != null && r.discount_cents > 0);
+
+      const byVendor = new Map<
+        string,
+        { name: string; discountCents: number; invoiceCount: number }
+      >();
+      for (const r of withDiscount) {
+        if (!r.vendor_id) continue;
+        const cur = byVendor.get(r.vendor_id) ?? {
+          name: r.vendors?.name ?? "Unknown vendor",
+          discountCents: 0,
+          invoiceCount: 0,
+        };
+        cur.discountCents += r.discount_cents ?? 0;
+        cur.invoiceCount += 1;
+        byVendor.set(r.vendor_id, cur);
+      }
+
+      return {
+        totalDiscountCents: withDiscount.reduce((sum, r) => sum + (r.discount_cents ?? 0), 0),
+        invoicesWithDiscountCount: withDiscount.length,
+        approvedInvoiceCount: rows.length,
+        byVendor: Array.from(byVendor.entries())
+          .map(([vendorId, v]) => ({ vendorId, ...v }))
+          .sort((a, b) => b.discountCents - a.discountCents),
+        invoices: withDiscount.map((r) => ({
+          id: r.id,
+          vendorName: r.vendors?.name ?? null,
+          invoiceNumber: r.invoice_number,
+          invoiceDate: r.invoice_date,
+          discountCents: r.discount_cents ?? 0,
+          totalCents: r.total_cents,
+        })),
+      };
     },
   });
 }
