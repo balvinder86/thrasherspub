@@ -38,7 +38,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { useSalesTrend, useTopItems } from "@/lib/pos/queries";
+import { useFoodCostSummary, useSalesTrend, useTopItems } from "@/lib/pos/queries";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -182,9 +182,33 @@ const toneTile: Record<string, string> = {
   ink: "bg-[oklch(0.22_0.012_60)] text-[oklch(0.97_0.012_85)] border-[oklch(0.22_0.012_60)]",
 };
 
+// Theoretical food cost % is the KPI value; the delta line shows
+// variance against actual approved-invoice spend for the same period
+// (negative variance = spent less than the recipe math predicted, a
+// good sign, hence framed as "positive"). No recipe_lines mapped yet
+// means the theoretical number would be a misleading 0% rather than
+// "we don't know" — surfaced honestly instead of a fake-looking stat.
+function foodCostKpi(foodCost: ReturnType<typeof useFoodCostSummary>["data"]) {
+  if (!foodCost || !foodCost.hasRecipeData || foodCost.theoreticalPct == null) {
+    return { value: "—", delta: "no recipe data yet", positive: undefined };
+  }
+  const value = `${foodCost.theoreticalPct.toFixed(1)}%`;
+  if (foodCost.variancePct == null) {
+    return { value, delta: "no invoices this period", positive: undefined };
+  }
+  const sign = foodCost.variancePct >= 0 ? "+" : "";
+  return {
+    value,
+    delta: `${sign}${foodCost.variancePct.toFixed(1)}%`,
+    positive: foodCost.variancePct <= 0,
+  };
+}
+
 function Overview() {
   const { data: revenueData = [] } = useSalesTrend(7);
   const { data: topItems = [] } = useTopItems(7, 4);
+  const { data: foodCost } = useFoodCostSummary(7);
+  const foodCostDisplay = foodCostKpi(foodCost);
 
   return (
     <>
@@ -356,7 +380,14 @@ function Overview() {
         <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Kpi icon={DollarSign} label="Net sales (7d)" value="$48,360" delta="+8.1%" positive />
           <Kpi icon={Users} label="New guests" value="46" delta="-3" />
-          <Kpi icon={Receipt} label="Food cost" value="29.4%" delta="-0.6%" positive />
+          <Kpi
+            icon={Receipt}
+            label="Food cost"
+            value={foodCostDisplay.value}
+            delta={foodCostDisplay.delta}
+            positive={foodCostDisplay.positive}
+            deltaSuffix="vs actual spend"
+          />
           <Kpi icon={CheckCircle2} label="On-time POs" value="96%" delta="+2%" positive />
         </section>
 
@@ -508,12 +539,14 @@ function Kpi({
   value,
   delta,
   positive,
+  deltaSuffix = "vs prior period",
 }: {
   icon: typeof DollarSign;
   label: string;
   value: string;
   delta: string;
   positive?: boolean;
+  deltaSuffix?: string;
 }) {
   return (
     <Card className="p-5">
@@ -528,7 +561,7 @@ function Kpi({
       </div>
       <div className="mt-4 flex items-center gap-1.5 text-xs">
         <span className={positive ? "text-[var(--color-success)]" : "text-muted-foreground"}>{delta}</span>
-        <span className="text-muted-foreground">vs prior period</span>
+        <span className="text-muted-foreground">{deltaSuffix}</span>
       </div>
     </Card>
   );

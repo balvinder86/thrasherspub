@@ -688,17 +688,68 @@ export function useCheckOcr() {
   });
 }
 
+// Approving an invoice is the moment OCR-drafted costs become real:
+// each matched line's unit_cost_cents becomes the ingredient's current
+// cost (feeding recipe-based food cost calculations), and a
+// ingredient_cost_history row records it for trend/variance tracking.
+// Unmatched lines (ingredient_id null) don't affect any ingredient.
 export function useApproveInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { error } = await supabase
+      const { data: invoice, error: invoiceErr } = await supabase
+        .from("invoices")
+        .select("restaurant_id, invoice_date")
+        .eq("id", invoiceId)
+        .single();
+      if (invoiceErr) throw invoiceErr;
+
+      const { data: lines, error: linesErr } = await supabase
+        .from("invoice_lines")
+        .select("id, ingredient_id, unit_cost_cents")
+        .eq("invoice_id", invoiceId)
+        .not("ingredient_id", "is", null)
+        .not("unit_cost_cents", "is", null);
+      if (linesErr) throw linesErr;
+
+      const effectiveDate = invoice.invoice_date ?? new Date().toISOString().slice(0, 10);
+      const matchedLines = lines ?? [];
+
+      await Promise.all(
+        matchedLines.map(async (line) => {
+          const { error } = await supabase
+            .from("ingredients")
+            .update({ unit_cost_cents: line.unit_cost_cents })
+            .eq("id", line.ingredient_id);
+          if (error) throw error;
+        }),
+      );
+
+      if (matchedLines.length > 0) {
+        const { error: historyErr } = await supabase.from("ingredient_cost_history").insert(
+          matchedLines.map((line) => ({
+            restaurant_id: invoice.restaurant_id,
+            ingredient_id: line.ingredient_id,
+            invoice_line_id: line.id,
+            unit_cost_cents: line.unit_cost_cents,
+            effective_date: effectiveDate,
+          })),
+        );
+        if (historyErr) throw historyErr;
+      }
+
+      const { error: approveErr } = await supabase
         .from("invoices")
         .update({ status: "approved" })
         .eq("id", invoiceId);
-      if (error) throw error;
+      if (approveErr) throw approveErr;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["real-invoices"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["real-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["ingredients"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["food-cost-summary"] });
+    },
   });
 }
 

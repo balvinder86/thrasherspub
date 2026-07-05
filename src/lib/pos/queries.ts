@@ -117,6 +117,119 @@ export function useUpdateItemCost() {
   });
 }
 
+// Theoretical food cost (what the recipe says it should have cost)
+// vs actual spend (from approved invoices) for the period — the
+// headline back-of-house metric. Theoretical understates reality
+// while recipe_lines are incomplete for the menu, which is why
+// hasRecipeData/itemsMissingRecipeCount are surfaced separately
+// rather than silently showing a too-good-to-be-true percentage.
+export type FoodCostSummary = {
+  periodDays: number;
+  theoreticalCostCents: number;
+  netSalesCents: number;
+  theoreticalPct: number | null;
+  actualSpendCents: number;
+  actualPct: number | null;
+  variancePct: number | null;
+  varianceCents: number;
+  hasRecipeData: boolean;
+  itemsMissingRecipeCount: number;
+};
+
+export function useFoodCostSummary(days = 7) {
+  const { data: locationIds } = useLocationIds();
+
+  return useQuery({
+    queryKey: ["food-cost-summary", locationIds, days],
+    enabled: !!locationIds && locationIds.length > 0,
+    queryFn: async (): Promise<FoodCostSummary> => {
+      const today = new Date();
+      const periodStart = addDays(today, -days);
+
+      const [salesRes, recipeRes, invoicesRes] = await Promise.all([
+        supabase
+          .from("pmix_sales")
+          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
+          .in("location_id", locationIds!)
+          .gte("business_date", isoDate(periodStart))
+          .lt("business_date", isoDate(today)),
+        supabase
+          .from("recipe_lines")
+          .select("menu_item_pos_id, quantity, ingredients (unit_cost_cents)")
+          .in("location_id", locationIds!),
+        supabase
+          .from("invoices")
+          .select("total_cents")
+          .in("location_id", locationIds!)
+          .eq("status", "approved")
+          .gte("invoice_date", isoDate(periodStart))
+          .lt("invoice_date", isoDate(today)),
+      ]);
+      if (salesRes.error) throw salesRes.error;
+      if (recipeRes.error) throw recipeRes.error;
+      if (invoicesRes.error) throw invoicesRes.error;
+
+      type RecipeRow = {
+        menu_item_pos_id: string;
+        quantity: number;
+        ingredients: { unit_cost_cents: number | null } | null;
+      };
+      const recipeCostPerUnit = new Map<string, number>();
+      for (const row of (recipeRes.data ?? []) as unknown as RecipeRow[]) {
+        const unitCost = row.ingredients?.unit_cost_cents;
+        if (unitCost == null) continue;
+        const cur = recipeCostPerUnit.get(row.menu_item_pos_id) ?? 0;
+        recipeCostPerUnit.set(row.menu_item_pos_id, cur + Number(row.quantity) * unitCost);
+      }
+
+      let theoreticalCostCents = 0;
+      let netSalesCents = 0;
+      const itemsMissing = new Set<string>();
+      for (const row of salesRes.data ?? []) {
+        netSalesCents += Number(row.net_sales_cents);
+        const perUnit = recipeCostPerUnit.get(row.menu_item_pos_id);
+        if (perUnit == null) {
+          itemsMissing.add(row.menu_item_pos_id);
+          continue;
+        }
+        theoreticalCostCents += perUnit * Number(row.quantity_sold);
+      }
+
+      const approvedInvoices = invoicesRes.data ?? [];
+      const actualSpendCents = approvedInvoices.reduce(
+        (sum, inv) => sum + (inv.total_cents ?? 0),
+        0,
+      );
+      // Zero approved invoices this period means "we don't know actual
+      // spend," not "actual spend is $0" — treating it as a real 0
+      // would make every un-invoiced period look like a favorable
+      // variance instead of no-data.
+      const hasInvoiceData = approvedInvoices.length > 0;
+
+      const hasRecipeData = recipeCostPerUnit.size > 0;
+      const theoreticalPct =
+        hasRecipeData && netSalesCents > 0 ? (theoreticalCostCents / netSalesCents) * 100 : null;
+      const actualPct =
+        hasInvoiceData && netSalesCents > 0 ? (actualSpendCents / netSalesCents) * 100 : null;
+      const variancePct =
+        theoreticalPct != null && actualPct != null ? actualPct - theoreticalPct : null;
+
+      return {
+        periodDays: days,
+        theoreticalCostCents,
+        netSalesCents,
+        theoreticalPct,
+        actualSpendCents,
+        actualPct,
+        variancePct,
+        varianceCents: actualSpendCents - theoreticalCostCents,
+        hasRecipeData,
+        itemsMissingRecipeCount: itemsMissing.size,
+      };
+    },
+  });
+}
+
 export type DailyRevenue = { day: string; revenue: number; lastWeek: number };
 
 // Last `days` days of net sales, each paired with the same weekday one
