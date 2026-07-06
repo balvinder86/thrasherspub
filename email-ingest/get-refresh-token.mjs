@@ -18,7 +18,16 @@ const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
 authUrl.searchParams.set("client_id", CLIENT_ID);
 authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
 authUrl.searchParams.set("response_type", "code");
-authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
+authUrl.searchParams.set(
+  "scope",
+  [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    // Needed to auto-create the "any PDF attachment -> Invoices label"
+    // filter during onboarding, so new vendors are never missed because
+    // someone forgot to label their emails by hand.
+    "https://www.googleapis.com/auth/gmail.settings.basic",
+  ].join(" "),
+);
 authUrl.searchParams.set("access_type", "offline");
 authUrl.searchParams.set("prompt", "consent");
 
