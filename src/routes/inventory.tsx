@@ -743,24 +743,24 @@ function InventoryPage() {
 
             {/* Items table */}
             <Card className="border-stone-200 overflow-hidden">
-              <Table>
+              <Table className="[&_th]:px-4 [&_th]:py-3 [&_td]:px-4 [&_td]:py-4">
                 <TableHeader>
                   <TableRow className="bg-stone-50/60">
-                    <TableHead className="w-[36px]">
+                    <TableHead className="w-[44px]">
                       <Checkbox
                         checked={allFilteredSelected}
                         onCheckedChange={(checked) => toggleSelectAll(checked === true)}
                         aria-label="Select all items"
                       />
                     </TableHead>
-                    <TableHead className="w-[28%]">Item</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead className="text-center">On hand</TableHead>
-                    <TableHead className="text-center">Par</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-center">AI suggested</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                    <TableHead className="w-[40px]"></TableHead>
+                    <TableHead className="w-[22%]">Item</TableHead>
+                    <TableHead className="w-[14%]">Vendor</TableHead>
+                    <TableHead className="w-[140px] text-center">On hand</TableHead>
+                    <TableHead className="w-[150px] text-center">Par</TableHead>
+                    <TableHead className="w-[110px] text-center">Status</TableHead>
+                    <TableHead className="w-[170px] text-center">AI suggested</TableHead>
+                    <TableHead className="w-[110px] text-right">Action</TableHead>
+                    <TableHead className="w-[48px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -799,57 +799,59 @@ function InventoryPage() {
                             </TableCell>
                             <TableCell>
                               <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                              <p className="text-xs text-stone-500 mt-0.5">
-                                ${item.cost.toFixed(2)} / {item.unit}
-                                {item.weeklyUsage > 0 && ` · uses ~${item.weeklyUsage}/wk`}
-                              </p>
                             </TableCell>
                             <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
-                            <TableCell className="text-center">
-                              <InlineNumber
-                                value={item.onHand}
-                                unit={item.unit}
-                                onChange={(v) => updateOnHand(item.id, v)}
-                              />
-                              <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <InlineNumber
-                                value={item.par}
-                                unit={item.unit}
-                                onChange={(v) => updatePar(item.id, v)}
-                              />
-                              {item.suggestedPar != null &&
-                                Math.abs(item.suggestedPar - item.par) >= 1 && (
-                                  <button
-                                    className="mt-1 block w-full text-[11px] text-[hsl(var(--terracotta))] hover:underline"
-                                    onClick={() =>
-                                      updatePar(item.id, Math.round(item.suggestedPar!))
-                                    }
-                                  >
-                                    suggested {Math.round(item.suggestedPar)} — apply
-                                  </button>
-                                )}
+                            <TableCell>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <InlineNumber
+                                  value={item.onHand}
+                                  unit={item.unit}
+                                  onChange={(v) => updateOnHand(item.id, v)}
+                                />
+                                <Progress value={ratio * 100} className="h-1 w-20" />
+                              </div>
                             </TableCell>
                             <TableCell>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <InlineNumber
+                                  value={item.par}
+                                  unit={item.unit}
+                                  onChange={(v) => updatePar(item.id, v)}
+                                />
+                                {item.suggestedPar != null &&
+                                  Math.abs(item.suggestedPar - item.par) >= 1 && (
+                                    <button
+                                      className="text-[11px] text-[hsl(var(--terracotta))] hover:underline"
+                                      onClick={() =>
+                                        updatePar(item.id, Math.round(item.suggestedPar!))
+                                      }
+                                    >
+                                      suggested {Math.round(item.suggestedPar)} — apply
+                                    </button>
+                                  )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
                               <Badge variant="outline" className={state.tone}>
                                 {state.label}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-center">
-                              <InlineNumber
-                                value={draftQty}
-                                unit={item.unit}
-                                onChange={(v) => setQtyOverride(item.id, v)}
-                              />
-                              {suggested > 0 ? (
-                                <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-stone-500">
-                                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                                  {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
-                                </p>
-                              ) : (
-                                <p className="mt-1 text-[11px] text-stone-400">no AI suggestion</p>
-                              )}
+                            <TableCell>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <InlineNumber
+                                  value={draftQty}
+                                  unit={item.unit}
+                                  onChange={(v) => setQtyOverride(item.id, v)}
+                                />
+                                {suggested > 0 ? (
+                                  <p className="flex items-center justify-center gap-1 text-[11px] text-stone-500">
+                                    <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                                    {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
+                                  </p>
+                                ) : (
+                                  <p className="text-[11px] text-stone-400">no AI suggestion</p>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <Button
