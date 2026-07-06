@@ -394,6 +394,30 @@ export function useMarkOrdered() {
   });
 }
 
+// Assigns one vendor to many ingredients at once — a single query
+// rather than looping individual updates, since the whole point is
+// bulk-editing items that were created without a vendor set (or need
+// a vendor corrected) without clicking through each one.
+export function useBulkAssignVendor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      ingredientIds,
+      vendorId,
+    }: {
+      ingredientIds: string[];
+      vendorId: string;
+    }) => {
+      const { error } = await supabase
+        .from("ingredients")
+        .update({ vendor_id: vendorId })
+        .in("id", ingredientIds);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory-items"] }),
+  });
+}
+
 export function useUpdatePar() {
   const restaurantId = useCurrentRestaurantId();
   const locationId = useCurrentLocationId();

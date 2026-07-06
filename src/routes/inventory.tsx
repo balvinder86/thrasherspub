@@ -11,10 +11,12 @@ import {
   useUpdateOnHand,
   useUpdatePar,
   useMarkOrdered,
+  useBulkAssignVendor,
   useRecomputeParLevels,
   type Vendor,
   type InventoryItem,
 } from "@/lib/boh/queries";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertTriangle,
   Bot,
@@ -44,15 +46,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Topbar } from "@/components/dashboard/Topbar";
 import { Card } from "@/components/ui/card";
@@ -119,13 +113,7 @@ export const Route = createFileRoute("/inventory")({
 type Category = string;
 type Item = InventoryItem;
 
-const CATEGORIES: Category[] = [
-  "Beverages",
-  "Alcohol",
-  "Food",
-  "Dry Goods",
-  "Miscellaneous",
-];
+const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Miscellaneous"];
 
 const USAGE_TREND = [
   { week: "W19", usage: 14200 },
@@ -146,9 +134,14 @@ function suggestedQty(item: Item) {
 
 function stockState(item: Item): { label: string; tone: string } {
   const ratio = item.onHand / item.par;
-  if (ratio <= 0.34) return { label: "Critical", tone: "bg-[hsl(var(--terracotta))]/15 text-[hsl(var(--terracotta))] border-[hsl(var(--terracotta))]/30" };
+  if (ratio <= 0.34)
+    return {
+      label: "Critical",
+      tone: "bg-[hsl(var(--terracotta))]/15 text-[hsl(var(--terracotta))] border-[hsl(var(--terracotta))]/30",
+    };
   if (ratio <= 0.6) return { label: "Low", tone: "bg-amber-100 text-amber-900 border-amber-300" };
-  if (ratio >= 1) return { label: "Stocked", tone: "bg-emerald-100 text-emerald-900 border-emerald-300" };
+  if (ratio >= 1)
+    return { label: "Stocked", tone: "bg-emerald-100 text-emerald-900 border-emerald-300" };
   return { label: "OK", tone: "bg-stone-100 text-stone-700 border-stone-300" };
 }
 
@@ -171,6 +164,7 @@ function InventoryPage() {
   const updateParMutation = useUpdatePar();
   const recomputeParLevels = useRecomputeParLevels();
   const markOrdered = useMarkOrdered();
+  const bulkAssignVendor = useBulkAssignVendor();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
@@ -181,6 +175,8 @@ function InventoryPage() {
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkVendorId, setBulkVendorId] = useState("");
 
   const [agentOpen, setAgentOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(true);
@@ -226,6 +222,37 @@ function InventoryPage() {
       return true;
     });
   }, [items, tab, vendorFilter, query]);
+
+  // Selection deliberately persists across tab/search/vendor-filter
+  // changes — the point of bulk assignment is to build a selection
+  // across several different searches (e.g. search "vodka", select
+  // some, search "rum", select more) before applying one vendor to
+  // everything at once. The "N selected" bar stays visible regardless
+  // of the active filter as the reminder that a selection exists.
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const allFilteredSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id));
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(filtered.map((i) => i.id)) : new Set());
+  };
+  const applyBulkVendor = () => {
+    if (!bulkVendorId || selectedIds.size === 0) return;
+    bulkAssignVendor.mutate(
+      { ingredientIds: Array.from(selectedIds), vendorId: bulkVendorId },
+      {
+        onSuccess: () => {
+          setSelectedIds(new Set());
+          setBulkVendorId("");
+        },
+      },
+    );
+  };
 
   const kpis = useMemo(() => {
     const critical = items.filter((i) => i.onHand / i.par <= 0.34).length;
@@ -341,7 +368,6 @@ function InventoryPage() {
   };
   const vendorItemCount = (name: string) => items.filter((i) => i.vendor === name).length;
 
-
   const autoFillCart = () => {
     const next: Record<string, number> = { ...cart };
     items.forEach((i) => {
@@ -354,7 +380,10 @@ function InventoryPage() {
 
   // Group cart by vendor for the "send to vendors" view
   const cartByVendor = useMemo(() => {
-    const groups: Record<string, { items: Array<Item & { qty: number; lineTotal: number }>; total: number }> = {};
+    const groups: Record<
+      string,
+      { items: Array<Item & { qty: number; lineTotal: number }>; total: number }
+    > = {};
     Object.entries(cart).forEach(([id, qty]) => {
       const it = items.find((x) => x.id === id);
       if (!it) return;
@@ -371,7 +400,9 @@ function InventoryPage() {
   const sendToVendors = () => {
     const vendorCount = Object.keys(cartByVendor).length;
     markOrdered.mutate(Object.keys(cart));
-    setSentToast(`AI agent dispatched ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"} to vendors. Confirmations expected within 15 min.`);
+    setSentToast(
+      `AI agent dispatched ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"} to vendors. Confirmations expected within 15 min.`,
+    );
     setCart({});
     setCartOpen(false);
     setTimeout(() => setSentToast(null), 4500);
@@ -392,7 +423,8 @@ function InventoryPage() {
               Inventory & Ordering
             </h1>
             <p className="text-sm text-stone-600 mt-2 max-w-xl">
-              Live counts across beverages, alcohol, food and dry goods. Update par levels, build a cart from AI suggestions, and dispatch POs to vendors automatically.
+              Live counts across beverages, alcohol, food and dry goods. Update par levels, build a
+              cart from AI suggestions, and dispatch POs to vendors automatically.
             </p>
           </div>
         </div>
@@ -436,16 +468,29 @@ function InventoryPage() {
             <div className="flex-1 min-w-[260px] text-stone-100">
               <div className="flex items-center gap-2">
                 <p className="font-serif text-lg">Ordering Co-pilot</p>
-                <Badge className="bg-emerald-500/20 text-emerald-200 border-emerald-400/30">Active</Badge>
+                <Badge className="bg-emerald-500/20 text-emerald-200 border-emerald-400/30">
+                  Active
+                </Badge>
               </div>
               <p className="text-sm text-stone-300 mt-1">
-                I reviewed last 30 days of usage, weekend forecast and current par levels. <span className="text-amber-200 font-medium">14 items</span> need reorder across <span className="text-amber-200 font-medium">5 vendors</span>. Estimated PO total: <span className="text-amber-200 font-medium">${kpis.inventoryValue > 0 ? "2,418" : "0"}</span>.
+                I reviewed last 30 days of usage, weekend forecast and current par levels.{" "}
+                <span className="text-amber-200 font-medium">14 items</span> need reorder across{" "}
+                <span className="text-amber-200 font-medium">5 vendors</span>. Estimated PO total:{" "}
+                <span className="text-amber-200 font-medium">
+                  ${kpis.inventoryValue > 0 ? "2,418" : "0"}
+                </span>
+                .
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 <Button size="sm" variant="secondary" onClick={autoFillCart}>
                   <Sparkles className="h-3.5 w-3.5" /> Build smart cart
                 </Button>
-                <Button size="sm" variant="ghost" className="text-stone-200 hover:text-white hover:bg-white/10" onClick={() => setAgentOpen(true)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-stone-200 hover:text-white hover:bg-white/10"
+                  onClick={() => setAgentOpen(true)}
+                >
                   Agent settings
                 </Button>
               </div>
@@ -454,9 +499,19 @@ function InventoryPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={USAGE_TREND}>
                   <Bar dataKey="usage" fill="hsl(var(--terracotta))" radius={[4, 4, 0, 0]} />
-                  <XAxis dataKey="week" tick={{ fill: "#d6d3d1", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <XAxis
+                    dataKey="week"
+                    tick={{ fill: "#d6d3d1", fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <Tooltip
-                    contentStyle={{ background: "#1c1917", border: "none", borderRadius: 8, color: "#fafaf9" }}
+                    contentStyle={{
+                      background: "#1c1917",
+                      border: "none",
+                      borderRadius: 8,
+                      color: "#fafaf9",
+                    }}
                     cursor={{ fill: "rgba(255,255,255,0.05)" }}
                   />
                 </BarChart>
@@ -470,11 +525,15 @@ function InventoryPage() {
           <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
             <TabsTrigger value="items">
               <Package className="h-3.5 w-3.5" /> Items
-              <Badge variant="outline" className="ml-2 font-normal">{items.length}</Badge>
+              <Badge variant="outline" className="ml-2 font-normal">
+                {items.length}
+              </Badge>
             </TabsTrigger>
             <TabsTrigger value="vendors">
               <Building2 className="h-3.5 w-3.5" /> Vendors
-              <Badge variant="outline" className="ml-2 font-normal">{vendors.length}</Badge>
+              <Badge variant="outline" className="ml-2 font-normal">
+                {vendors.length}
+              </Badge>
             </TabsTrigger>
           </TabsList>
 
@@ -547,11 +606,51 @@ function InventoryPage() {
               </div>
             </div>
 
+            {/* Bulk vendor assignment */}
+            {selectedIds.size > 0 && (
+              <Card className="border-stone-200 bg-[hsl(var(--cream))] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-[hsl(var(--ink))]">
+                    {selectedIds.size} item{selectedIds.size === 1 ? "" : "s"} selected
+                  </span>
+                  <select
+                    value={bulkVendorId}
+                    onChange={(e) => setBulkVendorId(e.target.value)}
+                    className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                  >
+                    <option value="">Assign vendor…</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    disabled={!bulkVendorId || bulkAssignVendor.isPending}
+                    onClick={applyBulkVendor}
+                  >
+                    {bulkAssignVendor.isPending ? "Assigning…" : "Assign"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                    Clear selection
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             {/* Items table */}
             <Card className="border-stone-200 overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-stone-50/60">
+                    <TableHead className="w-[36px]">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        onCheckedChange={(checked) => toggleSelectAll(checked === true)}
+                        aria-label="Select all items"
+                      />
+                    </TableHead>
                     <TableHead className="w-[26%]">Item</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Vendor</TableHead>
@@ -570,6 +669,13 @@ function InventoryPage() {
                     const ratio = Math.min(1, item.onHand / item.par);
                     return (
                       <TableRow key={item.id} className="hover:bg-stone-50/50">
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(item.id)}
+                            onCheckedChange={(checked) => toggleSelected(item.id, checked === true)}
+                            aria-label={`Select ${item.name}`}
+                          />
+                        </TableCell>
                         <TableCell>
                           <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
                           <p className="text-xs text-stone-500 mt-0.5">
@@ -648,7 +754,7 @@ function InventoryPage() {
                   })}
                   {filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-sm text-stone-500">
+                      <TableCell colSpan={10} className="text-center py-10 text-sm text-stone-500">
                         No items match your filters.
                       </TableCell>
                     </TableRow>
@@ -664,7 +770,8 @@ function InventoryPage() {
               <div>
                 <p className="font-serif text-2xl text-[hsl(var(--ink))]">Vendor management</p>
                 <p className="text-sm text-stone-600">
-                  {vendors.length} vendors · {items.length} items assigned · used by Inventory, Invoices and the Ordering agent.
+                  {vendors.length} vendors · {items.length} items assigned · used by Inventory,
+                  Invoices and the Ordering agent.
                 </p>
               </div>
               <Button onClick={openAddVendor}>
@@ -692,9 +799,7 @@ function InventoryPage() {
                       <TableRow key={v.id} className="hover:bg-stone-50/50">
                         <TableCell>
                           <p className="font-medium text-[hsl(var(--ink))]">{v.name}</p>
-                          {v.notes && (
-                            <p className="text-xs text-stone-500 mt-0.5">{v.notes}</p>
-                          )}
+                          {v.notes && <p className="text-xs text-stone-500 mt-0.5">{v.notes}</p>}
                         </TableCell>
                         <TableCell>
                           <p className="text-sm">{v.contactName}</p>
@@ -705,10 +810,14 @@ function InventoryPage() {
                             <Phone className="h-3 w-3" /> {v.phone}
                           </p>
                         </TableCell>
-                        <TableCell className="text-sm font-mono text-stone-700">{v.accountNo}</TableCell>
+                        <TableCell className="text-sm font-mono text-stone-700">
+                          {v.accountNo}
+                        </TableCell>
                         <TableCell className="text-sm text-stone-700">{v.deliveryDays}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="font-normal">{v.terms}</Badge>
+                          <Badge variant="outline" className="font-normal">
+                            {v.terms}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <span className="text-sm tabular-nums font-medium">{count}</span>
@@ -752,8 +861,6 @@ function InventoryPage() {
         </Tabs>
       </main>
 
-
-
       {/* Cart drawer */}
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
@@ -783,9 +890,7 @@ function InventoryPage() {
                       <Truck className="h-4 w-4 text-stone-500" />
                       <p className="font-medium text-sm">{vendor}</p>
                     </div>
-                    <p className="text-sm tabular-nums font-medium">
-                      ${group.total.toFixed(2)}
-                    </p>
+                    <p className="text-sm tabular-nums font-medium">${group.total.toFixed(2)}</p>
                   </div>
                   <div className="divide-y divide-stone-100">
                     {group.items.map((line) => (
@@ -830,9 +935,7 @@ function InventoryPage() {
 
               <div className="flex items-center justify-between text-sm">
                 <p className="text-stone-600">Subtotal</p>
-                <p className="font-semibold text-base tabular-nums">
-                  ${kpis.cartValue.toFixed(2)}
-                </p>
+                <p className="font-semibold text-base tabular-nums">${kpis.cartValue.toFixed(2)}</p>
               </div>
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
@@ -893,25 +996,45 @@ function InventoryPage() {
             <div>
               <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">Signals used</p>
               <ul className="text-sm space-y-1.5 text-stone-700">
-                <li className="flex items-center gap-2"><Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Trailing 30-day usage by item</li>
-                <li className="flex items-center gap-2"><Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Reservations + weekend forecast</li>
-                <li className="flex items-center gap-2"><Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Vendor lead time + delivery windows</li>
-                <li className="flex items-center gap-2"><Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Open POs and last invoice prices</li>
+                <li className="flex items-center gap-2">
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Trailing 30-day
+                  usage by item
+                </li>
+                <li className="flex items-center gap-2">
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Reservations +
+                  weekend forecast
+                </li>
+                <li className="flex items-center gap-2">
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Vendor lead time +
+                  delivery windows
+                </li>
+                <li className="flex items-center gap-2">
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Open POs and last
+                  invoice prices
+                </li>
               </ul>
             </div>
 
             <Separator />
 
             <div>
-              <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">Vendor channels</p>
+              <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">
+                Vendor channels
+              </p>
               <div className="space-y-2">
                 {vendorNames.slice(0, 5).map((v) => (
-                  <div key={v} className="flex items-center justify-between border border-stone-200 rounded-md px-3 py-2 text-sm">
+                  <div
+                    key={v}
+                    className="flex items-center justify-between border border-stone-200 rounded-md px-3 py-2 text-sm"
+                  >
                     <div className="flex items-center gap-2">
                       <Mail className="h-3.5 w-3.5 text-stone-500" />
                       <span>{v}</span>
                     </div>
-                    <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200">
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-50 text-emerald-800 border-emerald-200"
+                    >
                       Connected
                     </Badge>
                   </div>
@@ -961,11 +1084,15 @@ function InventoryPage() {
               <select
                 id="item-cat"
                 value={itemDraft.category}
-                onChange={(e) => setItemDraft({ ...itemDraft, category: e.target.value as Category })}
+                onChange={(e) =>
+                  setItemDraft({ ...itemDraft, category: e.target.value as Category })
+                }
                 className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </div>
@@ -978,7 +1105,9 @@ function InventoryPage() {
                 className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
               >
                 {vendorNames.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
                 ))}
               </select>
             </div>
@@ -998,7 +1127,9 @@ function InventoryPage() {
                 type="number"
                 step="0.01"
                 value={itemDraft.cost}
-                onChange={(e) => setItemDraft({ ...itemDraft, cost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setItemDraft({ ...itemDraft, cost: parseFloat(e.target.value) || 0 })
+                }
               />
             </div>
             <div>
@@ -1007,7 +1138,9 @@ function InventoryPage() {
                 id="item-onhand"
                 type="number"
                 value={itemDraft.onHand}
-                onChange={(e) => setItemDraft({ ...itemDraft, onHand: parseInt(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setItemDraft({ ...itemDraft, onHand: parseInt(e.target.value) || 0 })
+                }
               />
             </div>
             <div>
@@ -1025,7 +1158,9 @@ function InventoryPage() {
                 id="item-usage"
                 type="number"
                 value={itemDraft.weeklyUsage}
-                onChange={(e) => setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })
+                }
               />
               <p className="text-xs text-stone-500 mt-1">
                 Seed value — the agent will refine this from product mix once sales come in.
@@ -1033,7 +1168,9 @@ function InventoryPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={saveNewItem} disabled={!itemDraft.name.trim() || !itemDraft.vendor}>
               <Plus className="h-4 w-4" /> Add item
             </Button>
@@ -1047,7 +1184,8 @@ function InventoryPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {itemToDelete?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Removes the item from inventory and any pending cart line. Historical invoices stay intact.
+              Removes the item from inventory and any pending cart line. Historical invoices stay
+              intact.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1070,33 +1208,60 @@ function InventoryPage() {
               {vendorEditing ? "Edit vendor" : "Add vendor"}
             </DialogTitle>
             <DialogDescription>
-              Vendor details are shared with the Invoices tab and the Ordering agent for auto-dispatch.
+              Vendor details are shared with the Invoices tab and the Ordering agent for
+              auto-dispatch.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
             <div className="col-span-2">
               <Label htmlFor="v-name">Vendor name</Label>
-              <Input id="v-name" value={vendorDraft.name} onChange={(e) => setVendorDraft({ ...vendorDraft, name: e.target.value })} />
+              <Input
+                id="v-name"
+                value={vendorDraft.name}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, name: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-contact">Contact name</Label>
-              <Input id="v-contact" value={vendorDraft.contactName} onChange={(e) => setVendorDraft({ ...vendorDraft, contactName: e.target.value })} />
+              <Input
+                id="v-contact"
+                value={vendorDraft.contactName}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, contactName: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-account">Account #</Label>
-              <Input id="v-account" value={vendorDraft.accountNo} onChange={(e) => setVendorDraft({ ...vendorDraft, accountNo: e.target.value })} />
+              <Input
+                id="v-account"
+                value={vendorDraft.accountNo}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, accountNo: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-email">Order email</Label>
-              <Input id="v-email" type="email" value={vendorDraft.email} onChange={(e) => setVendorDraft({ ...vendorDraft, email: e.target.value })} />
+              <Input
+                id="v-email"
+                type="email"
+                value={vendorDraft.email}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, email: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-phone">Phone</Label>
-              <Input id="v-phone" value={vendorDraft.phone} onChange={(e) => setVendorDraft({ ...vendorDraft, phone: e.target.value })} />
+              <Input
+                id="v-phone"
+                value={vendorDraft.phone}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, phone: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-days">Delivery days</Label>
-              <Input id="v-days" placeholder="e.g. Mon, Wed, Fri" value={vendorDraft.deliveryDays} onChange={(e) => setVendorDraft({ ...vendorDraft, deliveryDays: e.target.value })} />
+              <Input
+                id="v-days"
+                placeholder="e.g. Mon, Wed, Fri"
+                value={vendorDraft.deliveryDays}
+                onChange={(e) => setVendorDraft({ ...vendorDraft, deliveryDays: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="v-terms">Payment terms</Label>
@@ -1107,7 +1272,9 @@ function InventoryPage() {
                 className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
               >
                 {["COD", "Net 7", "Net 15", "Net 21", "Net 30", "Net 45", "Net 60"].map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1123,7 +1290,9 @@ function InventoryPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={saveVendor} disabled={!vendorDraft.name.trim()}>
               {vendorEditing ? "Save changes" : "Add vendor"}
             </Button>
@@ -1140,9 +1309,11 @@ function InventoryPage() {
               {vendorToDelete && vendorItemCount(vendorToDelete.name) > 0 ? (
                 <>
                   <span className="text-[hsl(var(--terracotta))] font-medium">
-                    {vendorItemCount(vendorToDelete.name)} item(s) are still assigned to this vendor.
+                    {vendorItemCount(vendorToDelete.name)} item(s) are still assigned to this
+                    vendor.
                   </span>{" "}
-                  Reassign or delete those items first — otherwise the Ordering agent won't know where to send their POs.
+                  Reassign or delete those items first — otherwise the Ordering agent won't know
+                  where to send their POs.
                 </>
               ) : (
                 "This vendor has no items assigned and can be safely removed."
@@ -1162,7 +1333,6 @@ function InventoryPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-
   );
 }
 
@@ -1185,7 +1355,9 @@ function KpiCard({
         {icon}
         <span>{label}</span>
         {trend === "up" && <TrendingUp className="h-3 w-3 text-emerald-600 ml-auto" />}
-        {trend === "down" && <TrendingDown className="h-3 w-3 text-[hsl(var(--terracotta))] ml-auto" />}
+        {trend === "down" && (
+          <TrendingDown className="h-3 w-3 text-[hsl(var(--terracotta))] ml-auto" />
+        )}
       </div>
       <p className="font-serif text-3xl text-[hsl(var(--ink))] mt-2 tabular-nums">{value}</p>
       {hint && <p className="text-xs text-stone-500 mt-1">{hint}</p>}
