@@ -280,6 +280,81 @@ export function useRecomputeParLevels() {
   });
 }
 
+// Real weekly ingredient-usage trend — same theoretical-cost math as
+// useFoodCostSummary (recipe cost-per-unit × units sold, from real
+// pmix_sales x recipe_lines), just bucketed by week instead of summed
+// over one window. Weeks with no matched recipe_lines/sales show as a
+// real $0, not hidden — the point is honesty about what's actually
+// been sold and costed, not a smoothed-looking trend line.
+export type UsageTrendPoint = { week: string; usageCents: number };
+
+export function useUsageTrend(weeks = 8) {
+  const locationId = useCurrentLocationId();
+  return useQuery({
+    queryKey: ["usage-trend", locationId, weeks],
+    enabled: !!locationId,
+    queryFn: async (): Promise<UsageTrendPoint[]> => {
+      const startOfWeek = (d: Date) => {
+        const c = new Date(d);
+        c.setHours(0, 0, 0, 0);
+        const day = c.getDay();
+        const diff = (day + 6) % 7; // days since Monday
+        c.setDate(c.getDate() - diff);
+        return c;
+      };
+      const now = new Date();
+      const windowStart = startOfWeek(new Date(now.getTime() - (weeks - 1) * 7 * 86400000));
+
+      const [salesRes, recipeRes] = await Promise.all([
+        supabase
+          .from("pmix_sales")
+          .select("business_date, menu_item_pos_id, quantity_sold")
+          .eq("location_id", locationId!)
+          .gte("business_date", windowStart.toISOString().slice(0, 10)),
+        supabase
+          .from("recipe_lines")
+          .select("menu_item_pos_id, quantity, ingredients(unit_cost_cents)")
+          .eq("location_id", locationId!),
+      ]);
+      if (salesRes.error) throw salesRes.error;
+      if (recipeRes.error) throw recipeRes.error;
+
+      type RecipeRow = {
+        menu_item_pos_id: string;
+        quantity: number;
+        ingredients: { unit_cost_cents: number | null } | null;
+      };
+      const costPerUnit = new Map<string, number>();
+      for (const row of (recipeRes.data ?? []) as unknown as RecipeRow[]) {
+        const unitCost = row.ingredients?.unit_cost_cents;
+        if (unitCost == null) continue;
+        const cur = costPerUnit.get(row.menu_item_pos_id) ?? 0;
+        costPerUnit.set(row.menu_item_pos_id, cur + Number(row.quantity) * unitCost);
+      }
+
+      const buckets = new Map<string, { usageCents: number; date: Date }>();
+      for (let i = weeks - 1; i >= 0; i--) {
+        const w = startOfWeek(new Date(now.getTime() - i * 7 * 86400000));
+        buckets.set(w.toISOString().slice(0, 10), { usageCents: 0, date: w });
+      }
+      for (const row of salesRes.data ?? []) {
+        const perUnit = costPerUnit.get(row.menu_item_pos_id);
+        if (perUnit == null) continue;
+        const w = startOfWeek(new Date(row.business_date));
+        const key = w.toISOString().slice(0, 10);
+        const bucket = buckets.get(key);
+        if (!bucket) continue;
+        bucket.usageCents += perUnit * Number(row.quantity_sold);
+      }
+
+      return Array.from(buckets.values()).map((b) => ({
+        week: b.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        usageCents: Math.round(b.usageCents),
+      }));
+    },
+  });
+}
+
 export type InventoryItemInput = {
   name: string;
   category: string;

@@ -13,6 +13,7 @@ import {
   useMarkOrdered,
   useBulkAssignVendor,
   useRecomputeParLevels,
+  useUsageTrend,
   type Vendor,
   type InventoryItem,
 } from "@/lib/boh/queries";
@@ -115,16 +116,6 @@ type Item = InventoryItem;
 
 const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Miscellaneous"];
 
-const USAGE_TREND = [
-  { week: "W19", usage: 14200 },
-  { week: "W20", usage: 15100 },
-  { week: "W21", usage: 13800 },
-  { week: "W22", usage: 16400 },
-  { week: "W23", usage: 15900 },
-  { week: "W24", usage: 17200 },
-  { week: "W25", usage: 16800 },
-];
-
 function suggestedQty(item: Item) {
   // suggested = par - onHand, padded by ~10% safety stock, min 0
   const base = Math.max(0, item.par - item.onHand);
@@ -165,6 +156,7 @@ function InventoryPage() {
   const recomputeParLevels = useRecomputeParLevels();
   const markOrdered = useMarkOrdered();
   const bulkAssignVendor = useBulkAssignVendor();
+  const { data: usageTrend = [] } = useUsageTrend();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
@@ -497,7 +489,9 @@ function InventoryPage() {
             </div>
             <div className="w-[280px] h-[80px] hidden lg:block">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={USAGE_TREND}>
+                <BarChart
+                  data={usageTrend.map((p) => ({ week: p.week, usage: p.usageCents / 100 }))}
+                >
                   <Bar dataKey="usage" fill="hsl(var(--terracotta))" radius={[4, 4, 0, 0]} />
                   <XAxis
                     dataKey="week"
@@ -506,6 +500,9 @@ function InventoryPage() {
                     tickLine={false}
                   />
                   <Tooltip
+                    formatter={(v: number) =>
+                      `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    }
                     contentStyle={{
                       background: "#1c1917",
                       border: "none",
