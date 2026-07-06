@@ -14,6 +14,8 @@ import {
   useBulkAssignVendor,
   useRecomputeParLevels,
   useUsageTrend,
+  useCreatePurchaseOrders,
+  usePurchaseOrders,
   type Vendor,
   type InventoryItem,
 } from "@/lib/boh/queries";
@@ -157,11 +159,13 @@ function InventoryPage() {
   const markOrdered = useMarkOrdered();
   const bulkAssignVendor = useBulkAssignVendor();
   const { data: usageTrend = [] } = useUsageTrend();
+  const createPurchaseOrders = useCreatePurchaseOrders();
+  const { data: purchaseOrders = [] } = usePurchaseOrders();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
   const deleteVendorMutation = useDeleteVendor();
-  const [view, setView] = useState<"items" | "vendors">("items");
+  const [view, setView] = useState<"items" | "vendors" | "orders">("items");
   const [tab, setTab] = useState<Category | "All">("All");
   const [query, setQuery] = useState("");
   const [vendorFilter, setVendorFilter] = useState<string>("All");
@@ -390,14 +394,65 @@ function InventoryPage() {
   const cartCount = Object.values(cart).reduce((s, q) => s + q, 0);
 
   const sendToVendors = () => {
-    const vendorCount = Object.keys(cartByVendor).length;
-    markOrdered.mutate(Object.keys(cart));
-    setSentToast(
-      `AI agent dispatched ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"} to vendors. Confirmations expected within 15 min.`,
-    );
-    setCart({});
-    setCartOpen(false);
-    setTimeout(() => setSentToast(null), 4500);
+    // Real purchase orders need a real vendor_id — items with no
+    // vendor assigned yet can't be part of one, so they're skipped
+    // rather than silently attached to the wrong vendor or dropped
+    // without explanation. (The bulk-assign-vendor feature is the
+    // fix for that gap.)
+    const groupsByVendorId = new Map<
+      string,
+      { ingredientId: string; quantity: number; unit: string; unitCostCents: number | null }[]
+    >();
+    const skippedNames: string[] = [];
+    const orderedIngredientIds: string[] = [];
+
+    Object.entries(cart).forEach(([id, qty]) => {
+      const it = items.find((x) => x.id === id);
+      if (!it) return;
+      if (!it.vendorId) {
+        skippedNames.push(it.name);
+        return;
+      }
+      const list = groupsByVendorId.get(it.vendorId) ?? [];
+      list.push({
+        ingredientId: id,
+        quantity: qty,
+        unit: it.unit,
+        unitCostCents: Math.round(it.cost * 100),
+      });
+      groupsByVendorId.set(it.vendorId, list);
+      orderedIngredientIds.push(id);
+    });
+
+    const vendorGroups = Array.from(groupsByVendorId.entries()).map(([vendorId, lines]) => ({
+      vendorId,
+      lines,
+    }));
+
+    if (vendorGroups.length === 0) {
+      setSentToast(
+        "No items could be ordered — none of the items in your cart have a vendor assigned yet.",
+      );
+      setTimeout(() => setSentToast(null), 4500);
+      return;
+    }
+
+    createPurchaseOrders.mutate(vendorGroups, {
+      onSuccess: () => {
+        markOrdered.mutate(orderedIngredientIds);
+        const vendorCount = vendorGroups.length;
+        const skippedNote =
+          skippedNames.length > 0
+            ? ` (${skippedNames.length} item${skippedNames.length === 1 ? "" : "s"} skipped — no vendor assigned)`
+            : "";
+        setSentToast(
+          `Created ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"}.${skippedNote}`,
+        );
+        setCart({});
+        setCartOpen(false);
+        setTimeout(() => setSentToast(null), 4500);
+      },
+    });
   };
 
   return (
@@ -518,7 +573,7 @@ function InventoryPage() {
         </Card>
 
         {/* Items vs Vendors */}
-        <Tabs value={view} onValueChange={(v) => setView(v as "items" | "vendors")}>
+        <Tabs value={view} onValueChange={(v) => setView(v as "items" | "vendors" | "orders")}>
           <TabsList className="bg-[hsl(var(--cream))] border border-stone-200">
             <TabsTrigger value="items">
               <Package className="h-3.5 w-3.5" /> Items
@@ -530,6 +585,12 @@ function InventoryPage() {
               <Building2 className="h-3.5 w-3.5" /> Vendors
               <Badge variant="outline" className="ml-2 font-normal">
                 {vendors.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="orders">
+              <ClipboardList className="h-3.5 w-3.5" /> Purchase orders
+              <Badge variant="outline" className="ml-2 font-normal">
+                {purchaseOrders.length}
               </Badge>
             </TabsTrigger>
           </TabsList>
@@ -855,6 +916,57 @@ function InventoryPage() {
               </Table>
             </Card>
           </TabsContent>
+
+          {/* ORDERS TAB — real purchase order history. No vendor email/EDI
+              happens yet; this is internal record-keeping of what was
+              ordered, from whom, and when. */}
+          <TabsContent value="orders" className="space-y-5 mt-5">
+            <Card className="border-stone-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-stone-50/60">
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-center">Items</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {purchaseOrders.map((po) => (
+                    <TableRow key={po.id} className="hover:bg-stone-50/50">
+                      <TableCell className="font-medium text-[hsl(var(--ink))]">
+                        {po.vendorName}
+                      </TableCell>
+                      <TableCell className="text-sm text-stone-700">
+                        {new Date(po.createdAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">{po.lineCount}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {po.totalCents != null ? `$${(po.totalCents / 100).toFixed(2)}` : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize font-normal">
+                          {po.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {purchaseOrders.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-10 text-sm text-stone-500">
+                        No purchase orders yet — build a cart and create one from the Items tab.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
 
@@ -867,8 +979,8 @@ function InventoryPage() {
             </SheetTitle>
             <SheetDescription>
               {cartCount === 0
-                ? "Your cart is empty — add items or auto-fill from AI suggestions."
-                : `Grouped by vendor. Agent will dispatch ${Object.keys(cartByVendor).length} PO${Object.keys(cartByVendor).length === 1 ? "" : "s"}.`}
+                ? "Your cart is empty — add items or auto-fill from suggested reorders."
+                : "Grouped by vendor — creates one real purchase order per vendor. Items with no vendor assigned yet will be skipped."}
             </SheetDescription>
           </SheetHeader>
 
@@ -936,13 +1048,13 @@ function InventoryPage() {
               </div>
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-                <Bot className="h-4 w-4 text-amber-700 mt-0.5" />
+                <ClipboardList className="h-4 w-4 text-amber-700 mt-0.5" />
                 <div className="text-xs text-amber-900">
-                  <p className="font-medium">AI ordering agent</p>
+                  <p className="font-medium">Creating a purchase order</p>
                   <p className="mt-0.5">
-                    {autoSend
-                      ? "On submit, the agent will split this cart by vendor and email/EDI each PO directly. You'll get a copy and confirmation."
-                      : "Auto-send is off. POs will be drafted and queued for your manual approval."}
+                    On submit, this cart is split into one real purchase order per vendor — you can
+                    review the history below. This doesn't email or otherwise contact the vendor
+                    yet.
                   </p>
                 </div>
               </div>
@@ -951,8 +1063,13 @@ function InventoryPage() {
                 <Button variant="outline" className="flex-1" onClick={() => setCart({})}>
                   Clear
                 </Button>
-                <Button className="flex-1" onClick={sendToVendors}>
-                  <Send className="h-4 w-4" /> {autoSend ? "Send to vendors" : "Queue POs"}
+                <Button
+                  className="flex-1"
+                  onClick={sendToVendors}
+                  disabled={createPurchaseOrders.isPending}
+                >
+                  <Send className="h-4 w-4" />
+                  {createPurchaseOrders.isPending ? "Creating…" : "Create purchase orders"}
                 </Button>
               </div>
             </div>
@@ -1039,8 +1156,15 @@ function InventoryPage() {
               </div>
             </div>
 
-            <Button variant="outline" className="w-full">
-              <ClipboardList className="h-4 w-4" /> View agent activity log
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setAgentOpen(false);
+                setView("orders");
+              }}
+            >
+              <ClipboardList className="h-4 w-4" /> View purchase order history
             </Button>
           </div>
         </SheetContent>

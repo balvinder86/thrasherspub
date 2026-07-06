@@ -493,6 +493,106 @@ export function useBulkAssignVendor() {
   });
 }
 
+// Real purchase orders — replaces the old "AI agent dispatched N
+// purchase orders to vendors" toast, which never created any actual
+// record, only bumped ingredient_stock.last_ordered_at. This still
+// doesn't email or otherwise contact the vendor — it's internal
+// record-keeping (what was ordered, from whom, when, at what cost)
+// you can look back on, not outbound vendor communication.
+export type PurchaseOrderVendorGroup = {
+  vendorId: string;
+  lines: { ingredientId: string; quantity: number; unit: string; unitCostCents: number | null }[];
+};
+
+export function useCreatePurchaseOrders() {
+  const restaurantId = useCurrentRestaurantId();
+  const locationId = useCurrentLocationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (groups: PurchaseOrderVendorGroup[]): Promise<string[]> => {
+      if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+      return Promise.all(
+        groups.map(async (group) => {
+          const totalCents = group.lines.reduce(
+            (sum, l) => sum + (l.unitCostCents ?? 0) * l.quantity,
+            0,
+          );
+          const { data: po, error: poErr } = await supabase
+            .from("purchase_orders")
+            .insert({
+              restaurant_id: restaurantId,
+              location_id: locationId,
+              vendor_id: group.vendorId,
+              status: "sent",
+              total_cents: Math.round(totalCents),
+            })
+            .select("id")
+            .single();
+          if (poErr) throw poErr;
+
+          const { error: linesErr } = await supabase.from("purchase_order_lines").insert(
+            group.lines.map((l) => ({
+              restaurant_id: restaurantId,
+              purchase_order_id: po.id,
+              ingredient_id: l.ingredientId,
+              quantity: l.quantity,
+              unit: l.unit,
+              unit_cost_cents: l.unitCostCents,
+            })),
+          );
+          if (linesErr) throw linesErr;
+
+          return po.id as string;
+        }),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
+    },
+  });
+}
+
+export type PurchaseOrderSummary = {
+  id: string;
+  vendorName: string;
+  status: string;
+  totalCents: number | null;
+  createdAt: string;
+  lineCount: number;
+};
+
+export function usePurchaseOrders() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["purchase-orders", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<PurchaseOrderSummary[]> => {
+      const { data, error } = await supabase
+        .from("purchase_orders")
+        .select("id, status, total_cents, created_at, vendors(name), purchase_order_lines(id)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      type Row = {
+        id: string;
+        status: string;
+        total_cents: number | null;
+        created_at: string;
+        vendors: { name: string } | null;
+        purchase_order_lines: { id: string }[] | null;
+      };
+      return ((data ?? []) as unknown as Row[]).map((r) => ({
+        id: r.id,
+        vendorName: r.vendors?.name ?? "Unknown vendor",
+        status: r.status,
+        totalCents: r.total_cents,
+        createdAt: r.created_at,
+        lineCount: r.purchase_order_lines?.length ?? 0,
+      }));
+    },
+  });
+}
+
 export function useUpdatePar() {
   const restaurantId = useCurrentRestaurantId();
   const locationId = useCurrentLocationId();
