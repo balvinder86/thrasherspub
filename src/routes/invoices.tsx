@@ -5,6 +5,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Bot,
+  CalendarDays,
   CheckCircle2,
   Clock,
   Download,
@@ -55,6 +56,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -64,6 +66,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  type DateRange,
   useApproveInvoice,
   useCheckOcr,
   useEmailIngestionActivity,
@@ -71,6 +74,7 @@ import {
   useEnqueueOcr,
   useIngredients,
   useCategorySpend,
+  dateInRange,
   useRealInvoiceLines,
   useRealInvoices,
   useSavingsSummary,
@@ -166,26 +170,163 @@ function KPI({
   );
 }
 
+// Drives the header date filter — either a single month, a single day,
+// or no filter at all ("all"). Kept as small primitives (not a raw
+// DateRange) so the popover UI has something concrete to bind inputs
+// to; derivePeriodRange() below turns it into the DateRange the data
+// hooks actually consume.
+type DatePeriod =
+  | { kind: "all" }
+  | { kind: "month"; value: string } // "YYYY-MM"
+  | { kind: "day"; value: string }; // "YYYY-MM-DD"
+
+function derivePeriodRange(period: DatePeriod): DateRange {
+  if (period.kind === "day" && period.value) return { from: period.value, to: period.value };
+  if (period.kind === "month" && period.value) {
+    const [y, m] = period.value.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    return {
+      from: `${period.value}-01`,
+      to: `${period.value}-${String(lastDay).padStart(2, "0")}`,
+    };
+  }
+  return { from: null, to: null };
+}
+
+function periodLabel(period: DatePeriod): string {
+  if (period.kind === "day" && period.value) {
+    return new Date(`${period.value}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  if (period.kind === "month" && period.value) {
+    const [y, m] = period.value.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+  return "All time";
+}
+
+function DateFilterControl({
+  period,
+  onChange,
+  open,
+  onOpenChange,
+}: {
+  period: DatePeriod;
+  onChange: (p: DatePeriod) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const mode = period.kind === "all" ? "month" : period.kind;
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={`h-9 gap-1.5 ${period.kind !== "all" ? "border-primary/40 text-primary" : ""}`}
+        >
+          <CalendarDays className="h-3.5 w-3.5" />
+          {periodLabel(period)}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 space-y-3">
+        <div className="flex gap-1.5">
+          <Button
+            variant={mode === "month" ? "default" : "outline"}
+            size="sm"
+            className="h-7 flex-1 text-xs"
+            onClick={() =>
+              onChange({ kind: "month", value: period.kind === "month" ? period.value : "" })
+            }
+          >
+            By month
+          </Button>
+          <Button
+            variant={mode === "day" ? "default" : "outline"}
+            size="sm"
+            className="h-7 flex-1 text-xs"
+            onClick={() =>
+              onChange({ kind: "day", value: period.kind === "day" ? period.value : "" })
+            }
+          >
+            By day
+          </Button>
+        </div>
+
+        {mode === "month" ? (
+          <input
+            type="month"
+            value={period.kind === "month" ? period.value : ""}
+            onChange={(e) => onChange({ kind: "month", value: e.target.value })}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          />
+        ) : (
+          <input
+            type="date"
+            value={period.kind === "day" ? period.value : ""}
+            onChange={(e) => onChange({ kind: "day", value: e.target.value })}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          />
+        )}
+
+        {period.kind !== "all" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-full text-xs text-muted-foreground"
+            onClick={() => {
+              onChange({ kind: "all" });
+              onOpenChange(false);
+            }}
+          >
+            Clear — show all time
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function InvoicesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending_review" | "approved">("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
   const [ocrSheetInvoiceId, setOcrSheetInvoiceId] = useState<string | null | undefined>(undefined);
+  const [datePeriod, setDatePeriod] = useState<DatePeriod>({ kind: "all" });
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+
+  const dateRange = useMemo(() => derivePeriodRange(datePeriod), [datePeriod]);
+  const isDateFiltered = datePeriod.kind !== "all";
 
   const { data: realInvoices = [] } = useRealInvoices();
   const { data: realVendors = [] } = useRealVendors();
-  const { data: vendorSpend = [] } = useVendorSpendSummary();
-  const { data: topLineItems = [] } = useTopLineItems();
-  const { data: categorySpend = [] } = useCategorySpend();
+  const { data: vendorSpend = [] } = useVendorSpendSummary(dateRange);
+  const { data: topLineItems = [] } = useTopLineItems(dateRange);
+  const { data: categorySpend = [] } = useCategorySpend(dateRange);
+  const { data: savingsSummary } = useSavingsSummary(dateRange);
+
+  // Every invoice-derived calc on this page (KPIs, weekly trend, the
+  // "All invoices" table) filters from this one place, so the date
+  // picker in the header affects everything consistently.
+  const dateFilteredInvoices = useMemo(() => {
+    if (!isDateFiltered) return realInvoices;
+    return realInvoices.filter((i) => dateInRange(i.invoiceDate ?? i.createdAt, dateRange));
+  }, [realInvoices, dateRange, isDateFiltered]);
 
   const realKpis = useMemo(() => {
-    const approved = realInvoices.filter((i) => i.status === "approved");
-    const pending = realInvoices.filter((i) => i.status === "pending_review");
+    const approved = dateFilteredInvoices.filter((i) => i.status === "approved");
+    const pending = dateFilteredInvoices.filter((i) => i.status === "pending_review");
     const now = new Date();
-    const thisMonthCount = realInvoices.filter((i) => {
-      const d = new Date(i.createdAt);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    }).length;
+    const thisMonthCount = isDateFiltered
+      ? dateFilteredInvoices.length
+      : realInvoices.filter((i) => {
+          const d = new Date(i.createdAt);
+          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+        }).length;
     return {
       approvedSpendCents: approved.reduce((a, b) => a + (b.totalCents ?? 0), 0),
       approvedCount: approved.length,
@@ -193,14 +334,17 @@ function InvoicesPage() {
       pendingCount: pending.length,
       thisMonthCount,
     };
-  }, [realInvoices]);
+  }, [dateFilteredInvoices, isDateFiltered, realInvoices]);
 
-  // Real 8-week spend + savings trend, computed from approved invoices.
-  // Bucketed by ISO week (Mon-based) using invoice_date when present,
-  // falling back to created_at.
+  // Weekly spend + savings trend, computed from approved invoices within
+  // the active date filter. Bucketed by ISO week (Mon-based) using
+  // invoice_date when present, falling back to created_at. The window
+  // itself adapts to the filter — last 8 weeks with no filter, the
+  // filtered month's own weeks when filtering by month, the single week
+  // containing the day when filtering to one day — so switching the
+  // filter never just leaves the chart looking empty.
   const spendTrend = useMemo(() => {
     const buckets = new Map<string, { spend: number; savings: number; date: Date }>();
-    const now = new Date();
     const startOfWeek = (d: Date) => {
       const c = new Date(d);
       c.setHours(0, 0, 0, 0);
@@ -209,19 +353,33 @@ function InvoicesPage() {
       c.setDate(c.getDate() - diff);
       return c;
     };
-    // Pre-seed the last 8 weeks so gaps still render.
-    for (let i = 7; i >= 0; i--) {
-      const w = startOfWeek(new Date(now.getTime() - i * 7 * 86400000));
-      buckets.set(w.toISOString().slice(0, 10), { spend: 0, savings: 0, date: w });
+
+    let windowStart: Date;
+    let windowEnd: Date;
+    if (datePeriod.kind === "month" && datePeriod.value) {
+      const [y, m] = datePeriod.value.split("-").map(Number);
+      windowStart = startOfWeek(new Date(y, m - 1, 1));
+      windowEnd = startOfWeek(new Date(y, m, 0));
+    } else if (datePeriod.kind === "day" && datePeriod.value) {
+      windowStart = startOfWeek(new Date(`${datePeriod.value}T00:00:00`));
+      windowEnd = windowStart;
+    } else {
+      const now = new Date();
+      windowStart = startOfWeek(new Date(now.getTime() - 7 * 7 * 86400000));
+      windowEnd = startOfWeek(now);
     }
-    for (const inv of realInvoices) {
+    for (const w = new Date(windowStart); w <= windowEnd; w.setDate(w.getDate() + 7)) {
+      buckets.set(w.toISOString().slice(0, 10), { spend: 0, savings: 0, date: new Date(w) });
+    }
+
+    for (const inv of dateFilteredInvoices) {
       if (inv.status !== "approved") continue;
       const raw = inv.invoiceDate ?? inv.createdAt;
       if (!raw) continue;
       const w = startOfWeek(new Date(raw));
       const key = w.toISOString().slice(0, 10);
       const bucket = buckets.get(key);
-      if (!bucket) continue; // outside the 8-week window
+      if (!bucket) continue; // outside the window
       bucket.spend += (inv.totalCents ?? 0) / 100;
       bucket.savings += (inv.discountCents ?? 0) / 100;
     }
@@ -230,7 +388,7 @@ function InvoicesPage() {
       spend: Math.round(b.spend),
       savings: Math.round(b.savings),
     }));
-  }, [realInvoices]);
+  }, [dateFilteredInvoices, datePeriod]);
 
   const totalSpendInWindow = spendTrend.reduce((a, b) => a + b.spend, 0);
 
@@ -246,7 +404,7 @@ function InvoicesPage() {
   }, [categorySpend]);
 
   const filteredInvoices = useMemo(() => {
-    return realInvoices.filter((inv) => {
+    return dateFilteredInvoices.filter((inv) => {
       if (statusFilter !== "all" && inv.status !== statusFilter) return false;
       if (vendorFilter !== "all" && inv.vendorName !== vendorFilter) return false;
       if (query) {
@@ -255,19 +413,34 @@ function InvoicesPage() {
       }
       return true;
     });
-  }, [realInvoices, query, statusFilter, vendorFilter]);
+  }, [dateFilteredInvoices, query, statusFilter, vendorFilter]);
 
   return (
     <>
       <Topbar eyebrow="Accounts payable" title="Invoices" />
       <main className="space-y-6 px-6 py-6">
         {/* KPI row */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <KPI
             label="Total spend · approved"
             value={formatMoney(realKpis.approvedSpendCents / 100, { compact: true })}
             hint={`${realKpis.approvedCount} approved invoice${realKpis.approvedCount === 1 ? "" : "s"}`}
             icon={Wallet}
+          />
+          <KPI
+            label="Savings captured"
+            value={
+              (savingsSummary?.totalDiscountCents ?? 0) >= 100000
+                ? formatMoney((savingsSummary?.totalDiscountCents ?? 0) / 100, { compact: true })
+                : `$${((savingsSummary?.totalDiscountCents ?? 0) / 100).toFixed(2)}`
+            }
+            hint={
+              savingsSummary && savingsSummary.invoicesWithDiscountCount > 0
+                ? `${savingsSummary.invoicesWithDiscountCount} invoice${savingsSummary.invoicesWithDiscountCount === 1 ? "" : "s"} with a discount`
+                : "none logged yet"
+            }
+            icon={PiggyBank}
+            tone="success"
           />
           <KPI
             label="Pending review"
@@ -283,9 +456,9 @@ function InvoicesPage() {
             icon={Truck}
           />
           <KPI
-            label="Invoices this month"
+            label={isDateFiltered ? "Invoices in period" : "Invoices this month"}
             value={String(realKpis.thisMonthCount)}
-            hint="uploaded or emailed in"
+            hint={isDateFiltered ? periodLabel(datePeriod) : "uploaded or emailed in"}
             icon={Inbox}
           />
         </div>
@@ -311,8 +484,9 @@ function InvoicesPage() {
             </div>
             {totalSpendInWindow === 0 ? (
               <div className="mt-4 flex h-[260px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
-                No approved invoices in the last 8 weeks yet — approve invoices to see weekly spend
-                and savings appear here.
+                {isDateFiltered
+                  ? `No approved invoices in ${periodLabel(datePeriod)} — try a different period.`
+                  : "No approved invoices in the last 8 weeks yet — approve invoices to see weekly spend and savings appear here."}
               </div>
             ) : (
               <div className="mt-4 h-[260px]">
@@ -430,6 +604,12 @@ function InvoicesPage() {
               </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
+              <DateFilterControl
+                period={datePeriod}
+                onChange={setDatePeriod}
+                open={dateFilterOpen}
+                onOpenChange={setDateFilterOpen}
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -536,7 +716,9 @@ function InvoicesPage() {
                         colSpan={6}
                         className="py-10 text-center text-sm text-muted-foreground"
                       >
-                        No invoices yet — upload one or connect email ingestion to get started.
+                        {isDateFiltered
+                          ? `No invoices in ${periodLabel(datePeriod)} — try a different period.`
+                          : "No invoices yet — upload one or connect email ingestion to get started."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -742,7 +924,7 @@ function InvoicesPage() {
           {/* Savings tab — real discounts entered during invoice review,
               never projected/AI-estimated */}
           <TabsContent value="savings" className="space-y-4">
-            <SavingsTab />
+            <SavingsTab dateRange={dateRange} />
           </TabsContent>
 
           {/* Automation tab */}
@@ -1191,8 +1373,8 @@ function InvoiceOcrSheet({
 // projected/AI-estimated savings anywhere on this tab.
 // =====================================================
 
-function SavingsTab() {
-  const { data } = useSavingsSummary();
+function SavingsTab({ dateRange }: { dateRange: DateRange }) {
+  const { data } = useSavingsSummary(dateRange);
   const totalDiscountCents = data?.totalDiscountCents ?? 0;
   const invoicesWithDiscountCount = data?.invoicesWithDiscountCount ?? 0;
   const approvedInvoiceCount = data?.approvedInvoiceCount ?? 0;

@@ -639,6 +639,23 @@ export function useSetInvoiceDiscount() {
   });
 }
 
+// Shared date-range filter for the Invoices dashboard — applied
+// client-side against invoice_date (falling back to created_at when an
+// email-ingested invoice has no confirmed date yet), consistent with
+// how every other date-based calc on this page already works. `from`/
+// `to` are inclusive "YYYY-MM-DD" strings; either or both may be null
+// for an open-ended range, and {from: null, to: null} means no filter.
+export type DateRange = { from: string | null; to: string | null };
+
+export function dateInRange(dateStr: string | null | undefined, range: DateRange): boolean {
+  if (!range.from && !range.to) return true;
+  if (!dateStr) return false;
+  const d = dateStr.slice(0, 10);
+  if (range.from && d < range.from) return false;
+  if (range.to && d > range.to) return false;
+  return true;
+}
+
 // Real per-vendor spend, computed from approved invoices only (spend
 // that's actually been confirmed, not just drafted). No on-time
 // delivery % or price-accuracy score — those aren't tracked anywhere
@@ -655,15 +672,17 @@ export type VendorSpendSummary = {
   pendingInvoiceCount: number;
 };
 
-export function useVendorSpendSummary() {
+export function useVendorSpendSummary(dateRange?: DateRange) {
   const restaurantId = useCurrentRestaurantId();
   return useQuery({
-    queryKey: ["vendor-spend-summary", restaurantId],
+    queryKey: ["vendor-spend-summary", restaurantId, dateRange?.from, dateRange?.to],
     enabled: !!restaurantId,
     queryFn: async (): Promise<VendorSpendSummary[]> => {
       const [vendorsRes, invoicesRes] = await Promise.all([
         supabase.from("vendors").select("*").order("name"),
-        supabase.from("invoices").select("vendor_id, status, total_cents"),
+        supabase
+          .from("invoices")
+          .select("vendor_id, status, total_cents, invoice_date, created_at"),
       ]);
       if (vendorsRes.error) throw vendorsRes.error;
       if (invoicesRes.error) throw invoicesRes.error;
@@ -674,6 +693,7 @@ export function useVendorSpendSummary() {
       >();
       for (const inv of invoicesRes.data ?? []) {
         if (!inv.vendor_id) continue;
+        if (dateRange && !dateInRange(inv.invoice_date ?? inv.created_at, dateRange)) continue;
         const cur = byVendor.get(inv.vendor_id) ?? {
           approvedCents: 0,
           approvedCount: 0,
@@ -728,16 +748,16 @@ export type SavingsSummary = {
   }[];
 };
 
-export function useSavingsSummary() {
+export function useSavingsSummary(dateRange?: DateRange) {
   const restaurantId = useCurrentRestaurantId();
   return useQuery({
-    queryKey: ["savings-summary", restaurantId],
+    queryKey: ["savings-summary", restaurantId, dateRange?.from, dateRange?.to],
     enabled: !!restaurantId,
     queryFn: async (): Promise<SavingsSummary> => {
       const { data, error } = await supabase
         .from("invoices")
         .select(
-          "id, invoice_number, invoice_date, total_cents, discount_cents, status, vendor_id, vendors(name)",
+          "id, invoice_number, invoice_date, created_at, total_cents, discount_cents, status, vendor_id, vendors(name)",
         )
         .eq("status", "approved")
         .order("invoice_date", { ascending: false });
@@ -746,12 +766,16 @@ export function useSavingsSummary() {
         id: string;
         invoice_number: string | null;
         invoice_date: string | null;
+        created_at: string;
         total_cents: number | null;
         discount_cents: number | null;
         vendor_id: string | null;
         vendors: { name: string } | null;
       };
-      const rows = (data ?? []) as unknown as Row[];
+      const allRows = (data ?? []) as unknown as Row[];
+      const rows = dateRange
+        ? allRows.filter((r) => dateInRange(r.invoice_date ?? r.created_at, dateRange))
+        : allRows;
       const withDiscount = rows.filter((r) => r.discount_cents != null && r.discount_cents > 0);
 
       const byVendor = new Map<
@@ -809,26 +833,34 @@ export type TopLineItem = {
 
 export type CategorySpend = { category: string; spendCents: number };
 
-export function useTopLineItems() {
+export function useTopLineItems(dateRange?: DateRange) {
   const restaurantId = useCurrentRestaurantId();
   return useQuery({
-    queryKey: ["top-line-items", restaurantId],
+    queryKey: ["top-line-items", restaurantId, dateRange?.from, dateRange?.to],
     enabled: !!restaurantId,
     queryFn: async (): Promise<TopLineItem[]> => {
       const { data, error } = await supabase
         .from("invoice_lines")
         .select(
-          "line_total_cents, ingredient_id, ingredients(name), invoices!inner(status, vendors(name))",
+          "line_total_cents, ingredient_id, ingredients(name), invoices!inner(status, invoice_date, created_at, vendors(name))",
         );
       if (error) throw error;
       type Row = {
         line_total_cents: number | null;
         ingredient_id: string | null;
         ingredients: { name: string } | null;
-        invoices: { status: string; vendors: { name: string } | null } | null;
+        invoices: {
+          status: string;
+          invoice_date: string | null;
+          created_at: string;
+          vendors: { name: string } | null;
+        } | null;
       };
       const rows = ((data ?? []) as unknown as Row[]).filter(
-        (r) => r.invoices?.status === "approved" && r.ingredient_id,
+        (r) =>
+          r.invoices?.status === "approved" &&
+          r.ingredient_id &&
+          (!dateRange || dateInRange(r.invoices.invoice_date ?? r.invoices.created_at, dateRange)),
       );
 
       const byIngredient = new Map<
@@ -896,23 +928,28 @@ export function useTopLineItems() {
   });
 }
 
-export function useCategorySpend() {
+export function useCategorySpend(dateRange?: DateRange) {
   const restaurantId = useCurrentRestaurantId();
   return useQuery({
-    queryKey: ["category-spend", restaurantId],
+    queryKey: ["category-spend", restaurantId, dateRange?.from, dateRange?.to],
     enabled: !!restaurantId,
     queryFn: async (): Promise<CategorySpend[]> => {
       const { data, error } = await supabase
         .from("invoice_lines")
-        .select("line_total_cents, ingredients(category), invoices!inner(status)");
+        .select(
+          "line_total_cents, ingredients(category), invoices!inner(status, invoice_date, created_at)",
+        );
       if (error) throw error;
       type Row = {
         line_total_cents: number | null;
         ingredients: { category: string | null } | null;
-        invoices: { status: string } | null;
+        invoices: { status: string; invoice_date: string | null; created_at: string } | null;
       };
       const rows = ((data ?? []) as unknown as Row[]).filter(
-        (r) => r.invoices?.status === "approved" && r.ingredients?.category,
+        (r) =>
+          r.invoices?.status === "approved" &&
+          r.ingredients?.category &&
+          (!dateRange || dateInRange(r.invoices.invoice_date ?? r.invoices.created_at, dateRange)),
       );
       const byCategory = new Map<string, number>();
       for (const r of rows) {
