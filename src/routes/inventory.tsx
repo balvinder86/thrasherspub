@@ -781,10 +781,7 @@ function InventoryPage() {
                       )}
                       {sectionItems.map((item) => {
                         const state = stockState(item);
-                        const suggested = suggestedQty(item);
-                        const draftQty = qtyOverrides[item.id] ?? suggested;
-                        const isOverridden =
-                          qtyOverrides[item.id] != null && qtyOverrides[item.id] !== suggested;
+                        const draftQty = qtyOverrides[item.id] ?? suggestedQty(item);
                         const ratio = Math.min(1, item.onHand / item.par);
                         return (
                           <TableRow key={item.id} className="hover:bg-stone-50/50">
@@ -818,17 +815,6 @@ function InventoryPage() {
                                   unit={item.unit}
                                   onChange={(v) => updatePar(item.id, v)}
                                 />
-                                {item.suggestedPar != null &&
-                                  Math.abs(item.suggestedPar - item.par) >= 1 && (
-                                    <button
-                                      className="text-[11px] text-[hsl(var(--terracotta))] hover:underline"
-                                      onClick={() =>
-                                        updatePar(item.id, Math.round(item.suggestedPar!))
-                                      }
-                                    >
-                                      suggested {Math.round(item.suggestedPar)} — apply
-                                    </button>
-                                  )}
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
@@ -843,14 +829,6 @@ function InventoryPage() {
                                   unit={item.unit}
                                   onChange={(v) => setQtyOverride(item.id, v)}
                                 />
-                                {suggested > 0 ? (
-                                  <p className="flex items-center justify-center gap-1 text-[11px] text-stone-500">
-                                    <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                                    {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
-                                  </p>
-                                ) : (
-                                  <p className="text-[11px] text-stone-400">no AI suggestion</p>
-                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
