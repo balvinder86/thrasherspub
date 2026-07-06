@@ -8,14 +8,12 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
-  Download,
   FileSearch,
   FileText,
   Inbox,
   Loader2,
   Mail,
   PiggyBank,
-  Plus,
   Receipt,
   RefreshCw,
   Search,
@@ -617,12 +615,6 @@ function InvoicesPage() {
                 onClick={() => setOcrSheetInvoiceId(null)}
               >
                 <Upload className="h-3.5 w-3.5" /> Upload invoice
-              </Button>
-              <Button variant="outline" size="sm" className="h-9 gap-1.5">
-                <Download className="h-3.5 w-3.5" /> Export CSV
-              </Button>
-              <Button size="sm" className="h-9 gap-1.5">
-                <Plus className="h-3.5 w-3.5" /> New PO
               </Button>
             </div>
           </div>
