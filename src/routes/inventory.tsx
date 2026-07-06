@@ -47,7 +47,6 @@ import {
   UserPlus,
   Wand2,
   X,
-  Zap,
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -59,7 +58,6 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -175,8 +173,6 @@ function InventoryPage() {
   const [bulkVendorId, setBulkVendorId] = useState("");
 
   const [agentOpen, setAgentOpen] = useState(false);
-  const [autoSend, setAutoSend] = useState(true);
-  const [confirmThreshold, setConfirmThreshold] = useState(true);
   const [sentToast, setSentToast] = useState<string | null>(null);
 
   // Item dialog
@@ -263,6 +259,20 @@ function InventoryPage() {
     }, 0);
     return { critical, low, inventoryValue, cartValue };
   }, [items, cart]);
+
+  // Real reorder summary for the hero strip — same suggestedQty() par-
+  // level math the "Auto-fill cart" button already uses, just totaled
+  // across every item instead of applied to one. Not a forecast; a
+  // straightforward par - on-hand + safety-stock calculation from real
+  // par levels, on-hand counts, and weekly usage.
+  const reorderSummary = useMemo(() => {
+    const needsReorder = items.filter((i) => suggestedQty(i) > 0);
+    const vendorIds = new Set(
+      needsReorder.map((i) => i.vendorId).filter((id): id is string => !!id),
+    );
+    const estimatedTotal = needsReorder.reduce((sum, i) => sum + suggestedQty(i) * i.cost, 0);
+    return { itemCount: needsReorder.length, vendorCount: vendorIds.size, estimatedTotal };
+  }, [items]);
 
   const addToCart = (id: string, qty: number) => {
     if (qty <= 0) return;
@@ -520,11 +530,19 @@ function InventoryPage() {
                 </Badge>
               </div>
               <p className="text-sm text-stone-300 mt-1">
-                I reviewed last 30 days of usage, weekend forecast and current par levels.{" "}
-                <span className="text-amber-200 font-medium">14 items</span> need reorder across{" "}
-                <span className="text-amber-200 font-medium">5 vendors</span>. Estimated PO total:{" "}
+                Based on current par levels, on-hand counts and weekly usage,{" "}
                 <span className="text-amber-200 font-medium">
-                  ${kpis.inventoryValue > 0 ? "2,418" : "0"}
+                  {reorderSummary.itemCount} item{reorderSummary.itemCount === 1 ? "" : "s"}
+                </span>{" "}
+                need reorder
+                {reorderSummary.vendorCount > 0 &&
+                  ` across ${reorderSummary.vendorCount} vendor${reorderSummary.vendorCount === 1 ? "" : "s"}`}
+                . Estimated cost:{" "}
+                <span className="text-amber-200 font-medium">
+                  $
+                  {reorderSummary.estimatedTotal.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}
                 </span>
                 .
               </p>
@@ -1082,49 +1100,31 @@ function InventoryPage() {
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="font-serif text-2xl flex items-center gap-2">
-              <Brain className="h-5 w-5" /> Ordering agent
+              <Brain className="h-5 w-5" /> How reorder suggestions work
             </SheetTitle>
             <SheetDescription>
-              Configure how the AI decides quantities and dispatches orders.
+              Real par-level math, not an autonomous agent — nothing here emails or contacts a
+              vendor automatically.
             </SheetDescription>
           </SheetHeader>
 
           <div className="mt-6 space-y-5">
-            <ToggleRow
-              icon={<Zap className="h-4 w-4 text-amber-600" />}
-              title="Auto-send POs to vendors"
-              desc="Email orders directly to each vendor (and EDI where available)."
-              checked={autoSend}
-              onChange={setAutoSend}
-            />
-            <ToggleRow
-              icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-              title="Confirm orders over $500"
-              desc="Require owner approval for any single-vendor PO above threshold."
-              checked={confirmThreshold}
-              onChange={setConfirmThreshold}
-            />
-
-            <Separator />
-
             <div>
-              <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">Signals used</p>
+              <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">
+                What drives a suggested quantity
+              </p>
               <ul className="text-sm space-y-1.5 text-stone-700">
                 <li className="flex items-center gap-2">
-                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Trailing 30-day
-                  usage by item
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Current par level
+                  minus current on-hand count
                 </li>
                 <li className="flex items-center gap-2">
-                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Reservations +
-                  weekend forecast
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Weekly usage, from
+                  real POS sales mapped through each item's recipe
                 </li>
                 <li className="flex items-center gap-2">
-                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Vendor lead time +
-                  delivery windows
-                </li>
-                <li className="flex items-center gap-2">
-                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> Open POs and last
-                  invoice prices
+                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" /> +15% padded on top
+                  as safety stock
                 </li>
               </ul>
             </div>
@@ -1133,26 +1133,25 @@ function InventoryPage() {
 
             <div>
               <p className="text-xs uppercase tracking-wider text-stone-500 mb-2">
-                Vendor channels
+                Vendor contacts
               </p>
               <div className="space-y-2">
-                {vendorNames.slice(0, 5).map((v) => (
+                {vendors.slice(0, 5).map((v) => (
                   <div
-                    key={v}
+                    key={v.id}
                     className="flex items-center justify-between border border-stone-200 rounded-md px-3 py-2 text-sm"
                   >
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-stone-500" />
-                      <span>{v}</span>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="bg-emerald-50 text-emerald-800 border-emerald-200"
-                    >
-                      Connected
-                    </Badge>
+                    <span className="font-medium">{v.name}</span>
+                    {v.email ? (
+                      <span className="flex items-center gap-1.5 text-stone-600">
+                        <Mail className="h-3.5 w-3.5 text-stone-500" /> {v.email}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-stone-400">No contact on file</span>
+                    )}
                   </div>
                 ))}
+                {vendors.length === 0 && <p className="text-sm text-stone-500">No vendors yet.</p>}
               </div>
             </div>
 
@@ -1558,31 +1557,6 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="border border-stone-200 rounded-md p-3">
       <p className="text-xs uppercase tracking-wider text-stone-500">{label}</p>
       <p className="text-sm font-medium text-[hsl(var(--ink))] mt-1">{value}</p>
-    </div>
-  );
-}
-
-function ToggleRow({
-  icon,
-  title,
-  desc,
-  checked,
-  onChange,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-start gap-3 border border-stone-200 rounded-lg p-3">
-      <div className="mt-0.5">{icon}</div>
-      <div className="flex-1">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-stone-500 mt-0.5">{desc}</p>
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
