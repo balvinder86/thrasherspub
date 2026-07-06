@@ -7,6 +7,8 @@ import {
   Bot,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   FileSearch,
   FileText,
@@ -289,6 +291,8 @@ function DateFilterControl({
   );
 }
 
+const INVOICES_PAGE_SIZE = 25;
+
 function InvoicesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending_review" | "approved">("all");
@@ -296,9 +300,16 @@ function InvoicesPage() {
   const [ocrSheetInvoiceId, setOcrSheetInvoiceId] = useState<string | null | undefined>(undefined);
   const [datePeriod, setDatePeriod] = useState<DatePeriod>({ kind: "all" });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   const dateRange = useMemo(() => derivePeriodRange(datePeriod), [datePeriod]);
   const isDateFiltered = datePeriod.kind !== "all";
+
+  // Any change to what's being filtered should land back on page 1 —
+  // otherwise a narrower filter can strand you on a now-empty page.
+  useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter, vendorFilter, dateRange.from, dateRange.to]);
 
   const { data: realInvoices = [] } = useRealInvoices();
   const { data: realVendors = [] } = useRealVendors();
@@ -412,6 +423,12 @@ function InvoicesPage() {
       return true;
     });
   }, [dateFilteredInvoices, query, statusFilter, vendorFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / INVOICES_PAGE_SIZE));
+  const pagedInvoices = useMemo(
+    () => filteredInvoices.slice((page - 1) * INVOICES_PAGE_SIZE, page * INVOICES_PAGE_SIZE),
+    [filteredInvoices, page],
+  );
 
   return (
     <>
@@ -673,7 +690,7 @@ function InvoicesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredInvoices.map((inv) => (
+                  {pagedInvoices.map((inv) => (
                     <TableRow
                       key={inv.id}
                       className="cursor-pointer"
@@ -716,10 +733,39 @@ function InvoicesPage() {
                   )}
                 </TableBody>
               </Table>
-              <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-3 text-sm">
                 <span className="text-muted-foreground">
-                  {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? "" : "s"}
+                  {filteredInvoices.length === 0
+                    ? "0 invoices"
+                    : `Showing ${(page - 1) * INVOICES_PAGE_SIZE + 1}–${Math.min(page * INVOICES_PAGE_SIZE, filteredInvoices.length)} of ${filteredInvoices.length} invoice${filteredInvoices.length === 1 ? "" : "s"}`}
                 </span>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Page {page} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+
                 <span>
                   Total:{" "}
                   <span className="font-medium text-foreground">
