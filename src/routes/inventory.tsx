@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   useVendors,
   useCreateVendor,
@@ -220,6 +220,23 @@ function InventoryPage() {
       return true;
     });
   }, [items, tab, vendorFilter, query]);
+
+  // Category now reads as a section heading instead of a per-row column.
+  // Only needed while the "All" tab is active — a single-category tab
+  // already scopes the table to one category, so a repeated heading
+  // would just be noise. `category` is free-text on the ingredients
+  // table, so any value outside the fixed CATEGORIES list (e.g. a
+  // one-off "Seafood" added from a real invoice) still gets its own
+  // section rather than being silently dropped from view.
+  const itemSections = useMemo(() => {
+    if (tab !== "All") return [{ category: tab, items: filtered }];
+    const extraCategories = Array.from(
+      new Set(filtered.map((i) => i.category).filter((c) => !CATEGORIES.includes(c))),
+    ).sort();
+    return [...CATEGORIES, ...extraCategories]
+      .map((c) => ({ category: c, items: filtered.filter((i) => i.category === c) }))
+      .filter((s) => s.items.length > 0);
+  }, [filtered, tab]);
 
   // Selection deliberately persists across tab/search/vendor-filter
   // changes — the point of bulk assignment is to build a selection
@@ -736,8 +753,7 @@ function InventoryPage() {
                         aria-label="Select all items"
                       />
                     </TableHead>
-                    <TableHead className="w-[26%]">Item</TableHead>
-                    <TableHead>Category</TableHead>
+                    <TableHead className="w-[28%]">Item</TableHead>
                     <TableHead>Vendor</TableHead>
                     <TableHead className="text-center">On hand</TableHead>
                     <TableHead className="text-center">Par</TableHead>
@@ -748,105 +764,121 @@ function InventoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((item) => {
-                    const state = stockState(item);
-                    const suggested = suggestedQty(item);
-                    const draftQty = qtyOverrides[item.id] ?? suggested;
-                    const isOverridden =
-                      qtyOverrides[item.id] != null && qtyOverrides[item.id] !== suggested;
-                    const ratio = Math.min(1, item.onHand / item.par);
-                    return (
-                      <TableRow key={item.id} className="hover:bg-stone-50/50">
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedIds.has(item.id)}
-                            onCheckedChange={(checked) => toggleSelected(item.id, checked === true)}
-                            aria-label={`Select ${item.name}`}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
-                          <p className="text-xs text-stone-500 mt-0.5">
-                            ${item.cost.toFixed(2)} / {item.unit}
-                            {item.weeklyUsage > 0 && ` · uses ~${item.weeklyUsage}/wk`}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="font-normal">
-                            {item.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
-                        <TableCell className="text-center">
-                          <InlineNumber
-                            value={item.onHand}
-                            unit={item.unit}
-                            onChange={(v) => updateOnHand(item.id, v)}
-                          />
-                          <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <InlineNumber
-                            value={item.par}
-                            unit={item.unit}
-                            onChange={(v) => updatePar(item.id, v)}
-                          />
-                          {item.suggestedPar != null &&
-                            Math.abs(item.suggestedPar - item.par) >= 1 && (
-                              <button
-                                className="mt-1 block w-full text-[11px] text-[hsl(var(--terracotta))] hover:underline"
-                                onClick={() => updatePar(item.id, Math.round(item.suggestedPar!))}
+                  {itemSections.map(({ category, items: sectionItems }) => (
+                    <Fragment key={category}>
+                      {itemSections.length > 1 && (
+                        <TableRow className="bg-stone-100/70 hover:bg-stone-100/70">
+                          <TableCell
+                            colSpan={9}
+                            className="py-2 text-xs font-semibold uppercase tracking-wider text-stone-600"
+                          >
+                            {category}
+                            <span className="ml-1.5 font-normal normal-case text-stone-400">
+                              · {sectionItems.length}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {sectionItems.map((item) => {
+                        const state = stockState(item);
+                        const suggested = suggestedQty(item);
+                        const draftQty = qtyOverrides[item.id] ?? suggested;
+                        const isOverridden =
+                          qtyOverrides[item.id] != null && qtyOverrides[item.id] !== suggested;
+                        const ratio = Math.min(1, item.onHand / item.par);
+                        return (
+                          <TableRow key={item.id} className="hover:bg-stone-50/50">
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedIds.has(item.id)}
+                                onCheckedChange={(checked) =>
+                                  toggleSelected(item.id, checked === true)
+                                }
+                                aria-label={`Select ${item.name}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-[hsl(var(--ink))]">{item.name}</p>
+                              <p className="text-xs text-stone-500 mt-0.5">
+                                ${item.cost.toFixed(2)} / {item.unit}
+                                {item.weeklyUsage > 0 && ` · uses ~${item.weeklyUsage}/wk`}
+                              </p>
+                            </TableCell>
+                            <TableCell className="text-sm text-stone-700">{item.vendor}</TableCell>
+                            <TableCell className="text-center">
+                              <InlineNumber
+                                value={item.onHand}
+                                unit={item.unit}
+                                onChange={(v) => updateOnHand(item.id, v)}
+                              />
+                              <Progress value={ratio * 100} className="h-1 mt-1 w-20 mx-auto" />
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <InlineNumber
+                                value={item.par}
+                                unit={item.unit}
+                                onChange={(v) => updatePar(item.id, v)}
+                              />
+                              {item.suggestedPar != null &&
+                                Math.abs(item.suggestedPar - item.par) >= 1 && (
+                                  <button
+                                    className="mt-1 block w-full text-[11px] text-[hsl(var(--terracotta))] hover:underline"
+                                    onClick={() =>
+                                      updatePar(item.id, Math.round(item.suggestedPar!))
+                                    }
+                                  >
+                                    suggested {Math.round(item.suggestedPar)} — apply
+                                  </button>
+                                )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={state.tone}>
+                                {state.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <InlineNumber
+                                value={draftQty}
+                                unit={item.unit}
+                                onChange={(v) => setQtyOverride(item.id, v)}
+                              />
+                              {suggested > 0 ? (
+                                <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-stone-500">
+                                  <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
+                                  {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[11px] text-stone-400">no AI suggestion</p>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                disabled={draftQty <= 0}
+                                onClick={() => addToCart(item.id, draftQty)}
                               >
-                                suggested {Math.round(item.suggestedPar)} — apply
-                              </button>
-                            )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={state.tone}>
-                            {state.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <InlineNumber
-                            value={draftQty}
-                            unit={item.unit}
-                            onChange={(v) => setQtyOverride(item.id, v)}
-                          />
-                          {suggested > 0 ? (
-                            <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-stone-500">
-                              <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                              {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
-                            </p>
-                          ) : (
-                            <p className="mt-1 text-[11px] text-stone-400">no AI suggestion</p>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            disabled={draftQty <= 0}
-                            onClick={() => addToCart(item.id, draftQty)}
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Cart
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
-                            onClick={() => setItemToDelete(item)}
-                            aria-label={`Delete ${item.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                                <Plus className="h-3.5 w-3.5" /> Cart
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                                onClick={() => setItemToDelete(item)}
+                                aria-label={`Delete ${item.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
                   {filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-10 text-sm text-stone-500">
+                      <TableCell colSpan={9} className="text-center py-10 text-sm text-stone-500">
                         No items match your filters.
                       </TableCell>
                     </TableRow>
