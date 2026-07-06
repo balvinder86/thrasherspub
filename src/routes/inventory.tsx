@@ -169,6 +169,12 @@ function InventoryPage() {
   const [vendorFilter, setVendorFilter] = useState<string>("All");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
+  // Per-item override of the AI-suggested reorder quantity — lets a
+  // manager correct a suggestion (e.g. AI says 10 but they know 6 is
+  // coming from another source) before it's added to the cart. Only
+  // stored once the user actually edits a value; otherwise the raw
+  // suggestedQty() keeps driving the displayed number.
+  const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkVendorId, setBulkVendorId] = useState("");
 
@@ -278,6 +284,9 @@ function InventoryPage() {
     if (qty <= 0) return;
     setCart((c) => ({ ...c, [id]: (c[id] || 0) + qty }));
   };
+  const setQtyOverride = (id: string, qty: number) => {
+    setQtyOverrides((o) => ({ ...o, [id]: Math.max(0, qty) }));
+  };
   const setCartQty = (id: string, qty: number) => {
     setCart((c) => {
       const next = { ...c };
@@ -377,7 +386,7 @@ function InventoryPage() {
   const autoFillCart = () => {
     const next: Record<string, number> = { ...cart };
     items.forEach((i) => {
-      const q = suggestedQty(i);
+      const q = qtyOverrides[i.id] ?? suggestedQty(i);
       if (q > 0) next[i.id] = q;
     });
     setCart(next);
@@ -742,6 +751,9 @@ function InventoryPage() {
                   {filtered.map((item) => {
                     const state = stockState(item);
                     const suggested = suggestedQty(item);
+                    const draftQty = qtyOverrides[item.id] ?? suggested;
+                    const isOverridden =
+                      qtyOverrides[item.id] != null && qtyOverrides[item.id] !== suggested;
                     const ratio = Math.min(1, item.onHand / item.par);
                     return (
                       <TableRow key={item.id} className="hover:bg-stone-50/50">
@@ -795,21 +807,25 @@ function InventoryPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
+                          <InlineNumber
+                            value={draftQty}
+                            unit={item.unit}
+                            onChange={(v) => setQtyOverride(item.id, v)}
+                          />
                           {suggested > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-sm">
+                            <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-stone-500">
                               <Sparkles className="h-3 w-3 text-[hsl(var(--terracotta))]" />
-                              <span className="font-medium tabular-nums">{suggested}</span>
-                              <span className="text-xs text-stone-500">{item.unit}</span>
-                            </span>
+                              {isOverridden ? `AI suggested ${suggested}` : "AI suggested"}
+                            </p>
                           ) : (
-                            <span className="text-xs text-stone-400">—</span>
+                            <p className="mt-1 text-[11px] text-stone-400">no AI suggestion</p>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
                             size="sm"
-                            disabled={suggested <= 0}
-                            onClick={() => addToCart(item.id, suggested || 1)}
+                            disabled={draftQty <= 0}
+                            onClick={() => addToCart(item.id, draftQty)}
                           >
                             <Plus className="h-3.5 w-3.5" /> Cart
                           </Button>
