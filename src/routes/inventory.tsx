@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   useVendors,
   useCreateVendor,
@@ -27,6 +27,8 @@ import {
   Brain,
   Building2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Filter,
   Mail,
@@ -116,6 +118,9 @@ type Category = string;
 type Item = InventoryItem;
 
 const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Miscellaneous"];
+const ORDERS_PAGE_SIZE = 25;
+const ITEMS_PAGE_SIZE = 25;
+const VENDORS_PAGE_SIZE = 25;
 
 function suggestedQty(item: Item) {
   // suggested = par - onHand, padded by ~10% safety stock, min 0
@@ -179,6 +184,14 @@ function InventoryPage() {
   const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkVendorId, setBulkVendorId] = useState("");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ordersTotalPages = Math.max(1, Math.ceil(purchaseOrders.length / ORDERS_PAGE_SIZE));
+  const pagedPurchaseOrders = useMemo(
+    () => purchaseOrders.slice((ordersPage - 1) * ORDERS_PAGE_SIZE, ordersPage * ORDERS_PAGE_SIZE),
+    [purchaseOrders, ordersPage],
+  );
+  const [itemsPage, setItemsPage] = useState(1);
+  const [vendorsPage, setVendorsPage] = useState(1);
 
   const [agentOpen, setAgentOpen] = useState(false);
   const [sentToast, setSentToast] = useState<string | null>(null);
@@ -213,6 +226,11 @@ function InventoryPage() {
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
 
   const vendorNames = useMemo(() => vendors.map((v) => v.name), [vendors]);
+  const vendorsTotalPages = Math.max(1, Math.ceil(vendors.length / VENDORS_PAGE_SIZE));
+  const pagedVendors = useMemo(
+    () => vendors.slice((vendorsPage - 1) * VENDORS_PAGE_SIZE, vendorsPage * VENDORS_PAGE_SIZE),
+    [vendors, vendorsPage],
+  );
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
@@ -223,22 +241,37 @@ function InventoryPage() {
     });
   }, [items, tab, vendorFilter, query]);
 
+  // Any change to what's being filtered should land back on page 1 —
+  // otherwise a narrower filter can strand you on a now-empty page.
+  useEffect(() => {
+    setItemsPage(1);
+  }, [tab, vendorFilter, query]);
+
+  const itemsTotalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PAGE_SIZE));
+  const pagedFiltered = useMemo(
+    () => filtered.slice((itemsPage - 1) * ITEMS_PAGE_SIZE, itemsPage * ITEMS_PAGE_SIZE),
+    [filtered, itemsPage],
+  );
+
   // Category now reads as a section heading instead of a per-row column.
   // Only needed while the "All" tab is active — a single-category tab
   // already scopes the table to one category, so a repeated heading
   // would just be noise. `category` is free-text on the ingredients
   // table, so any value outside the fixed CATEGORIES list (e.g. a
   // one-off "Seafood" added from a real invoice) still gets its own
-  // section rather than being silently dropped from view.
+  // section rather than being silently dropped from view. Grouped from
+  // the current page's slice, not the full filtered list — pagination
+  // and category sections both apply together, same as scrolling any
+  // other paginated, grouped table.
   const itemSections = useMemo(() => {
-    if (tab !== "All") return [{ category: tab, items: filtered }];
+    if (tab !== "All") return [{ category: tab, items: pagedFiltered }];
     const extraCategories = Array.from(
-      new Set(filtered.map((i) => i.category).filter((c) => !CATEGORIES.includes(c))),
+      new Set(pagedFiltered.map((i) => i.category).filter((c) => !CATEGORIES.includes(c))),
     ).sort();
     return [...CATEGORIES, ...extraCategories]
-      .map((c) => ({ category: c, items: filtered.filter((i) => i.category === c) }))
+      .map((c) => ({ category: c, items: pagedFiltered.filter((i) => i.category === c) }))
       .filter((s) => s.items.length > 0);
-  }, [filtered, tab]);
+  }, [pagedFiltered, tab]);
 
   // Selection deliberately persists across tab/search/vendor-filter
   // changes — the point of bulk assignment is to build a selection
@@ -881,6 +914,38 @@ function InventoryPage() {
                   )}
                 </TableBody>
               </Table>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-stone-50/60 px-4 py-3 text-sm">
+                <span className="text-stone-500">
+                  {filtered.length === 0
+                    ? "0 items"
+                    : `Showing ${(itemsPage - 1) * ITEMS_PAGE_SIZE + 1}–${Math.min(itemsPage * ITEMS_PAGE_SIZE, filtered.length)} of ${filtered.length} item${filtered.length === 1 ? "" : "s"}`}
+                </span>
+                {itemsTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={itemsPage <= 1}
+                      onClick={() => setItemsPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-stone-500">
+                      Page {itemsPage} of {itemsTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={itemsPage >= itemsTotalPages}
+                      onClick={() => setItemsPage((p) => Math.min(itemsTotalPages, p + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </Card>
           </TabsContent>
 
@@ -913,7 +978,7 @@ function InventoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {vendors.map((v) => {
+                  {pagedVendors.map((v) => {
                     const count = vendorItemCount(v.name);
                     return (
                       <TableRow key={v.id} className="hover:bg-stone-50/50">
@@ -976,6 +1041,38 @@ function InventoryPage() {
                   )}
                 </TableBody>
               </Table>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-stone-50/60 px-4 py-3 text-sm">
+                <span className="text-stone-500">
+                  {vendors.length === 0
+                    ? "0 vendors"
+                    : `Showing ${(vendorsPage - 1) * VENDORS_PAGE_SIZE + 1}–${Math.min(vendorsPage * VENDORS_PAGE_SIZE, vendors.length)} of ${vendors.length} vendor${vendors.length === 1 ? "" : "s"}`}
+                </span>
+                {vendorsTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={vendorsPage <= 1}
+                      onClick={() => setVendorsPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-stone-500">
+                      Page {vendorsPage} of {vendorsTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={vendorsPage >= vendorsTotalPages}
+                      onClick={() => setVendorsPage((p) => Math.min(vendorsTotalPages, p + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </Card>
           </TabsContent>
 
@@ -997,7 +1094,7 @@ function InventoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {purchaseOrders.map((po) => (
+                  {pagedPurchaseOrders.map((po) => (
                     <TableRow key={po.id} className="hover:bg-stone-50/50">
                       <TableCell className="font-medium text-[hsl(var(--ink))]">
                         {po.vendorName}
@@ -1066,6 +1163,38 @@ function InventoryPage() {
                   )}
                 </TableBody>
               </Table>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-stone-50/60 px-4 py-3 text-sm">
+                <span className="text-stone-500">
+                  {purchaseOrders.length === 0
+                    ? "0 purchase orders"
+                    : `Showing ${(ordersPage - 1) * ORDERS_PAGE_SIZE + 1}–${Math.min(ordersPage * ORDERS_PAGE_SIZE, purchaseOrders.length)} of ${purchaseOrders.length} purchase order${purchaseOrders.length === 1 ? "" : "s"}`}
+                </span>
+                {ordersTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={ordersPage <= 1}
+                      onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-stone-500">
+                      Page {ordersPage} of {ordersTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={ordersPage >= ordersTotalPages}
+                      onClick={() => setOrdersPage((p) => Math.min(ordersTotalPages, p + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </Card>
           </TabsContent>
         </Tabs>
