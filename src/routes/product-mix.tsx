@@ -1,6 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useProductMix, useUpdateItemCost, useSalesTrend, useOrderCount, type RealMenuItem } from "@/lib/pos/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useProductMix,
+  useUpdateItemCost,
+  useSalesTrend,
+  useOrderCount,
+  useLastSyncTime,
+  type RealMenuItem,
+} from "@/lib/pos/queries";
 import {
   useIngredients,
   useRecipeLinesForItem,
@@ -15,11 +23,9 @@ import {
   Download,
   Filter,
   GitCompare,
-  Link2,
   Plug,
   RefreshCw,
   Search,
-  Settings2,
   Star,
   Tag,
   Trash2,
@@ -148,7 +154,10 @@ function ProductMixPage() {
   const { data: orderCount = 0 } = useOrderCount(days);
   const updateCost = useUpdateItemCost();
 
-  const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category))).sort(), [items]);
+  const categories = useMemo(
+    () => Array.from(new Set(items.map((i) => i.category))).sort(),
+    [items],
+  );
 
   const filtered = useMemo(() => {
     return items.filter(
@@ -194,7 +203,12 @@ function ProductMixPage() {
     return [...items]
       .map((i) => ({
         ...i,
-        delta: i.soldPrevWk > 0 ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100 : i.soldWk > 0 ? 100 : 0,
+        delta:
+          i.soldPrevWk > 0
+            ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100
+            : i.soldWk > 0
+              ? 100
+              : 0,
       }))
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 6);
@@ -240,11 +254,11 @@ function ProductMixPage() {
         {/* POS sync strip */}
         <PosSyncStrip />
 
-        {isLoading && (
-          <div className="text-sm text-muted-foreground">Loading sales data…</div>
-        )}
+        {isLoading && <div className="text-sm text-muted-foreground">Loading sales data…</div>}
         {error && (
-          <div className="text-sm text-[#a8453a]">Couldn't load sales data: {(error as Error).message}</div>
+          <div className="text-sm text-[#a8453a]">
+            Couldn't load sales data: {(error as Error).message}
+          </div>
         )}
 
         {/* KPI row */}
@@ -252,7 +266,11 @@ function ProductMixPage() {
           <Kpi
             label="Net revenue"
             value={usd(totals.revenue)}
-            delta={totals.revenueDelta != null ? `${totals.revenueDelta >= 0 ? "+" : ""}${totals.revenueDelta.toFixed(1)}%` : undefined}
+            delta={
+              totals.revenueDelta != null
+                ? `${totals.revenueDelta >= 0 ? "+" : ""}${totals.revenueDelta.toFixed(1)}%`
+                : undefined
+            }
             up={totals.revenueDelta != null ? totals.revenueDelta >= 0 : undefined}
             icon={DollarSign}
           />
@@ -260,14 +278,17 @@ function ProductMixPage() {
           <Kpi
             label="Items sold"
             value={fmt(totals.units)}
-            delta={totals.unitsDelta != null ? `${totals.unitsDelta >= 0 ? "+" : ""}${fmt(totals.unitsDelta)}` : undefined}
+            delta={
+              totals.unitsDelta != null
+                ? `${totals.unitsDelta >= 0 ? "+" : ""}${fmt(totals.unitsDelta)}`
+                : undefined
+            }
             up={totals.unitsDelta != null ? totals.unitsDelta >= 0 : undefined}
             icon={Utensils}
           />
           <Kpi label="Avg check" value={`$${totals.avgCheck.toFixed(2)}`} icon={Tag} />
           <Kpi label="Star items" value={`${totals.stars}`} icon={Award} />
         </section>
-
 
         {/* Daily revenue */}
         <section className="grid lg:grid-cols-3 gap-6">
@@ -279,7 +300,11 @@ function ProductMixPage() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyRevenue}>
-                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" vertical={false} />
+                  <CartesianGrid
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="2 4"
+                    vertical={false}
+                  />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
@@ -291,8 +316,18 @@ function ProductMixPage() {
                       fontSize: 12,
                     }}
                   />
-                  <Bar dataKey="revenue" name="This period" fill={PALETTE.terracotta} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="lastWeek" name="Same day, prior week" fill={PALETTE.amber} radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="revenue"
+                    name="This period"
+                    fill={PALETTE.terracotta}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="lastWeek"
+                    name="Same day, prior week"
+                    fill={PALETTE.amber}
+                    radius={[4, 4, 0, 0]}
+                  />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                 </BarChart>
               </ResponsiveContainer>
@@ -330,7 +365,11 @@ function ProductMixPage() {
                       variant="outline"
                       className={`gap-1 ${up ? "border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10" : "border-[#c17c74]/40 text-[#a8453a] bg-[#c17c74]/10"}`}
                     >
-                      {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                      {up ? (
+                        <ArrowUpRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowDownRight className="h-3 w-3" />
+                      )}
                       {up ? "+" : ""}
                       {m.delta.toFixed(1)}%
                     </Badge>
@@ -404,7 +443,12 @@ function ProductMixPage() {
                     {filtered.map((i) => {
                       const margin = i.cost != null ? i.price - i.cost : null;
                       const marginPct = margin != null ? (margin / i.price) * 100 : null;
-                      const wow = i.soldPrevWk > 0 ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100 : i.soldWk > 0 ? 100 : 0;
+                      const wow =
+                        i.soldPrevWk > 0
+                          ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100
+                          : i.soldWk > 0
+                            ? 100
+                            : 0;
                       const q = quadrant(i, popMedian, marginMedian);
                       return (
                         <tr
@@ -484,7 +528,9 @@ function ProductMixPage() {
                 const units = list.reduce((s, i) => s + i.soldWk, 0);
                 const share = totals.revenue > 0 ? (rev / totals.revenue) * 100 : 0;
                 const priced = list.filter((i) => i.cost != null).length;
-                const top = [...list].sort((a, b) => b.soldWk * b.price - a.soldWk * a.price).slice(0, 3);
+                const top = [...list]
+                  .sort((a, b) => b.soldWk * b.price - a.soldWk * a.price)
+                  .slice(0, 3);
                 return (
                   <Card key={c} className="p-5">
                     <div className="flex items-start justify-between mb-4">
@@ -501,7 +547,9 @@ function ProductMixPage() {
                       </div>
                       <div className="text-right">
                         <div className="font-mono text-lg">{usd(rev)}</div>
-                        <div className="text-xs text-muted-foreground">{share.toFixed(1)}% of rev</div>
+                        <div className="text-xs text-muted-foreground">
+                          {share.toFixed(1)}% of rev
+                        </div>
                       </div>
                     </div>
                     <Progress value={share} className="h-1.5 mb-4" />
@@ -547,9 +595,27 @@ function ProductMixPage() {
               <div className="grid lg:grid-cols-4 gap-4 mb-6">
                 {[
                   { name: "Lunch", hours: "11a–3p", rev: "$8,420", top: "Pub Burger", share: 22 },
-                  { name: "Happy Hour", hours: "3p–6p", rev: "$4,180", top: "Stella Pint", share: 11 },
-                  { name: "Dinner", hours: "6p–10p", rev: "$18,940", top: "Fish & Chips", share: 49 },
-                  { name: "Late night", hours: "10p–close", rev: "$6,860", top: "Wings (10pc)", share: 18 },
+                  {
+                    name: "Happy Hour",
+                    hours: "3p–6p",
+                    rev: "$4,180",
+                    top: "Stella Pint",
+                    share: 11,
+                  },
+                  {
+                    name: "Dinner",
+                    hours: "6p–10p",
+                    rev: "$18,940",
+                    top: "Fish & Chips",
+                    share: 49,
+                  },
+                  {
+                    name: "Late night",
+                    hours: "10p–close",
+                    rev: "$6,860",
+                    top: "Wings (10pc)",
+                    share: 18,
+                  },
                 ].map((d) => (
                   <div key={d.name} className="p-4 rounded-lg border bg-muted/20">
                     <div className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -670,7 +736,6 @@ function ProductMixPage() {
                   ))}
                 </div>
               </Card>
-
             </div>
           </TabsContent>
 
@@ -758,21 +823,32 @@ function ProductMixPage() {
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                    Cost per unit {selected.cost != null && <span className="normal-case">(fallback if no recipe)</span>}
+                    Cost per unit{" "}
+                    {selected.cost != null && (
+                      <span className="normal-case">(fallback if no recipe)</span>
+                    )}
                   </div>
                   <CostEditor
                     key={selected.id}
                     item={selected}
                     saving={updateCost.isPending}
                     onSave={(cents) =>
-                      updateCost.mutate({ locationId: selected.locationId, posId: selected.id, costCents: cents })
+                      updateCost.mutate({
+                        locationId: selected.locationId,
+                        posId: selected.id,
+                        costCents: cents,
+                      })
                     }
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <Stat
                     label="Margin"
-                    value={selected.cost != null ? `$${(selected.price - selected.cost).toFixed(2)}` : "—"}
+                    value={
+                      selected.cost != null
+                        ? `$${(selected.price - selected.cost).toFixed(2)}`
+                        : "—"
+                    }
                   />
                   <Stat
                     label="Margin %"
@@ -921,7 +997,8 @@ function RecipeEditor({ menuItemPosId }: { menuItemPosId: string }) {
                 <div>{l.ingredientName}</div>
                 <div className="text-xs text-muted-foreground">
                   {l.quantity} {l.unit}
-                  {l.ingredientCostCents != null && ` · $${((l.quantity * l.ingredientCostCents) / 100).toFixed(2)}`}
+                  {l.ingredientCostCents != null &&
+                    ` · $${((l.quantity * l.ingredientCostCents) / 100).toFixed(2)}`}
                 </div>
               </div>
               <Button
@@ -1028,17 +1105,41 @@ function CostEditor({
   );
 }
 
+// The real Toast sync job (Railway cron) runs every 10 minutes. A gap
+// under ~2x that is normal jitter; anything longer is worth flagging
+// rather than claiming "Connected" when the last real sync was a while
+// ago.
+const SYNC_HEALTHY_THRESHOLD_MIN = 20;
+
+function timeAgo(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 // ---------- POS sync strip ----------
 function PosSyncStrip() {
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState("3 min ago");
-  const handleSync = () => {
-    setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-      setLastSync("just now");
-    }, 1200);
+  const { data: lastSyncAt } = useLastSyncTime();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const minutesAgo = lastSyncAt ? (Date.now() - new Date(lastSyncAt).getTime()) / 60_000 : null;
+  const healthy = minutesAgo != null && minutesAgo <= SYNC_HEALTHY_THRESHOLD_MIN;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["product-mix"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-trend"] }),
+      queryClient.invalidateQueries({ queryKey: ["order-count"] }),
+      queryClient.invalidateQueries({ queryKey: ["last-sync-time"] }),
+    ]);
+    setRefreshing(false);
   };
+
   return (
     <Card className="p-4 border-[#e6dfd2] bg-[#fbf7f0]">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1049,36 +1150,48 @@ function PosSyncStrip() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-medium">Toast POS</span>
-              <Badge
-                variant="outline"
-                className="gap-1 border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-[#5a7d4a]" /> Connected
-              </Badge>
+              {lastSyncAt == null ? (
+                <Badge variant="outline" className="gap-1 border-stone-300 text-stone-500">
+                  <span className="h-1.5 w-1.5 rounded-full bg-stone-400" /> No sync data yet
+                </Badge>
+              ) : healthy ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#5a7d4a]" /> Connected
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-300 text-amber-800 bg-amber-50"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Sync delayed
+                </Badge>
+              )}
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
               <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" /> Last sync {lastSync}
+                <Clock className="h-3 w-3" /> Last sync {lastSyncAt ? timeAgo(lastSyncAt) : "never"}
               </span>
-              <span>· Refreshing every 5 min</span>
+              <span>· Syncs every 10 min</span>
               <span>· Thrasher's Pub — Main</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="gap-2" onClick={handleSync} disabled={syncing}>
-            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync now"}
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2">
-            <Link2 className="h-3.5 w-3.5" /> Map menu items
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2">
-            <Settings2 className="h-3.5 w-3.5" /> Integration settings
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
         </div>
       </div>
     </Card>
   );
 }
-

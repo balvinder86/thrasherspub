@@ -13,6 +13,38 @@ function addDays(d: Date, n: number): Date {
   return out;
 }
 
+// The Toast sync job pulls fresh orders every ~10 minutes, but without
+// an explicit refetchInterval, React Query only refetches on mount or
+// window refocus — a dashboard left open just sits frozen even as new
+// sales land server-side. 60s keeps Product Mix genuinely live without
+// hammering the DB.
+const LIVE_REFETCH_INTERVAL_MS = 60_000;
+
+// Real "last sync" signal for the PosSyncStrip — the Railway toast-sync
+// cron job runs every 10 minutes and touches pmix_sales on every run
+// (even a 0-order run still upserts menu_items/updates rows), so its
+// most recent updated_at is an honest proxy for "when did the last
+// sync actually happen" without needing a dedicated sync-log table.
+export function useLastSyncTime() {
+  const { data: locationIds } = useLocationIds();
+  return useQuery({
+    queryKey: ["last-sync-time", locationIds],
+    enabled: !!locationIds && locationIds.length > 0,
+    refetchInterval: LIVE_REFETCH_INTERVAL_MS,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from("pmix_sales")
+        .select("updated_at")
+        .in("location_id", locationIds!)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.updated_at ?? null;
+    },
+  });
+}
+
 export type RealMenuItem = {
   id: string;
   locationId: string;
@@ -35,6 +67,7 @@ export function useProductMix(days = 7) {
   return useQuery({
     queryKey: ["product-mix", locationIds, days],
     enabled: !!locationIds && locationIds.length > 0,
+    refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<RealMenuItem[]> => {
       const today = new Date();
       const periodStart = addDays(today, -days);
@@ -51,7 +84,7 @@ export function useProductMix(days = 7) {
           .select("menu_item_pos_id, quantity_sold")
           .in("location_id", locationIds!)
           .gte("business_date", isoDate(periodStart))
-          .lt("business_date", isoDate(today)),
+          .lte("business_date", isoDate(today)),
         supabase
           .from("pmix_sales")
           .select("menu_item_pos_id, quantity_sold")
@@ -240,6 +273,7 @@ export function useSalesTrend(days = 7) {
   return useQuery({
     queryKey: ["sales-trend", locationIds, days],
     enabled: !!locationIds && locationIds.length > 0,
+    refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<DailyRevenue[]> => {
       const today = new Date();
       const rangeStart = addDays(today, -days * 2);
@@ -278,6 +312,7 @@ export function useOrderCount(days = 7) {
   return useQuery({
     queryKey: ["order-count", locationIds, days],
     enabled: !!locationIds && locationIds.length > 0,
+    refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<number> => {
       const start = addDays(new Date(), -days);
       const { count, error } = await supabase
