@@ -97,7 +97,14 @@ export function useUpdateVendor() {
       const { error } = await supabase.from("vendors").update(toRow(input)).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vendors"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vendors"] });
+      // Purchase order rows embed vendor name/email via a join, so a
+      // vendor edit (e.g. adding a missing contact email) needs this
+      // invalidated too, or the Orders tab's "Send" button stays hidden
+      // until something else happens to trigger a refetch.
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+    },
   });
 }
 
@@ -495,13 +502,22 @@ export function useBulkAssignVendor() {
 
 // Real purchase orders — replaces the old "AI agent dispatched N
 // purchase orders to vendors" toast, which never created any actual
-// record, only bumped ingredient_stock.last_ordered_at. This still
-// doesn't email or otherwise contact the vendor — it's internal
-// record-keeping (what was ordered, from whom, when, at what cost)
-// you can look back on, not outbound vendor communication.
+// record, only bumped ingredient_stock.last_ordered_at. Creating a PO
+// now also attempts a real email to the vendor (send-purchase-order-email
+// Edge Function, via Resend) right after the record is written — each
+// vendor's outcome (sent / no email on file / send failed) comes back
+// so the UI can report exactly what happened instead of assuming success.
 export type PurchaseOrderVendorGroup = {
   vendorId: string;
   lines: { ingredientId: string; quantity: number; unit: string; unitCostCents: number | null }[];
+};
+
+export type PurchaseOrderCreateResult = {
+  poId: string;
+  vendorId: string;
+  vendorName: string;
+  emailStatus: "sent" | "no_email" | "failed";
+  emailError?: string;
 };
 
 export function useCreatePurchaseOrders() {
@@ -509,10 +525,22 @@ export function useCreatePurchaseOrders() {
   const locationId = useCurrentLocationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (groups: PurchaseOrderVendorGroup[]): Promise<string[]> => {
+    mutationFn: async (
+      groups: PurchaseOrderVendorGroup[],
+    ): Promise<PurchaseOrderCreateResult[]> => {
       if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+
+      const vendorIds = groups.map((g) => g.vendorId);
+      const { data: vendorRows, error: vendorErr } = await supabase
+        .from("vendors")
+        .select("id, name, contact_email")
+        .in("id", vendorIds);
+      if (vendorErr) throw vendorErr;
+      const vendorById = new Map((vendorRows ?? []).map((v) => [v.id, v]));
+
       return Promise.all(
         groups.map(async (group) => {
+          const vendor = vendorById.get(group.vendorId);
           const totalCents = group.lines.reduce(
             (sum, l) => sum + (l.unitCostCents ?? 0) * l.quantity,
             0,
@@ -523,7 +551,6 @@ export function useCreatePurchaseOrders() {
               restaurant_id: restaurantId,
               location_id: locationId,
               vendor_id: group.vendorId,
-              status: "sent",
               total_cents: Math.round(totalCents),
             })
             .select("id")
@@ -542,7 +569,38 @@ export function useCreatePurchaseOrders() {
           );
           if (linesErr) throw linesErr;
 
-          return po.id as string;
+          const vendorName = vendor?.name ?? "Unknown vendor";
+          if (!vendor?.contact_email) {
+            return {
+              poId: po.id as string,
+              vendorId: group.vendorId,
+              vendorName,
+              emailStatus: "no_email" as const,
+            };
+          }
+
+          const { data: sendRes, error: sendErr } = await supabase.functions.invoke(
+            "send-purchase-order-email",
+            { body: { purchase_order_id: po.id } },
+          );
+          if (sendErr || !(sendRes as { ok?: boolean } | null)?.ok) {
+            const emailError =
+              (sendRes as { error?: string } | null)?.error ?? sendErr?.message ?? "unknown error";
+            return {
+              poId: po.id as string,
+              vendorId: group.vendorId,
+              vendorName,
+              emailStatus: "failed" as const,
+              emailError,
+            };
+          }
+
+          return {
+            poId: po.id as string,
+            vendorId: group.vendorId,
+            vendorName,
+            emailStatus: "sent" as const,
+          };
         }),
       );
     },
@@ -553,13 +611,40 @@ export function useCreatePurchaseOrders() {
   });
 }
 
+export function useSendPurchaseOrderEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (purchaseOrderId: string) => {
+      const { data, error } = await supabase.functions.invoke("send-purchase-order-email", {
+        body: { purchase_order_id: purchaseOrderId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "send failed",
+        );
+      }
+      return data;
+    },
+    // onSettled, not onSuccess — the Edge Function writes email_error to
+    // the PO row even when the send fails, so a failed attempt still
+    // needs the cache invalidated or the "Failed" badge never shows up
+    // without an unrelated refetch happening to fire first.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+    },
+  });
+}
+
 export type PurchaseOrderSummary = {
   id: string;
   vendorName: string;
+  vendorEmail: string | null;
   status: string;
   totalCents: number | null;
   createdAt: string;
   lineCount: number;
+  emailedAt: string | null;
+  emailError: string | null;
 };
 
 export function usePurchaseOrders() {
@@ -570,7 +655,9 @@ export function usePurchaseOrders() {
     queryFn: async (): Promise<PurchaseOrderSummary[]> => {
       const { data, error } = await supabase
         .from("purchase_orders")
-        .select("id, status, total_cents, created_at, vendors(name), purchase_order_lines(id)")
+        .select(
+          "id, status, total_cents, created_at, emailed_at, email_error, vendors(name, contact_email), purchase_order_lines(id)",
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       type Row = {
@@ -578,16 +665,21 @@ export function usePurchaseOrders() {
         status: string;
         total_cents: number | null;
         created_at: string;
-        vendors: { name: string } | null;
+        emailed_at: string | null;
+        email_error: string | null;
+        vendors: { name: string; contact_email: string | null } | null;
         purchase_order_lines: { id: string }[] | null;
       };
       return ((data ?? []) as unknown as Row[]).map((r) => ({
         id: r.id,
         vendorName: r.vendors?.name ?? "Unknown vendor",
+        vendorEmail: r.vendors?.contact_email ?? null,
         status: r.status,
         totalCents: r.total_cents,
         createdAt: r.created_at,
         lineCount: r.purchase_order_lines?.length ?? 0,
+        emailedAt: r.emailed_at,
+        emailError: r.email_error,
       }));
     },
   });

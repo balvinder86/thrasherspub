@@ -16,6 +16,7 @@ import {
   useUsageTrend,
   useCreatePurchaseOrders,
   usePurchaseOrders,
+  useSendPurchaseOrderEmail,
   type Vendor,
   type InventoryItem,
 } from "@/lib/boh/queries";
@@ -159,6 +160,7 @@ function InventoryPage() {
   const { data: usageTrend = [] } = useUsageTrend();
   const createPurchaseOrders = useCreatePurchaseOrders();
   const { data: purchaseOrders = [] } = usePurchaseOrders();
+  const sendEmail = useSendPurchaseOrderEmail();
   const { data: vendors = [] } = useVendors();
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
@@ -474,19 +476,33 @@ function InventoryPage() {
     }
 
     createPurchaseOrders.mutate(vendorGroups, {
-      onSuccess: () => {
+      onSuccess: (results) => {
         markOrdered.mutate(orderedIngredientIds);
-        const vendorCount = vendorGroups.length;
-        const skippedNote =
-          skippedNames.length > 0
-            ? ` (${skippedNames.length} item${skippedNames.length === 1 ? "" : "s"} skipped — no vendor assigned)`
-            : "";
-        setSentToast(
-          `Created ${vendorCount} purchase order${vendorCount === 1 ? "" : "s"}.${skippedNote}`,
-        );
+        const sent = results.filter((r) => r.emailStatus === "sent");
+        const noEmail = results.filter((r) => r.emailStatus === "no_email");
+        const failed = results.filter((r) => r.emailStatus === "failed");
+
+        const parts = [
+          `Created ${results.length} purchase order${results.length === 1 ? "" : "s"}.`,
+        ];
+        if (sent.length > 0) {
+          parts.push(`Emailed ${sent.map((r) => r.vendorName).join(", ")}.`);
+        }
+        if (noEmail.length > 0) {
+          parts.push(`No email on file for ${noEmail.map((r) => r.vendorName).join(", ")}.`);
+        }
+        if (failed.length > 0) {
+          parts.push(`Failed to email ${failed.map((r) => r.vendorName).join(", ")}.`);
+        }
+        if (skippedNames.length > 0) {
+          parts.push(
+            `${skippedNames.length} item${skippedNames.length === 1 ? "" : "s"} skipped — no vendor assigned.`,
+          );
+        }
+        setSentToast(parts.join(" "));
         setCart({});
         setCartOpen(false);
-        setTimeout(() => setSentToast(null), 4500);
+        setTimeout(() => setSentToast(null), 6000);
       },
     });
   };
@@ -963,9 +979,10 @@ function InventoryPage() {
             </Card>
           </TabsContent>
 
-          {/* ORDERS TAB — real purchase order history. No vendor email/EDI
-              happens yet; this is internal record-keeping of what was
-              ordered, from whom, and when. */}
+          {/* ORDERS TAB — real purchase order history. Creating a PO
+              also attempts a real vendor email (see sendToVendors);
+              this tab shows exactly what happened and lets you retry
+              a failed or not-yet-sent email. */}
           <TabsContent value="orders" className="space-y-5 mt-5">
             <Card className="border-stone-200 overflow-hidden">
               <Table>
@@ -976,6 +993,7 @@ function InventoryPage() {
                     <TableHead className="text-center">Items</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Email</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1000,11 +1018,48 @@ function InventoryPage() {
                           {po.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        {po.emailedAt ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Emailed{" "}
+                            {new Date(po.emailedAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        ) : !po.vendorEmail ? (
+                          <span className="text-xs text-stone-400">No email on file</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {po.emailError && (
+                              <span
+                                className="text-xs text-[hsl(var(--terracotta))]"
+                                title={po.emailError}
+                              >
+                                Failed
+                              </span>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={sendEmail.isPending && sendEmail.variables === po.id}
+                              onClick={() => sendEmail.mutate(po.id)}
+                            >
+                              {sendEmail.isPending && sendEmail.variables === po.id
+                                ? "Sending…"
+                                : po.emailError
+                                  ? "Retry"
+                                  : "Send"}
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {purchaseOrders.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-10 text-sm text-stone-500">
+                      <TableCell colSpan={6} className="text-center py-10 text-sm text-stone-500">
                         No purchase orders yet — build a cart and create one from the Items tab.
                       </TableCell>
                     </TableRow>
@@ -1026,7 +1081,7 @@ function InventoryPage() {
             <SheetDescription>
               {cartCount === 0
                 ? "Your cart is empty — add items or auto-fill from suggested reorders."
-                : "Grouped by vendor — creates one real purchase order per vendor. Items with no vendor assigned yet will be skipped."}
+                : "Grouped by vendor — creates one real purchase order per vendor and emails each vendor with a contact email on file. Items with no vendor assigned yet will be skipped."}
             </SheetDescription>
           </SheetHeader>
 
@@ -1098,9 +1153,9 @@ function InventoryPage() {
                 <div className="text-xs text-amber-900">
                   <p className="font-medium">Creating a purchase order</p>
                   <p className="mt-0.5">
-                    On submit, this cart is split into one real purchase order per vendor — you can
-                    review the history below. This doesn't email or otherwise contact the vendor
-                    yet.
+                    On submit, this cart is split into one real purchase order per vendor and
+                    emailed to any vendor with a contact email on file — you can review the history
+                    and delivery status below.
                   </p>
                 </div>
               </div>
