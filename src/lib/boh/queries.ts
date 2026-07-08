@@ -414,6 +414,39 @@ export function useCreateInventoryItem() {
   });
 }
 
+// Edits an existing item's ingredient-level fields (name, category, unit,
+// cost, vendor). On-hand and par already have their own real mutations
+// (useUpdateOnHand/useUpdatePar, used by the inline steppers) — the Edit
+// dialog calls those directly alongside this one rather than duplicating
+// their upsert logic here.
+export type InventoryItemFieldsInput = {
+  name: string;
+  category: string;
+  unit: string;
+  vendorId: string | null;
+  costCents: number | null;
+};
+
+export function useUpdateInventoryItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...input }: InventoryItemFieldsInput & { id: string }) => {
+      const { error } = await supabase
+        .from("ingredients")
+        .update({
+          name: input.name,
+          category: input.category,
+          unit: input.unit,
+          unit_cost_cents: input.costCents,
+          vendor_id: input.vendorId,
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory-items"] }),
+  });
+}
+
 export function useDeleteInventoryItem() {
   const queryClient = useQueryClient();
   return useMutation({

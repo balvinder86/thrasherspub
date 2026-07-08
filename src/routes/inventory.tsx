@@ -7,6 +7,7 @@ import {
   useDeleteVendor,
   useInventoryItems,
   useCreateInventoryItem,
+  useUpdateInventoryItem,
   useDeleteInventoryItem,
   useUpdateOnHand,
   useUpdatePar,
@@ -156,6 +157,7 @@ type ItemDraft = {
 function InventoryPage() {
   const { data: items = [] } = useInventoryItems();
   const createItem = useCreateInventoryItem();
+  const updateItem = useUpdateInventoryItem();
   const deleteItemMutation = useDeleteInventoryItem();
   const updateOnHandMutation = useUpdateOnHand();
   const updateParMutation = useUpdatePar();
@@ -196,8 +198,11 @@ function InventoryPage() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [sentToast, setSentToast] = useState<string | null>(null);
 
-  // Item dialog
+  // Item dialog — same dialog/draft state for both Add and Edit,
+  // mirroring the Vendor dialog's vendorEditing pattern. null means
+  // "creating a new item"; set means "editing this existing item".
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [itemEditingId, setItemEditingId] = useState<string | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft>({
     name: "",
     category: "Food",
@@ -356,6 +361,7 @@ function InventoryPage() {
 
   // ----- Item CRUD -----
   const openAddItem = () => {
+    setItemEditingId(null);
     setItemDraft({
       name: "",
       category: tab === "All" ? "Food" : tab,
@@ -368,19 +374,48 @@ function InventoryPage() {
     });
     setItemDialogOpen(true);
   };
-  const saveNewItem = () => {
-    if (!itemDraft.name.trim() || !itemDraft.vendor) return;
-    const vendorId = vendors.find((v) => v.name === itemDraft.vendor)?.id ?? null;
-    createItem.mutate({
-      name: itemDraft.name.trim(),
-      category: itemDraft.category,
-      unit: itemDraft.unit,
-      onHand: itemDraft.onHand,
-      par: itemDraft.par,
-      vendorId,
-      costCents: itemDraft.cost ? Math.round(itemDraft.cost * 100) : null,
+  const openEditItem = (item: Item) => {
+    setItemEditingId(item.id);
+    setItemDraft({
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      onHand: item.onHand,
+      par: item.par,
+      vendor: item.vendor,
+      cost: item.cost,
+      weeklyUsage: item.weeklyUsage,
     });
+    setItemDialogOpen(true);
+  };
+  const saveItem = () => {
+    if (!itemDraft.name.trim()) return;
+    const vendorId = vendors.find((v) => v.name === itemDraft.vendor)?.id ?? null;
+    const costCents = itemDraft.cost ? Math.round(itemDraft.cost * 100) : null;
+    if (itemEditingId) {
+      updateItem.mutate({
+        id: itemEditingId,
+        name: itemDraft.name.trim(),
+        category: itemDraft.category,
+        unit: itemDraft.unit,
+        vendorId,
+        costCents,
+      });
+      updateOnHand(itemEditingId, itemDraft.onHand);
+      updatePar(itemEditingId, itemDraft.par);
+    } else {
+      createItem.mutate({
+        name: itemDraft.name.trim(),
+        category: itemDraft.category,
+        unit: itemDraft.unit,
+        onHand: itemDraft.onHand,
+        par: itemDraft.par,
+        vendorId,
+        costCents,
+      });
+    }
     setItemDialogOpen(false);
+    setItemEditingId(null);
   };
   const confirmDeleteItem = () => {
     if (!itemToDelete) return;
@@ -809,7 +844,7 @@ function InventoryPage() {
                     <TableHead className="w-[110px] text-center">Status</TableHead>
                     <TableHead className="w-[170px] text-center">AI suggested</TableHead>
                     <TableHead className="w-[110px] text-right">Action</TableHead>
-                    <TableHead className="w-[48px]"></TableHead>
+                    <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -890,15 +925,26 @@ function InventoryPage() {
                               </Button>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
-                                onClick={() => setItemToDelete(item)}
-                                aria-label={`Delete ${item.name}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-stone-500"
+                                  onClick={() => openEditItem(item)}
+                                  aria-label={`Edit ${item.name}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-stone-500 hover:text-[hsl(var(--terracotta))]"
+                                  onClick={() => setItemToDelete(item)}
+                                  aria-label={`Delete ${item.name}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1392,13 +1438,17 @@ function InventoryPage() {
         </div>
       )}
 
-      {/* Add Item dialog */}
+      {/* Add/Edit Item dialog */}
       <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl">Add inventory item</DialogTitle>
+            <DialogTitle className="font-serif text-2xl">
+              {itemEditingId ? "Edit inventory item" : "Add inventory item"}
+            </DialogTitle>
             <DialogDescription>
-              The Ordering agent will start tracking par levels and usage as soon as you save.
+              {itemEditingId
+                ? "Changes apply immediately across Inventory & Ordering."
+                : "The Ordering agent will start tracking par levels and usage as soon as you save."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
@@ -1436,6 +1486,7 @@ function InventoryPage() {
                 onChange={(e) => setItemDraft({ ...itemDraft, vendor: e.target.value })}
                 className="h-10 w-full rounded-md border border-stone-200 bg-white px-2 text-sm"
               >
+                <option value="">No vendor</option>
                 {vendorNames.map((v) => (
                   <option key={v} value={v}>
                     {v}
@@ -1486,25 +1537,42 @@ function InventoryPage() {
             </div>
             <div className="col-span-2">
               <Label htmlFor="item-usage">Est. weekly usage ({itemDraft.unit || "units"})</Label>
-              <Input
-                id="item-usage"
-                type="number"
-                value={itemDraft.weeklyUsage}
-                onChange={(e) =>
-                  setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })
-                }
-              />
-              <p className="text-xs text-stone-500 mt-1">
-                Seed value — the agent will refine this from product mix once sales come in.
-              </p>
+              {itemEditingId ? (
+                <>
+                  <Input id="item-usage" type="number" value={itemDraft.weeklyUsage} disabled />
+                  <p className="text-xs text-stone-500 mt-1">
+                    Computed from real POS sales — not directly editable here.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Input
+                    id="item-usage"
+                    type="number"
+                    value={itemDraft.weeklyUsage}
+                    onChange={(e) =>
+                      setItemDraft({ ...itemDraft, weeklyUsage: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="text-xs text-stone-500 mt-1">
+                    Seed value — the agent will refine this from product mix once sales come in.
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setItemDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveNewItem} disabled={!itemDraft.name.trim() || !itemDraft.vendor}>
-              <Plus className="h-4 w-4" /> Add item
+            <Button onClick={saveItem} disabled={!itemDraft.name.trim()}>
+              {itemEditingId ? (
+                "Save changes"
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" /> Add item
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
