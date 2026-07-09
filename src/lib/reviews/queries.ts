@@ -170,6 +170,32 @@ export function useApproveAndPost() {
   });
 }
 
+// Calls the review-agent Edge Function's "regenerate" action — asks
+// Claude for a fresh draft of one review and writes it to
+// ai_draft_reply server-side. Returns the new text directly so the
+// open reply drawer can update its textarea without waiting on a
+// refetch, but still invalidates ["reviews"] so the list stays
+// consistent if the drawer is reopened later.
+export function useRegenerateReply() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (reviewId: string): Promise<{ draftReply: string }> => {
+      const { data, error } = await supabase.functions.invoke("review-agent", {
+        body: { action: "regenerate", review_id: reviewId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "regenerate failed",
+        );
+      }
+      return data as { draftReply: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reviews"] });
+    },
+  });
+}
+
 export function useDismissReview() {
   const queryClient = useQueryClient();
   return useMutation({

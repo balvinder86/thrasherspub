@@ -21,6 +21,8 @@ import {
   getReviewForPosting,
   markReviewPosted,
   markReviewPostFailed,
+  getReviewForRegenerate,
+  updateDraftReply,
   type RestaurantReviewConfig,
 } from "./db.js";
 import { scanUnrepliedReviews, postReplyToReview } from "./browser.js";
@@ -119,6 +121,19 @@ async function handlePost(reviewId: string) {
   }
 }
 
+async function handleRegenerate(reviewId: string) {
+  const review = await getReviewForRegenerate(reviewId);
+  const config = await getCredentialsForRestaurant(review.restaurantId);
+  const draftReply = await generateReply(
+    review.reviewerName,
+    review.starRating,
+    review.reviewText,
+    config.settings,
+  );
+  await updateDraftReply(reviewId, draftReply);
+  return { draftReply };
+}
+
 const server = createServer(async (req, res) => {
   const respond = (status: number, body: unknown) => {
     res.writeHead(status, { "Content-Type": "application/json" });
@@ -150,6 +165,16 @@ const server = createServer(async (req, res) => {
         return;
       }
       respond(200, { ok: true, ...(await handlePost(reviewId)) });
+      return;
+    }
+
+    if (req.url === "/regenerate" && req.method === "POST") {
+      const reviewId = body.review_id;
+      if (typeof reviewId !== "string") {
+        respond(400, { ok: false, error: "review_id is required" });
+        return;
+      }
+      respond(200, { ok: true, ...(await handleRegenerate(reviewId)) });
       return;
     }
 

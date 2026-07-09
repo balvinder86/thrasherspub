@@ -174,3 +174,32 @@ export async function getCredentialsForRestaurant(restaurantId: string): Promise
   if (configs.length === 0) throw new Error(`no review agent connected for restaurant ${restaurantId}`);
   return configs[0];
 }
+
+export type ReviewForRegenerate = {
+  id: string;
+  restaurantId: string;
+  reviewerName: string;
+  starRating: number;
+  reviewText: string;
+};
+
+export async function getReviewForRegenerate(reviewId: string): Promise<ReviewForRegenerate> {
+  const { data, error } = await supabase
+    .from("reviews")
+    .select("id, restaurant_id, reviewer_name, star_rating, review_text")
+    .eq("id", reviewId)
+    .single();
+  if (error || !data) throw new Error(`review not found: ${error?.message ?? reviewId}`);
+  return {
+    id: data.id,
+    restaurantId: data.restaurant_id,
+    reviewerName: data.reviewer_name,
+    starRating: data.star_rating,
+    reviewText: data.review_text ?? "",
+  };
+}
+
+export async function updateDraftReply(reviewId: string, draftReply: string) {
+  const { error } = await supabase.from("reviews").update({ ai_draft_reply: draftReply }).eq("id", reviewId);
+  if (error) throw new Error(`update ai_draft_reply failed: ${error.message}`);
+}

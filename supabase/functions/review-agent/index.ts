@@ -6,8 +6,9 @@
 // tenant's restaurant_id/review_id must be blocked explicitly here),
 // then forward to Railway with a shared secret the browser never sees.
 //
-//   { action: "scan", restaurant_id } — read-only, drafts new reviews
-//   { action: "post", review_id }     — posts one approved reply live
+//   { action: "scan", restaurant_id }       — read-only, drafts new reviews
+//   { action: "post", review_id }           — posts one approved reply live
+//   { action: "regenerate", review_id }     — re-drafts one reply via Claude
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -114,7 +115,39 @@ Deno.serve(async (req) => {
       return json(railwayBody ?? { ok: false, error: "empty response from review agent service" }, railwayRes.status);
     }
 
-    return json({ ok: false, step: "input", error: "action must be 'scan' or 'post'" }, 400);
+    if (action === "regenerate") {
+      if (!review_id) {
+        return json({ ok: false, step: "input", error: "review_id is required" }, 400);
+      }
+
+      const { data: review, error: reviewErr } = await supabase
+        .from("reviews")
+        .select("id, restaurant_id")
+        .eq("id", review_id)
+        .single();
+      if (reviewErr || !review) {
+        return json({ ok: false, step: "load_review", error: reviewErr?.message ?? "not found" }, 404);
+      }
+
+      try {
+        await assertMember(userData.user.id, review.restaurant_id);
+      } catch (e) {
+        return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
+      }
+
+      const railwayRes = await fetch(`${REVIEW_AGENT_SERVICE_URL}/regenerate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REVIEW_AGENT_SERVICE_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ review_id }),
+      });
+      const railwayBody = await railwayRes.json().catch(() => null);
+      return json(railwayBody ?? { ok: false, error: "empty response from review agent service" }, railwayRes.status);
+    }
+
+    return json({ ok: false, step: "input", error: "action must be 'scan', 'post', or 'regenerate'" }, 400);
   } catch (e) {
     return json({ ok: false, step: "unexpected", error: String(e) }, 500);
   }

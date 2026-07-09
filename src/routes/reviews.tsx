@@ -6,6 +6,7 @@ import {
   usePreviewReviews,
   useApproveAndPost,
   useDismissReview,
+  useRegenerateReply,
   type Review,
   type ReviewStatus,
 } from "@/lib/reviews/queries";
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   Bot,
   CheckCircle2,
+  Clock,
   Inbox,
   Link2,
   QrCode,
@@ -22,7 +24,7 @@ import {
   Sparkles,
   Star,
   Wand2,
-  XCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Topbar } from "@/components/dashboard/Topbar";
@@ -72,35 +74,75 @@ function Stars({ value }: { value: number }) {
   );
 }
 
+const STATUS_STYLE: Record<ReviewStatus, { label: string; chip: string; accent: string }> = {
+  drafted: {
+    label: "Needs reply",
+    chip: "bg-primary/10 text-primary border-primary/20",
+    accent: "border-l-primary",
+  },
+  approved_pending_post: {
+    label: "Posting…",
+    chip: "bg-accent text-accent-foreground border-border",
+    accent: "border-l-accent-foreground/40",
+  },
+  posted: {
+    label: "Posted",
+    chip: "bg-success/10 text-success border-success/20",
+    accent: "border-l-success",
+  },
+  post_failed: {
+    label: "Failed to post",
+    chip: "bg-destructive/10 text-destructive border-destructive/20",
+    accent: "border-l-destructive",
+  },
+  dismissed: {
+    label: "Dismissed",
+    chip: "bg-muted text-muted-foreground border-border",
+    accent: "border-l-border",
+  },
+};
+
 function StatusChip({ status }: { status: ReviewStatus }) {
-  const map: Record<ReviewStatus, { label: string; cls: string }> = {
-    drafted: { label: "Needs reply", cls: "bg-primary/10 text-primary border-primary/20" },
-    approved_pending_post: {
-      label: "Posting…",
-      cls: "bg-accent text-accent-foreground border-border",
-    },
-    posted: { label: "Posted", cls: "bg-success/10 text-success border-success/20" },
-    post_failed: {
-      label: "Failed to post",
-      cls: "bg-destructive/10 text-destructive border-destructive/20",
-    },
-    dismissed: { label: "Dismissed", cls: "bg-muted text-muted-foreground border-border" },
-  };
-  const { label, cls } = map[status];
+  const { label, chip } = STATUS_STYLE[status];
   return (
     <span
-      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${cls}`}
+      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${chip}`}
     >
       {label}
     </span>
   );
 }
 
-function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function KpiCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  attention = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  icon: LucideIcon;
+  attention?: boolean;
+}) {
   return (
-    <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-      <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{label}</div>
-      <div className="mt-2 font-display text-3xl">{value}</div>
+    <Card
+      className={`rounded-2xl border p-5 shadow-soft transition ${
+        attention ? "border-primary/30 bg-primary/[0.03]" : "border-border/70 bg-card"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <div
+          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
+            attention ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground"
+          }`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{label}</div>
+      </div>
+      <div className="mt-3 font-display text-3xl">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </Card>
   );
@@ -146,6 +188,7 @@ function ReviewsPage() {
   const preview = usePreviewReviews();
   const approveAndPost = useApproveAndPost();
   const dismiss = useDismissReview();
+  const regenerate = useRegenerateReply();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ratingFilter, setRatingFilter] = useState<"all" | "low" | "mid" | "high">("all");
@@ -221,11 +264,14 @@ function ReviewsPage() {
             label="Needs reply"
             value={String(kpis.needsReply)}
             hint="AI has a draft ready for each"
+            icon={Inbox}
+            attention={kpis.needsReply > 0}
           />
           <KpiCard
             label="AI replies posted"
             value={String(kpis.postedCount)}
             hint="All-time, this agent"
+            icon={CheckCircle2}
           />
           <KpiCard
             label="Avg rating (tracked)"
@@ -235,6 +281,7 @@ function ReviewsPage() {
                 ? "Across reviews this agent has seen — not Google's public rating"
                 : "Not enough data yet"
             }
+            icon={Star}
           />
           <KpiCard
             label="Avg response time"
@@ -244,6 +291,7 @@ function ReviewsPage() {
                 ? "From when the agent found it to when it posted"
                 : "Not enough data yet"
             }
+            icon={Clock}
           />
         </section>
 
@@ -316,7 +364,7 @@ function ReviewsPage() {
               {filtered.map((r) => (
                 <Card
                   key={r.id}
-                  className="group cursor-pointer rounded-2xl border-border/70 bg-card p-5 shadow-soft transition hover:shadow-card"
+                  className={`group cursor-pointer rounded-2xl border-border/70 border-l-4 bg-card p-5 shadow-soft transition hover:shadow-card ${STATUS_STYLE[r.status].accent}`}
                   onClick={() => openReview(r)}
                 >
                   <div className="flex items-start gap-4">
@@ -332,7 +380,12 @@ function ReviewsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{r.reviewerName}</span>
-                        <span className="text-xs text-muted-foreground">Google</span>
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                        >
+                          Google
+                        </Badge>
                         <Stars value={r.starRating} />
                         <span className="text-xs text-muted-foreground">
                           · {timeAgo(r.reviewFoundAt)}
@@ -410,16 +463,12 @@ function ReviewsPage() {
                         Session
                       </div>
                       <div className="mt-1 flex items-center gap-1.5 text-sm">
-                        {connection.cookiesValidAt ? (
-                          <>
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" /> Working
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="h-3.5 w-3.5 text-muted-foreground" /> Not checked
-                            yet
-                          </>
-                        )}
+                        <span
+                          className={`inline-block h-2 w-2 rounded-full ${
+                            connection.cookiesValidAt ? "bg-success" : "bg-muted-foreground/40"
+                          }`}
+                        />
+                        {connection.cookiesValidAt ? "Working" : "Not checked yet"}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {connection.lastSyncedAt
@@ -689,15 +738,40 @@ function ReviewsPage() {
                 )}
 
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    <Wand2 className="h-3.5 w-3.5 text-primary" /> Reply
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      <Wand2 className="h-3.5 w-3.5 text-primary" /> Reply
+                    </div>
+                    {active.status !== "posted" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() =>
+                          regenerate.mutate(active.id, {
+                            onSuccess: (data) => setReplyDraft(data.draftReply),
+                          })
+                        }
+                        disabled={regenerate.isPending}
+                      >
+                        <RefreshCw
+                          className={`h-3 w-3 ${regenerate.isPending ? "animate-spin" : ""}`}
+                        />
+                        {regenerate.isPending ? "Regenerating…" : "Regenerate"}
+                      </Button>
+                    )}
                   </div>
                   <Textarea
                     value={replyDraft}
                     onChange={(e) => setReplyDraft(e.target.value)}
-                    disabled={active.status === "posted"}
+                    disabled={active.status === "posted" || regenerate.isPending}
                     className="mt-2 min-h-[160px] resize-none bg-card text-sm leading-relaxed"
                   />
+                  {regenerate.isError && (
+                    <p className="mt-1.5 text-xs text-destructive">
+                      {(regenerate.error as Error).message}
+                    </p>
+                  )}
                 </div>
 
                 {active.status === "post_failed" && active.postError && (
