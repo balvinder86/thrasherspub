@@ -88,6 +88,18 @@ jobs:
       # schemas that don't exist on a bare Postgres) and requires the
       # pg_trgm extension setup pattern used only on real Supabase.
 
+      - name: Apply Phase 2 invoice discount column
+        run: $PSQL -f db/phase2/28_invoice_discount.sql
+
+      - name: Apply Phase 2 purchase orders schema
+        run: $PSQL -f db/phase2/29_purchase_orders.sql
+
+      - name: Apply Phase 2 purchase order email tracking columns
+        run: $PSQL -f db/phase2/30_purchase_order_email.sql
+
+      - name: Apply Phase 2 review agent schema
+        run: $PSQL -f db/phase2/31_review_agent.sql
+
       - name: Seed test tenants
         run: $PSQL -f db/phase0/02_seed.sql
 
