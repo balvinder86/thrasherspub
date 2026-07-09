@@ -48,11 +48,13 @@ async function scanConfig(config: RestaurantReviewConfig) {
     config.searchQuery,
     (reviewerName, starRating, comment) => generateReply(reviewerName, starRating, comment, config.settings),
     config.maxRepliesPerRun,
+    config.autoSend5Star,
   );
 
   await markCookiesValid(config.credentialId, new Date());
 
   let drafted = 0;
+  let autoPosted = 0;
   for (const review of extracted) {
     const existingId = await findExistingReview(
       config.restaurantId,
@@ -68,17 +70,20 @@ async function scanConfig(config: RestaurantReviewConfig) {
       reviewText: review.comment,
       aiDraftReply: review.replyText,
       reviewWrittenAt: review.writtenAt,
+      autoPosted: review.autoPosted,
+      autoPostError: review.autoPostError,
     });
     drafted++;
+    if (review.autoPosted) autoPosted++;
   }
 
-  return { found, drafted };
+  return { found, drafted, autoPosted };
 }
 
 async function handleScan(restaurantId: string) {
   const config = await getCredentialsForRestaurant(restaurantId);
-  const { found, drafted } = await scanConfig(config);
-  return { found, drafted };
+  const { found, drafted, autoPosted } = await scanConfig(config);
+  return { found, drafted, autoPosted };
 }
 
 async function handlePost(reviewId: string) {
@@ -205,8 +210,10 @@ async function sweepAllRestaurants() {
   }
   for (const config of configs) {
     try {
-      const { found, drafted } = await scanConfig(config);
-      console.log(`[background-sweep] restaurant ${config.restaurantId}: found ${found}, drafted ${drafted}`);
+      const { found, drafted, autoPosted } = await scanConfig(config);
+      console.log(
+        `[background-sweep] restaurant ${config.restaurantId}: found ${found}, drafted ${drafted}, autoPosted ${autoPosted}`,
+      );
     } catch (e) {
       console.error(`[background-sweep] restaurant ${config.restaurantId} failed:`, e);
     }

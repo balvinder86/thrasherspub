@@ -100,41 +100,99 @@ async function loadAllUnrepliedReviews(frame: () => FrameLocator): Promise<numbe
   return currentCount;
 }
 
+// Re-locates a specific review among the currently-unreplied list by
+// reviewer name + comment text, then posts the given reply to it.
+// Deliberately NOT "click the first Reply button" — posting a reply
+// can remove that review from the Unreplied list Google shows, which
+// would shift every later index. Re-matching by content each time is
+// what keeps a loop over several posts safe. Throws a descriptive
+// error if the target is no longer found, rather than posting to the
+// wrong review or silently no-op'ing. Shared by the explicit
+// human-approved /post flow and the inline 5-star auto-send pass
+// below — same safety property applies to both.
+async function findAndSubmitReply(
+  frame: () => FrameLocator,
+  targetReviewerName: string,
+  targetComment: string,
+  replyText: string,
+): Promise<void> {
+  const found = await frame().getByText("Reply", { exact: true }).count();
+
+  let matchedIndex = -1;
+  for (let i = 0; i < found; i++) {
+    const review = await extractReviewAt(frame(), i);
+    if (review.reviewerName === targetReviewerName && review.comment === targetComment) {
+      matchedIndex = i;
+      break;
+    }
+  }
+
+  if (matchedIndex === -1) {
+    throw new Error(
+      `Review by "${targetReviewerName}" is no longer in the Unreplied list — it may already have a reply, or the review may be gone.`,
+    );
+  }
+
+  await submitReplyAt(frame(), matchedIndex, replyText);
+}
+
+export type ScannedReview = ExtractedReview & {
+  replyText: string;
+  // Only meaningful when auto-send was requested for this review
+  // (5-star, opt-in setting). autoPosted stays false and autoPostError
+  // stays undefined for every review scanned with auto-send off.
+  autoPosted: boolean;
+  autoPostError?: string;
+};
+
 // Reads the currently-unreplied reviews, up to `cap`, and generates a
-// Claude draft for each. Always read-only — never fills or submits
-// anything, so this is safe to call as often as needed (the on-demand
-// "Check now" button and the periodic background sweep both use this).
+// Claude draft for each. Read-only by default — the on-demand "Check
+// now" button and the periodic background sweep both call this. When
+// autoSend5Star is true, any 5-star review is additionally posted
+// immediately in a second pass (after every draft has been generated,
+// re-matching each one by content right before submitting) — every
+// other rating always stays draft-only regardless of this flag.
 export async function scanUnrepliedReviews(
   cookies: GoogleCookie[],
   businessProfileId: string,
   searchQuery: string,
   generateReply: GenerateReplyFn,
   cap: number,
-): Promise<{ found: number; extracted: (ExtractedReview & { replyText: string })[] }> {
+  autoSend5Star: boolean,
+): Promise<{ found: number; extracted: ScannedReview[] }> {
   return withGoogleReviewsPanel(cookies, businessProfileId, searchQuery, async (_page, frame) => {
     const found = await loadAllUnrepliedReviews(frame);
     const total = Math.min(found, cap);
 
-    const extracted: (ExtractedReview & { replyText: string })[] = [];
+    const drafted: (ExtractedReview & { replyText: string })[] = [];
     for (let i = 0; i < total; i++) {
       const review = await extractReviewAt(frame(), i);
       const replyText = await generateReply(review.reviewerName, review.starRating, review.comment);
-      extracted.push({ ...review, replyText });
+      drafted.push({ ...review, replyText });
+    }
+
+    const extracted: ScannedReview[] = [];
+    for (const review of drafted) {
+      if (autoSend5Star && review.starRating === 5) {
+        try {
+          await findAndSubmitReply(frame, review.reviewerName, review.comment, review.replyText);
+          extracted.push({ ...review, autoPosted: true });
+        } catch (e) {
+          extracted.push({
+            ...review,
+            autoPosted: false,
+            autoPostError: e instanceof Error ? e.message : String(e),
+          });
+        }
+      } else {
+        extracted.push({ ...review, autoPosted: false });
+      }
     }
 
     return { found, extracted };
   });
 }
 
-// Re-locates a specific review among the currently-unreplied list by
-// reviewer name + comment text, then posts the given reply to it.
-// Deliberately NOT "click the first Reply button" — that assumption
-// only held in the source repo because extraction and posting happened
-// in the same pass. Here a human approval step sits in between, during
-// which new reviews may have appeared ahead of the one being posted to,
-// or the target review may have already been answered via Google's own
-// UI. Throws a descriptive error in either case rather than posting to
-// the wrong review or silently no-op'ing.
 export async function postReplyToReview(
   cookies: GoogleCookie[],
   businessProfileId: string,
@@ -143,26 +201,9 @@ export async function postReplyToReview(
   targetComment: string,
   replyText: string,
 ): Promise<void> {
-  await withGoogleReviewsPanel(cookies, businessProfileId, searchQuery, async (_page, frame) => {
-    const found = await frame().getByText("Reply", { exact: true }).count();
-
-    let matchedIndex = -1;
-    for (let i = 0; i < found; i++) {
-      const review = await extractReviewAt(frame(), i);
-      if (review.reviewerName === targetReviewerName && review.comment === targetComment) {
-        matchedIndex = i;
-        break;
-      }
-    }
-
-    if (matchedIndex === -1) {
-      throw new Error(
-        `Review by "${targetReviewerName}" is no longer in the Unreplied list — it may already have a reply, or the review may be gone.`,
-      );
-    }
-
-    await submitReplyAt(frame(), matchedIndex, replyText);
-  });
+  await withGoogleReviewsPanel(cookies, businessProfileId, searchQuery, async (_page, frame) =>
+    findAndSubmitReply(frame, targetReviewerName, targetComment, replyText),
+  );
 }
 
 // ─── Extraction ────────────────────────────────────────────────────────

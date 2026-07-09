@@ -7,6 +7,7 @@ import {
   useApproveAndPost,
   useDismissReview,
   useRegenerateReply,
+  useSetAutoSend5Star,
   type Review,
   type ReviewStatus,
 } from "@/lib/reviews/queries";
@@ -19,12 +20,15 @@ import {
   Clock,
   Inbox,
   Link2,
+  MessageSquare,
   QrCode,
   RefreshCw,
   Search,
   Send,
   Sparkles,
   Star,
+  ThumbsDown,
+  ThumbsUp,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +49,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/reviews")({
   head: () => ({
@@ -111,6 +125,48 @@ function StatusChip({ status }: { status: ReviewStatus }) {
     <span
       className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${chip}`}
     >
+      {label}
+    </span>
+  );
+}
+
+// Derived purely from the star rating — not text-based sentiment
+// analysis (that would need real NLP, not built). Same 1–2/3/4–5
+// buckets as the rating filter buttons, so the label on a card always
+// agrees with which filter surfaces it.
+type Sentiment = "positive" | "neutral" | "negative";
+
+function sentimentFromRating(starRating: number): Sentiment {
+  if (starRating >= 4) return "positive";
+  if (starRating === 3) return "neutral";
+  return "negative";
+}
+
+const SENTIMENT_STYLE: Record<Sentiment, { label: string; cls: string; icon: LucideIcon }> = {
+  positive: {
+    label: "Positive",
+    cls: "bg-success/10 text-success border-success/20",
+    icon: ThumbsUp,
+  },
+  neutral: {
+    label: "Neutral",
+    cls: "bg-muted text-muted-foreground border-border",
+    icon: MessageSquare,
+  },
+  negative: {
+    label: "Negative",
+    cls: "bg-destructive/10 text-destructive border-destructive/20",
+    icon: ThumbsDown,
+  },
+};
+
+function SentimentChip({ starRating }: { starRating: number }) {
+  const { label, cls, icon: Icon } = SENTIMENT_STYLE[sentimentFromRating(starRating)];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${cls}`}
+    >
+      <Icon className="h-3 w-3" />
       {label}
     </span>
   );
@@ -192,8 +248,10 @@ function ReviewsPage() {
   const approveAndPost = useApproveAndPost();
   const dismiss = useDismissReview();
   const regenerate = useRegenerateReply();
+  const setAutoSend5Star = useSetAutoSend5Star();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [confirmingAutoSend, setConfirmingAutoSend] = useState(false);
   const [ratingFilter, setRatingFilter] = useState<"all" | "low" | "mid" | "high">("all");
   const [search, setSearch] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
@@ -336,19 +394,20 @@ function ReviewsPage() {
               <span className="px-2 text-xs text-muted-foreground">Filter</span>
               {(
                 [
-                  ["all", "All reviews"],
-                  ["low", "1–2 ★"],
-                  ["mid", "3 ★"],
-                  ["high", "4–5 ★"],
+                  ["all", "All reviews", null],
+                  ["high", "Positive", ThumbsUp],
+                  ["mid", "Neutral", MessageSquare],
+                  ["low", "Negative", ThumbsDown],
                 ] as const
-              ).map(([key, label]) => (
+              ).map(([key, label, Icon]) => (
                 <Button
                   key={key}
                   size="sm"
                   variant={ratingFilter === key ? "default" : "ghost"}
-                  className="h-8 rounded-full text-xs"
+                  className="h-8 gap-1.5 rounded-full text-xs"
                   onClick={() => setRatingFilter(key)}
                 >
+                  {Icon && <Icon className="h-3 w-3" />}
                   {label}
                 </Button>
               ))}
@@ -407,6 +466,7 @@ function ReviewsPage() {
                           · {timeAgo(r.reviewWrittenAt ?? r.reviewFoundAt)}
                         </span>
                         <div className="ml-auto flex items-center gap-2">
+                          <SentimentChip starRating={r.starRating} />
                           <StatusChip status={r.status} />
                         </div>
                       </div>
@@ -561,7 +621,11 @@ function ReviewsPage() {
                     <p className="mt-2 text-xs text-muted-foreground">
                       Found {preview.data.found} unreplied review
                       {preview.data.found === 1 ? "" : "s"} on Google, drafted{" "}
-                      {preview.data.drafted} new one{preview.data.drafted === 1 ? "" : "s"}.
+                      {preview.data.drafted} new one{preview.data.drafted === 1 ? "" : "s"}
+                      {preview.data.autoPosted > 0
+                        ? `, auto-sent ${preview.data.autoPosted} of them (5★)`
+                        : ""}
+                      .
                     </p>
                   )}
                   {preview.isError && (
@@ -588,14 +652,34 @@ function ReviewsPage() {
                   <div>
                     <div className="text-sm font-medium">Every reply requires your approval</div>
                     <div className="text-xs text-muted-foreground">
-                      There is no auto-send mode. Every AI draft is held here until you approve it.
+                      {connection?.autoSend5Star
+                        ? "Applies to every rating except 5★ — those post automatically (see below)."
+                        : "There is no auto-send mode. Every AI draft is held here until you approve it."}
                     </div>
                   </div>
                 </div>
-                <PlannedToggleRow
-                  label="Auto-send 5★ replies"
-                  description="Not built yet — would let top-rated reviews post without a manual approval click."
-                />
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-background p-3">
+                  <Switch
+                    checked={connection?.autoSend5Star ?? false}
+                    disabled={!connection || setAutoSend5Star.isPending}
+                    onCheckedChange={(checked) => {
+                      if (checked) setConfirmingAutoSend(true);
+                      else setAutoSend5Star.mutate(false);
+                    }}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Auto-send 5★ replies</div>
+                    <div className="text-xs text-muted-foreground">
+                      When on, 5★ reviews post their AI-drafted reply immediately during the next
+                      scan — no approval click. Every other rating still always waits for you.
+                    </div>
+                    {setAutoSend5Star.isError && (
+                      <div className="mt-1 text-xs text-destructive">
+                        {(setAutoSend5Star.error as Error).message}
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <PlannedToggleRow
                   label="Offer recovery on negative reviews"
                   description="Not built yet — would suggest a comp or invite-back when a review reads negative."
@@ -605,6 +689,31 @@ function ReviewsPage() {
                   description="Not built yet — would flag refund language and route it to a manager instead of posting."
                 />
               </div>
+
+              <AlertDialog open={confirmingAutoSend} onOpenChange={setConfirmingAutoSend}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Turn on auto-send for 5★ replies?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      From now on, when a scan finds a new 5★ review, its AI-drafted reply posts to
+                      Google immediately — you won't see it in the Inbox first. Every review rated
+                      1–4★ still always waits for your explicit approval. You can turn this back off
+                      anytime.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setAutoSend5Star.mutate(true);
+                        setConfirmingAutoSend(false);
+                      }}
+                    >
+                      Turn on auto-send
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </Card>
 
             <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
@@ -770,6 +879,7 @@ function ReviewsPage() {
                   <Stars value={active.starRating} />
                   <span>·</span>
                   <span>{timeAgo(active.reviewWrittenAt ?? active.reviewFoundAt)}</span>
+                  <SentimentChip starRating={active.starRating} />
                   <StatusChip status={active.status} />
                 </div>
                 <SheetTitle className="font-display text-2xl">{active.reviewerName}</SheetTitle>

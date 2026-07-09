@@ -18,6 +18,7 @@ export type RestaurantReviewConfig = {
   vaultSecretName: string;
   settings: ReviewAgentSettings;
   maxRepliesPerRun: number;
+  autoSend5Star: boolean;
 };
 
 // Loads every restaurant with a connected Google review agent (used by
@@ -40,7 +41,9 @@ export async function getReviewAgentConfigs(restaurantId?: string): Promise<Rest
 
   const { data: settingsRows, error: settingsErr } = await supabase
     .from("review_agent_settings")
-    .select("restaurant_id, business_name, business_description, reply_contact_email, max_replies_per_run")
+    .select(
+      "restaurant_id, business_name, business_description, reply_contact_email, max_replies_per_run, auto_send_5_star",
+    )
     .in(
       "restaurant_id",
       creds.map((c) => c.restaurant_id),
@@ -65,6 +68,7 @@ export async function getReviewAgentConfigs(restaurantId?: string): Promise<Rest
           replyContactEmail: settings.reply_contact_email,
         },
         maxRepliesPerRun: settings.max_replies_per_run,
+        autoSend5Star: settings.auto_send_5_star,
       };
     });
 }
@@ -112,7 +116,13 @@ export async function insertDraftReview(input: {
   reviewText: string;
   aiDraftReply: string;
   reviewWrittenAt: string | null;
+  // Set when auto-send already attempted this review during the same
+  // scan (5-star only, opt-in) — inserted directly as posted/failed
+  // instead of the normal drafted-then-human-approves flow.
+  autoPosted?: boolean;
+  autoPostError?: string;
 }): Promise<string> {
+  const status = input.autoPosted ? "posted" : input.autoPostError ? "post_failed" : "drafted";
   const { data, error } = await supabase
     .from("reviews")
     .insert({
@@ -123,7 +133,9 @@ export async function insertDraftReview(input: {
       review_text: input.reviewText || null,
       ai_draft_reply: input.aiDraftReply,
       review_written_at: input.reviewWrittenAt,
-      status: "drafted",
+      status,
+      posted_at: input.autoPosted ? new Date().toISOString() : null,
+      post_error: input.autoPostError ?? null,
     })
     .select("id")
     .single();

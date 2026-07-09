@@ -80,6 +80,7 @@ export type ReviewAgentConnection = {
   cookiesCapturedAt: string | null;
   cookiesValidAt: string | null;
   lastSyncedAt: string | null;
+  autoSend5Star: boolean;
 };
 
 // null means "not connected yet" — no fake default state, the Agent
@@ -103,7 +104,7 @@ export function useReviewAgentConnection() {
 
       const { data: settings, error: settingsErr } = await supabase
         .from("review_agent_settings")
-        .select("business_name, business_description, reply_contact_email")
+        .select("business_name, business_description, reply_contact_email, auto_send_5_star")
         .maybeSingle();
       if (settingsErr) throw settingsErr;
 
@@ -116,7 +117,31 @@ export function useReviewAgentConnection() {
         cookiesCapturedAt: cred.cookies_captured_at,
         cookiesValidAt: cred.cookies_valid_at,
         lastSyncedAt: cred.last_synced_at,
+        autoSend5Star: settings?.auto_send_5_star ?? false,
       };
+    },
+  });
+}
+
+// Direct tenant-scoped write (RLS-protected), not routed through the
+// Railway service — this only flips a setting, it doesn't touch
+// Google. Real behavior change though: when on, the next scan posts
+// 5-star replies immediately instead of waiting for approval, so the
+// UI keeps this behind an explicit confirm, not a bare click-to-toggle.
+export function useSetAutoSend5Star() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { error } = await supabase
+        .from("review_agent_settings")
+        .update({ auto_send_5_star: enabled })
+        .eq("restaurant_id", restaurantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["review-agent-connection"] });
     },
   });
 }
@@ -130,7 +155,7 @@ export function usePreviewReviews() {
   const restaurantId = useCurrentRestaurantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (): Promise<{ found: number; drafted: number }> => {
+    mutationFn: async (): Promise<{ found: number; drafted: number; autoPosted: number }> => {
       if (!restaurantId) throw new Error("no current restaurant");
       const { data, error } = await supabase.functions.invoke("review-agent", {
         body: { action: "scan", restaurant_id: restaurantId },
@@ -140,7 +165,7 @@ export function usePreviewReviews() {
           (data as { error?: string } | null)?.error ?? error?.message ?? "scan failed",
         );
       }
-      return data as { found: number; drafted: number };
+      return data as { found: number; drafted: number; autoPosted: number };
     },
     // onSettled, not onSuccess — a failed scan still updates
     // cookies_valid_at/last_synced_at server-side, and a failed post
