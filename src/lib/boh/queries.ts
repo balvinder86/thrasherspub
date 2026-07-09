@@ -537,7 +537,7 @@ export function useBulkAssignVendor() {
 // purchase orders to vendors" toast, which never created any actual
 // record, only bumped ingredient_stock.last_ordered_at. Creating a PO
 // now also attempts a real email to the vendor (send-purchase-order-email
-// Edge Function, via Resend) right after the record is written — each
+// Edge Function, via Gmail) right after the record is written — each
 // vendor's outcome (sent / no email on file / send failed) comes back
 // so the UI can report exactly what happened instead of assuming success.
 export type PurchaseOrderVendorGroup = {
