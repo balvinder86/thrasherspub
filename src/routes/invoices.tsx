@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   Truck,
   Upload,
   Wallet,
@@ -66,9 +67,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   type DateRange,
   useApproveInvoice,
   useCheckOcr,
+  useDeleteInvoice,
   useEmailIngestionActivity,
   useEmailIngestionStatus,
   useEnqueueOcr,
@@ -85,6 +97,7 @@ import {
   useUploadInvoice,
   useVendors as useRealVendors,
   useVendorSpendSummary,
+  type RealInvoice,
 } from "@/lib/boh/queries";
 
 export const Route = createFileRoute("/invoices")({
@@ -301,6 +314,13 @@ function InvoicesPage() {
   const [datePeriod, setDatePeriod] = useState<DatePeriod>({ kind: "all" });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<RealInvoice | null>(null);
+  const deleteInvoice = useDeleteInvoice();
+  const confirmDeleteInvoice = () => {
+    if (!invoiceToDelete) return;
+    deleteInvoice.mutate({ id: invoiceToDelete.id, sourceFileUrl: invoiceToDelete.sourceFileUrl });
+    setInvoiceToDelete(null);
+  };
 
   const dateRange = useMemo(() => derivePeriodRange(datePeriod), [datePeriod]);
   const isDateFiltered = datePeriod.kind !== "all";
@@ -713,9 +733,23 @@ function InvoicesPage() {
                       </TableCell>
                       <TableCell>{ocrStatusBadge(inv.ocrStatus, inv.status)}</TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="ghost" className="h-8">
-                          Review
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="ghost" className="h-8">
+                            Review
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInvoiceToDelete(inv);
+                            }}
+                            aria-label={`Delete invoice${inv.vendorName ? ` from ${inv.vendorName}` : ""}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -976,6 +1010,32 @@ function InvoicesPage() {
         invoiceId={ocrSheetInvoiceId}
         onClose={() => setOcrSheetInvoiceId(undefined)}
       />
+
+      <AlertDialog open={!!invoiceToDelete} onOpenChange={(o) => !o && setInvoiceToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete invoice
+              {invoiceToDelete?.vendorName ? ` from ${invoiceToDelete.vendorName}` : ""}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Removes the invoice and its line items
+              {invoiceToDelete?.sourceFileUrl ? " and uploaded file" : ""}.
+              {invoiceToDelete?.status === "approved" &&
+                " This invoice was approved — deleting it will also remove its spend from every KPI, savings, and vendor total on this page."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteInvoice}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete invoice
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

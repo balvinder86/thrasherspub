@@ -929,6 +929,37 @@ export function useRealInvoices() {
   });
 }
 
+export function useDeleteInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, sourceFileUrl }: { id: string; sourceFileUrl: string | null }) => {
+      // invoice_lines cascades via FK; an email-ingested invoice's
+      // processed_email_messages row goes to invoice_id = null (same
+      // FK behavior as every other "processed, no invoice" row) rather
+      // than being deleted itself — so the cron can't re-ingest the
+      // same email and recreate this invoice right after deleting it.
+      const { error } = await supabase.from("invoices").delete().eq("id", id);
+      if (error) throw error;
+
+      if (sourceFileUrl) {
+        // Best-effort — a storage cleanup failure shouldn't block the
+        // real deletion the user asked for, which already succeeded.
+        await supabase.storage.from("invoice-uploads").remove([sourceFileUrl]);
+      }
+    },
+    onSuccess: () => {
+      // A deleted invoice's approved spend/discount was already baked
+      // into every one of these aggregates — all need a refetch, not
+      // just the raw list.
+      queryClient.invalidateQueries({ queryKey: ["real-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["vendor-spend-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["savings-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["top-line-items"] });
+      queryClient.invalidateQueries({ queryKey: ["category-spend"] });
+    },
+  });
+}
+
 export function useSetInvoiceVendor() {
   const queryClient = useQueryClient();
   return useMutation({
