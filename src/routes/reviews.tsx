@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useReviews,
   useReviewAgentConnection,
@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   Bot,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Inbox,
   Link2,
@@ -60,6 +62,7 @@ export const Route = createFileRoute("/reviews")({
 
 const MIN_SAMPLE_FOR_RATING = 5;
 const MIN_SAMPLE_FOR_RESPONSE_TIME = 3;
+const REVIEWS_PAGE_SIZE = 25;
 
 function Stars({ value }: { value: number }) {
   return (
@@ -194,6 +197,7 @@ function ReviewsPage() {
   const [ratingFilter, setRatingFilter] = useState<"all" | "low" | "mid" | "high">("all");
   const [search, setSearch] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
+  const [page, setPage] = useState(1);
 
   const active = reviews.find((r) => r.id === activeId) ?? null;
 
@@ -216,6 +220,18 @@ function ReviewsPage() {
       return true;
     });
   }, [reviews, ratingFilter, search]);
+
+  // Any change to what's being filtered should land back on page 1 —
+  // otherwise a narrower filter can strand you on a now-empty page.
+  useEffect(() => {
+    setPage(1);
+  }, [ratingFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / REVIEWS_PAGE_SIZE));
+  const pagedReviews = useMemo(
+    () => filtered.slice((page - 1) * REVIEWS_PAGE_SIZE, page * REVIEWS_PAGE_SIZE),
+    [filtered, page],
+  );
 
   const kpis = useMemo(() => {
     const needsReply = reviews.filter(
@@ -361,7 +377,7 @@ function ReviewsPage() {
             )}
 
             <div className="space-y-3">
-              {filtered.map((r) => (
+              {pagedReviews.map((r) => (
                 <Card
                   key={r.id}
                   className={`group cursor-pointer rounded-2xl border-border/70 border-l-4 bg-card p-5 shadow-soft transition hover:shadow-card ${STATUS_STYLE[r.status].accent}`}
@@ -388,7 +404,7 @@ function ReviewsPage() {
                         </Badge>
                         <Stars value={r.starRating} />
                         <span className="text-xs text-muted-foreground">
-                          · {timeAgo(r.reviewFoundAt)}
+                          · {timeAgo(r.reviewWrittenAt ?? r.reviewFoundAt)}
                         </span>
                         <div className="ml-auto flex items-center gap-2">
                           <StatusChip status={r.status} />
@@ -424,6 +440,40 @@ function ReviewsPage() {
                     ? 'No reviews yet — click "Check now" on the AI Agent tab to look for real Google reviews.'
                     : "No reviews match this filter."}
                 </Card>
+              )}
+              {filtered.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm shadow-soft">
+                  <span className="text-muted-foreground">
+                    Showing {(page - 1) * REVIEWS_PAGE_SIZE + 1}–
+                    {Math.min(page * REVIEWS_PAGE_SIZE, filtered.length)} of {filtered.length}{" "}
+                    review{filtered.length === 1 ? "" : "s"}
+                  </span>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {page} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={page >= totalPages}
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </TabsContent>
@@ -719,7 +769,7 @@ function ReviewsPage() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Stars value={active.starRating} />
                   <span>·</span>
-                  <span>{timeAgo(active.reviewFoundAt)}</span>
+                  <span>{timeAgo(active.reviewWrittenAt ?? active.reviewFoundAt)}</span>
                   <StatusChip status={active.status} />
                 </div>
                 <SheetTitle className="font-display text-2xl">{active.reviewerName}</SheetTitle>

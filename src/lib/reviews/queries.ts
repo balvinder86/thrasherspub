@@ -23,6 +23,7 @@ export type Review = {
   starRating: number;
   reviewText: string | null;
   reviewFoundAt: string;
+  reviewWrittenAt: string | null;
   aiDraftReply: string | null;
   editedReply: string | null;
   status: ReviewStatus;
@@ -39,22 +40,33 @@ export function useReviews() {
       const { data, error } = await supabase
         .from("reviews")
         .select(
-          "id, reviewer_name, star_rating, review_text, review_found_at, ai_draft_reply, edited_reply, status, posted_at, post_error",
-        )
-        .order("review_found_at", { ascending: false });
+          "id, reviewer_name, star_rating, review_text, review_found_at, review_written_at, ai_draft_reply, edited_reply, status, posted_at, post_error",
+        );
       if (error) throw error;
-      return (data ?? []).map((r) => ({
+      const rows = (data ?? []).map((r) => ({
         id: r.id,
         reviewerName: r.reviewer_name,
         starRating: r.star_rating,
         reviewText: r.review_text,
         reviewFoundAt: r.review_found_at,
+        reviewWrittenAt: r.review_written_at,
         aiDraftReply: r.ai_draft_reply,
         editedReply: r.edited_reply,
         status: r.status,
         postedAt: r.posted_at,
         postError: r.post_error,
       }));
+      // Sorted by the real date the guest wrote the review where we have
+      // it (review_written_at, parsed from Google's relative-date text),
+      // falling back to when our scan first found it for older rows
+      // imported before that column existed. Done client-side since
+      // there's no clean way to express "order by coalesce(...)" through
+      // the fluent query builder.
+      return rows.sort((a, b) => {
+        const aTime = new Date(a.reviewWrittenAt ?? a.reviewFoundAt).getTime();
+        const bTime = new Date(b.reviewWrittenAt ?? b.reviewFoundAt).getTime();
+        return bTime - aTime;
+      });
     },
   });
 }

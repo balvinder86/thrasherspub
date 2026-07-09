@@ -111,6 +111,7 @@ export async function insertDraftReview(input: {
   starRating: number;
   reviewText: string;
   aiDraftReply: string;
+  reviewWrittenAt: string | null;
 }): Promise<string> {
   const { data, error } = await supabase
     .from("reviews")
@@ -121,6 +122,7 @@ export async function insertDraftReview(input: {
       star_rating: input.starRating,
       review_text: input.reviewText || null,
       ai_draft_reply: input.aiDraftReply,
+      review_written_at: input.reviewWrittenAt,
       status: "drafted",
     })
     .select("id")

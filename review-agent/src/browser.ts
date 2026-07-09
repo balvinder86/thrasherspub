@@ -19,6 +19,7 @@ export type ExtractedReview = {
   reviewerName: string;
   starRating: number;
   comment: string;
+  writtenAt: string | null;
 };
 
 export type GenerateReplyFn = (
@@ -70,6 +71,35 @@ async function withGoogleReviewsPanel<T>(
   }
 }
 
+// Google's review panel lazy-loads more reviews as you scroll — a
+// plain .count() right after opening the Unreplied tab only sees the
+// first rendered batch. Repeatedly scrolls the last known review into
+// view (the standard way to trigger more loading in this kind of
+// infinite-scroll list) until the count stops growing across two
+// consecutive checks, so a full backlog import doesn't silently
+// under-count past the first screenful.
+async function loadAllUnrepliedReviews(frame: () => FrameLocator): Promise<number> {
+  const MAX_ROUNDS = 25;
+  let currentCount = await frame().getByText("Reply", { exact: true }).count();
+  let stableRounds = 0;
+
+  for (let round = 0; round < MAX_ROUNDS && stableRounds < 2; round++) {
+    if (currentCount > 0) {
+      await frame()
+        .getByText("Reply", { exact: true })
+        .last()
+        .scrollIntoViewIfNeeded()
+        .catch(() => {});
+    }
+    await SLEEP(1200);
+    const previousCount = currentCount;
+    currentCount = await frame().getByText("Reply", { exact: true }).count();
+    stableRounds = currentCount === previousCount ? stableRounds + 1 : 0;
+  }
+
+  return currentCount;
+}
+
 // Reads the currently-unreplied reviews, up to `cap`, and generates a
 // Claude draft for each. Always read-only — never fills or submits
 // anything, so this is safe to call as often as needed (the on-demand
@@ -82,7 +112,7 @@ export async function scanUnrepliedReviews(
   cap: number,
 ): Promise<{ found: number; extracted: (ExtractedReview & { replyText: string })[] }> {
   return withGoogleReviewsPanel(cookies, businessProfileId, searchQuery, async (_page, frame) => {
-    const found = await frame().getByText("Reply", { exact: true }).count();
+    const found = await loadAllUnrepliedReviews(frame);
     const total = Math.min(found, cap);
 
     const extracted: (ExtractedReview & { replyText: string })[] = [];
@@ -166,10 +196,20 @@ async function extractReviewAt(frame: FrameLocator, index: number): Promise<Extr
 
         const IGNORE =
           /^(star|Star|review|photo|ago|week|month|year|Local Guide|Translate|Reply|More|Like|Share|View full review|Posted|Edited|NEW)$|^\d/i;
+        // Google renders the review's age as its own short text node near
+        // the reviewer name, e.g. "2 weeks ago", "a month ago", "3 days
+        // ago". Captured separately from reviewerName/comment since it
+        // matches IGNORE (previously just discarded) and needs parsing,
+        // not display, once found.
+        const DATE_RELATIVE = /^(a|an|\d+)\s+(day|week|month|year|hour|minute)s?\s+ago$/i;
         let reviewerName = "Anonymous";
         let comment = "";
+        let writtenRelative: string | null = null;
 
         for (const t of texts) {
+          if (writtenRelative === null && DATE_RELATIVE.test(t)) {
+            writtenRelative = t;
+          }
           if (
             reviewerName === "Anonymous" &&
             t.length >= 2 &&
@@ -181,10 +221,28 @@ async function extractReviewAt(frame: FrameLocator, index: number): Promise<Extr
           } else if (comment === "" && t.length > 20 && t !== reviewerName && !IGNORE.test(t)) {
             comment = t;
           }
-          if (reviewerName !== "Anonymous" && comment !== "") break;
+          if (reviewerName !== "Anonymous" && comment !== "" && writtenRelative !== null) break;
         }
 
-        return { reviewerName, starRating, comment };
+        let writtenAt: string | null = null;
+        if (writtenRelative) {
+          const m = writtenRelative.match(DATE_RELATIVE);
+          if (m) {
+            const amount = /^(a|an)$/i.test(m[1]) ? 1 : parseInt(m[1], 10);
+            const unit = m[2].toLowerCase();
+            const msPerUnit: Record<string, number> = {
+              minute: 60_000,
+              hour: 3_600_000,
+              day: 86_400_000,
+              week: 7 * 86_400_000,
+              month: 30 * 86_400_000, // approximate — Google doesn't give exact dates
+              year: 365 * 86_400_000,
+            };
+            writtenAt = new Date(Date.now() - amount * msPerUnit[unit]).toISOString();
+          }
+        }
+
+        return { reviewerName, starRating, comment, writtenAt };
       }
 
       container = container.parentElement;

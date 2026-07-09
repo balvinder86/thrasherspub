@@ -67,6 +67,7 @@ async function scanConfig(config: RestaurantReviewConfig) {
       starRating: review.starRating,
       reviewText: review.comment,
       aiDraftReply: review.replyText,
+      reviewWrittenAt: review.writtenAt,
     });
     drafted++;
   }
