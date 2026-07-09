@@ -1,5 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useSearchConsoleConnection,
+  useConnectSearchConsole,
+  useSearchConsoleOverview,
+  useSearchConsoleKeywords,
+  useSearchConsolePages,
+  usePageSpeedAudit,
+  useRefetchSearchConsoleConnection,
+  type PageSpeedResult,
+} from "@/lib/seo/queries";
 import {
   Activity,
   ArrowDownRight,
@@ -38,6 +48,7 @@ import {
   TrendingUp,
   Utensils,
   Wand2,
+  XCircle,
   Zap,
 } from "lucide-react";
 import {
@@ -111,13 +122,83 @@ type Keyword = {
 };
 
 const keywords: Keyword[] = [
-  { id: "k1", term: "italian restaurant near me", intent: "Local", rank: 4, prev: 7, volume: 4400, difficulty: 58, url: "/", opportunity: "Quick win" },
-  { id: "k2", term: "best pasta hayes valley", intent: "Local", rank: 2, prev: 3, volume: 880, difficulty: 32, url: "/menu", opportunity: "Watch" },
-  { id: "k3", term: "thrasher's pub", intent: "Brand", rank: 1, prev: 1, volume: 1300, difficulty: 8, url: "/", opportunity: "Watch" },
-  { id: "k4", term: "truffle tagliatelle sf", intent: "Dish", rank: 6, prev: 11, volume: 320, difficulty: 24, url: "/menu/tagliatelle", opportunity: "Quick win" },
-  { id: "k5", term: "private dining san francisco", intent: "Event", rank: 14, prev: 18, volume: 2100, difficulty: 64, url: "/events", opportunity: "Stretch" },
-  { id: "k6", term: "wine bar near opera house", intent: "Local", rank: 9, prev: 13, volume: 590, difficulty: 38, url: "/wine", opportunity: "Quick win" },
-  { id: "k7", term: "sunday brunch hayes valley", intent: "Event", rank: 5, prev: 8, volume: 720, difficulty: 41, url: "/brunch", opportunity: "Quick win" },
+  {
+    id: "k1",
+    term: "italian restaurant near me",
+    intent: "Local",
+    rank: 4,
+    prev: 7,
+    volume: 4400,
+    difficulty: 58,
+    url: "/",
+    opportunity: "Quick win",
+  },
+  {
+    id: "k2",
+    term: "best pasta hayes valley",
+    intent: "Local",
+    rank: 2,
+    prev: 3,
+    volume: 880,
+    difficulty: 32,
+    url: "/menu",
+    opportunity: "Watch",
+  },
+  {
+    id: "k3",
+    term: "thrasher's pub",
+    intent: "Brand",
+    rank: 1,
+    prev: 1,
+    volume: 1300,
+    difficulty: 8,
+    url: "/",
+    opportunity: "Watch",
+  },
+  {
+    id: "k4",
+    term: "truffle tagliatelle sf",
+    intent: "Dish",
+    rank: 6,
+    prev: 11,
+    volume: 320,
+    difficulty: 24,
+    url: "/menu/tagliatelle",
+    opportunity: "Quick win",
+  },
+  {
+    id: "k5",
+    term: "private dining san francisco",
+    intent: "Event",
+    rank: 14,
+    prev: 18,
+    volume: 2100,
+    difficulty: 64,
+    url: "/events",
+    opportunity: "Stretch",
+  },
+  {
+    id: "k6",
+    term: "wine bar near opera house",
+    intent: "Local",
+    rank: 9,
+    prev: 13,
+    volume: 590,
+    difficulty: 38,
+    url: "/wine",
+    opportunity: "Quick win",
+  },
+  {
+    id: "k7",
+    term: "sunday brunch hayes valley",
+    intent: "Event",
+    rank: 5,
+    prev: 8,
+    volume: 720,
+    difficulty: 41,
+    url: "/brunch",
+    opportunity: "Quick win",
+  },
 ];
 
 type Page = {
@@ -130,11 +211,46 @@ type Page = {
 };
 
 const pages: Page[] = [
-  { id: "p1", path: "/", title: "Thrasher's Pub — Modern Italian in Hayes Valley", score: 86, issues: ["Add FAQ schema"], status: "Healthy" },
-  { id: "p2", path: "/menu", title: "Seasonal Tasting Menu | Thrasher's Pub", score: 72, issues: ["Meta description >160ch", "2 images missing alt"], status: "Needs work" },
-  { id: "p3", path: "/menu/tagliatelle", title: "Truffle Tagliatelle", score: 64, issues: ["No H1", "Thin content (180 words)", "Missing Product schema"], status: "Needs work" },
-  { id: "p4", path: "/events", title: "Private Events & Buyouts", score: 41, issues: ["Page slow (LCP 4.8s)", "Duplicate title", "No internal links in"], status: "Critical" },
-  { id: "p5", path: "/reservations", title: "Reservations", score: 91, issues: [], status: "Healthy" },
+  {
+    id: "p1",
+    path: "/",
+    title: "Thrasher's Pub — Modern Italian in Hayes Valley",
+    score: 86,
+    issues: ["Add FAQ schema"],
+    status: "Healthy",
+  },
+  {
+    id: "p2",
+    path: "/menu",
+    title: "Seasonal Tasting Menu | Thrasher's Pub",
+    score: 72,
+    issues: ["Meta description >160ch", "2 images missing alt"],
+    status: "Needs work",
+  },
+  {
+    id: "p3",
+    path: "/menu/tagliatelle",
+    title: "Truffle Tagliatelle",
+    score: 64,
+    issues: ["No H1", "Thin content (180 words)", "Missing Product schema"],
+    status: "Needs work",
+  },
+  {
+    id: "p4",
+    path: "/events",
+    title: "Private Events & Buyouts",
+    score: 41,
+    issues: ["Page slow (LCP 4.8s)", "Duplicate title", "No internal links in"],
+    status: "Critical",
+  },
+  {
+    id: "p5",
+    path: "/reservations",
+    title: "Reservations",
+    score: 91,
+    issues: [],
+    status: "Healthy",
+  },
 ];
 
 const competitors = [
@@ -217,9 +333,7 @@ function Kpi({
         </div>
         <span
           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            delta.up
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-rose-100 text-rose-700"
+            delta.up ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
           }`}
         >
           {delta.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -237,8 +351,7 @@ function Kpi({
 
 function rankDelta(rank: number, prev: number) {
   const diff = prev - rank; // positive = improved
-  if (diff === 0)
-    return <span className="text-xs text-muted-foreground">—</span>;
+  if (diff === 0) return <span className="text-xs text-muted-foreground">—</span>;
   const up = diff > 0;
   return (
     <span
@@ -252,6 +365,16 @@ function rankDelta(rank: number, prev: number) {
   );
 }
 
+function timeAgo(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 // ---------- page ----------
 
 function SeoPage() {
@@ -260,10 +383,37 @@ function SeoPage() {
   const [activeTask, setActiveTask] = useState<(typeof agentQueue)[number] | null>(null);
   const [biz, setBiz] = useState<"restaurant" | "contractor">("restaurant");
 
-  const quickWins = useMemo(
-    () => keywords.filter((k) => k.opportunity === "Quick win").length,
-    [],
-  );
+  const quickWins = useMemo(() => keywords.filter((k) => k.opportunity === "Quick win").length, []);
+
+  const { data: scConnection, isLoading: scConnectionLoading } = useSearchConsoleConnection();
+  const connectSearchConsole = useConnectSearchConsole();
+  const isConnected = !!scConnection;
+  const overview = useSearchConsoleOverview(isConnected);
+  const scKeywords = useSearchConsoleKeywords(isConnected);
+  const scPages = useSearchConsolePages(isConnected);
+  const pageSpeedAudit = usePageSpeedAudit();
+  const refetchConnection = useRefetchSearchConsoleConnection();
+
+  const [callbackBanner, setCallbackBanner] = useState<{
+    status: "connected" | "error";
+    message?: string;
+  } | null>(null);
+  const [auditedUrl, setAuditedUrl] = useState<string | null>(null);
+  const [auditResult, setAuditResult] = useState<PageSpeedResult | null>(null);
+
+  // The OAuth callback (search-console-oauth-callback) redirects back
+  // here with ?searchConsole=connected|error — a full page load, not a
+  // client-side navigation, so this only needs to run once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("searchConsole");
+    if (status === "connected" || status === "error") {
+      setCallbackBanner({ status, message: params.get("message") ?? undefined });
+      refetchConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -273,10 +423,12 @@ function SeoPage() {
         {/* Business type switcher */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex rounded-full border border-border bg-card p-1 text-sm">
-            {([
-              { id: "restaurant", label: "Restaurant", icon: Utensils },
-              { id: "contractor", label: "Contractor", icon: Hammer },
-            ] as const).map((b) => {
+            {(
+              [
+                { id: "restaurant", label: "Restaurant", icon: Utensils },
+                { id: "contractor", label: "Contractor", icon: Hammer },
+              ] as const
+            ).map((b) => {
               const Icon = b.icon;
               const active = biz === b.id;
               return (
@@ -296,13 +448,75 @@ function SeoPage() {
             })}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            Last crawl 12 min ago · Google Search Console connected
-            <Button variant="outline" size="sm" className="ml-2 gap-2">
-              <RefreshCw className="h-3.5 w-3.5" /> Run audit
-            </Button>
+            {scConnectionLoading ? (
+              "Checking Search Console connection…"
+            ) : isConnected ? (
+              <>
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                Search Console connected as {scConnection.connectedEmail}
+                {scConnection.lastSyncedAt && <> · Synced {timeAgo(scConnection.lastSyncedAt)}</>}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-2 gap-2"
+                  onClick={() => {
+                    overview.refetch();
+                    scKeywords.refetch();
+                    scPages.refetch();
+                  }}
+                  disabled={overview.isFetching || scKeywords.isFetching || scPages.isFetching}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      overview.isFetching || scKeywords.isFetching || scPages.isFetching
+                        ? "animate-spin"
+                        : ""
+                    }`}
+                  />
+                  Refresh
+                </Button>
+              </>
+            ) : (
+              <>
+                <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                Search Console not connected — visibility, keywords, and pages below are examples,
+                not real data
+                <Button
+                  size="sm"
+                  className="ml-2 gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                  disabled={connectSearchConsole.isPending}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Connect Search Console
+                </Button>
+              </>
+            )}
           </div>
         </div>
+
+        {callbackBanner && (
+          <div
+            className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-sm ${
+              callbackBanner.status === "connected"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-destructive/30 bg-destructive/5 text-destructive"
+            }`}
+          >
+            <span>
+              {callbackBanner.status === "connected"
+                ? "Search Console connected."
+                : `Couldn't connect Search Console${callbackBanner.message ? `: ${callbackBanner.message}` : "."}`}
+            </span>
+            <button className="text-xs underline" onClick={() => setCallbackBanner(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+        {connectSearchConsole.isError && (
+          <p className="text-xs text-destructive">
+            {(connectSearchConsole.error as Error).message}
+          </p>
+        )}
 
         {/* KPI row */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -342,49 +556,121 @@ function SeoPage() {
             <div className="flex items-end justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  Visibility & clicks
+                  {isConnected ? "Real clicks — Google Search Console" : "Visibility & clicks"}
                 </div>
-                <h2 className="mt-1 font-display text-2xl">Trending up · 8 weeks</h2>
+                <h2 className="mt-1 font-display text-2xl">
+                  {isConnected ? "Last 8 weeks" : "Example data · not connected"}
+                </h2>
               </div>
               <div className="flex gap-2">
                 <Badge variant="secondary" className="rounded-full">
-                  Visibility
+                  {isConnected ? "Clicks" : "Visibility"}
                 </Badge>
-                <Badge variant="outline" className="rounded-full">
-                  Organic clicks
-                </Badge>
+                {!isConnected && (
+                  <Badge variant="outline" className="rounded-full">
+                    Organic clicks
+                  </Badge>
+                )}
               </div>
             </div>
             <div className="mt-4 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={visibilitySeries}>
-                  <defs>
-                    <linearGradient id="vis" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="d" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: 12,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="visibility"
-                    stroke="hsl(var(--primary))"
-                    fill="url(#vis)"
-                    strokeWidth={2}
-                  />
-                  <Line type="monotone" dataKey="clicks" stroke="hsl(var(--foreground))" strokeWidth={1.5} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              {!isConnected ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={visibilitySeries}>
+                    <defs>
+                      <linearGradient id="vis" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="d" stroke="var(--muted-foreground)" fontSize={12} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="visibility"
+                      stroke="var(--primary)"
+                      fill="url(#vis)"
+                      strokeWidth={2}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="clicks"
+                      stroke="var(--foreground)"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : overview.isLoading ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Loading real Search Console data…
+                </div>
+              ) : overview.isError ? (
+                <div className="flex h-full items-center justify-center text-sm text-destructive">
+                  {(overview.error as Error).message}
+                </div>
+              ) : !overview.data?.rows.length ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  No Search Console data for this period yet.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={overview.data.rows}>
+                    <defs>
+                      <linearGradient id="vis" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      stroke="var(--muted-foreground)"
+                      fontSize={11}
+                      tickFormatter={(d) =>
+                        new Date(d).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })
+                      }
+                    />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} allowDecimals={false} />
+                    <Tooltip
+                      labelFormatter={(d) => new Date(d).toLocaleDateString()}
+                      formatter={(value: number, name: string, item) => {
+                        if (name === "clicks") {
+                          const impressions = (item.payload as { impressions: number }).impressions;
+                          return [`${value} clicks · ${impressions} impressions`, "Clicks"];
+                        }
+                        return [value, name];
+                      }}
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="clicks"
+                      stroke="var(--primary)"
+                      fill="url(#vis)"
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </Card>
 
@@ -473,138 +759,344 @@ function SeoPage() {
             </TabsTrigger>
           </TabsList>
 
-
           {/* KEYWORDS */}
           <TabsContent value="keywords" className="mt-4">
-            <Card className="overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4">
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search keywords…" className="h-9 w-64 pl-9" />
+            {!isConnected ? (
+              <Card className="overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Search keywords…" className="h-9 w-64 pl-9" disabled />
+                    </div>
+                    <Badge variant="outline" className="rounded-full">
+                      Example data
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="rounded-full">All intents</Badge>
-                  <Badge variant="outline" className="rounded-full">Top 20</Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <RefreshCw className="h-4 w-4" /> Recheck ranks
-                  </Button>
-                  <Button size="sm" className="gap-2">
-                    <Plus className="h-4 w-4" /> Track keyword
+                  <Button size="sm" className="gap-2" onClick={() => connectSearchConsole.mutate()}>
+                    <Link2 className="h-4 w-4" /> Connect Search Console
                   </Button>
                 </div>
-              </div>
-              <div className="grid grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] gap-3 border-b border-border/70 bg-muted/30 px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                <div>Keyword</div>
-                <div>Intent</div>
-                <div>Rank</div>
-                <div>Δ</div>
-                <div>Volume</div>
-                <div>Difficulty</div>
-                <div>Opportunity</div>
-              </div>
-              <div>
-                {keywords.map((k) => (
-                  <button
-                    key={k.id}
-                    onClick={() => setSelected(k)}
-                    className="grid w-full grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-left text-sm transition hover:bg-accent/30 last:border-0"
+                <div className="grid grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] gap-3 border-b border-border/70 bg-muted/30 px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <div>Keyword</div>
+                  <div>Intent</div>
+                  <div>Rank</div>
+                  <div>Δ</div>
+                  <div>Volume</div>
+                  <div>Difficulty</div>
+                  <div>Opportunity</div>
+                </div>
+                <div>
+                  {keywords.map((k) => (
+                    <button
+                      key={k.id}
+                      onClick={() => setSelected(k)}
+                      className="grid w-full grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-left text-sm transition hover:bg-accent/30 last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{k.term}</div>
+                        <div className="truncate text-xs text-muted-foreground">{k.url}</div>
+                      </div>
+                      <div>
+                        <Badge variant="secondary" className="rounded-full text-[11px]">
+                          {k.intent}
+                        </Badge>
+                      </div>
+                      <div className="font-display text-lg">#{k.rank}</div>
+                      <div>{rankDelta(k.rank, k.prev)}</div>
+                      <div className="tabular-nums">{k.volume.toLocaleString()}</div>
+                      <div className="flex items-center gap-2">
+                        <Progress value={k.difficulty} className="h-1.5 w-20" />
+                        <span className="text-xs text-muted-foreground">{k.difficulty}</span>
+                      </div>
+                      <div>
+                        <Badge
+                          className={`rounded-full ${
+                            k.opportunity === "Quick win"
+                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                              : k.opportunity === "Watch"
+                                ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                                : "bg-muted text-foreground/70 hover:bg-muted"
+                          }`}
+                        >
+                          {k.opportunity}
+                        </Badge>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4">
+                  <div className="text-sm text-muted-foreground">
+                    Real search queries from Google Search Console · last 28 days, top{" "}
+                    {scKeywords.data?.rows.length ?? 0} by clicks
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => scKeywords.refetch()}
+                    disabled={scKeywords.isFetching}
                   >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{k.term}</div>
-                      <div className="truncate text-xs text-muted-foreground">{k.url}</div>
-                    </div>
-                    <div>
-                      <Badge variant="secondary" className="rounded-full text-[11px]">
-                        {k.intent}
-                      </Badge>
-                    </div>
-                    <div className="font-display text-lg">#{k.rank}</div>
-                    <div>{rankDelta(k.rank, k.prev)}</div>
-                    <div className="tabular-nums">{k.volume.toLocaleString()}</div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={k.difficulty} className="h-1.5 w-20" />
-                      <span className="text-xs text-muted-foreground">{k.difficulty}</span>
-                    </div>
-                    <div>
-                      <Badge
-                        className={`rounded-full ${
-                          k.opportunity === "Quick win"
-                            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                            : k.opportunity === "Watch"
-                              ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                              : "bg-muted text-foreground/70 hover:bg-muted"
-                        }`}
+                    <RefreshCw
+                      className={`h-4 w-4 ${scKeywords.isFetching ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[2fr_0.8fr_0.8fr_0.7fr_0.7fr] gap-3 border-b border-border/70 bg-muted/30 px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <div>Search query</div>
+                  <div>Clicks</div>
+                  <div>Impressions</div>
+                  <div>CTR</div>
+                  <div>Avg. position</div>
+                </div>
+                {scKeywords.isLoading ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    Loading real keyword data…
+                  </div>
+                ) : scKeywords.isError ? (
+                  <div className="p-6 text-center text-sm text-destructive">
+                    {(scKeywords.error as Error).message}
+                  </div>
+                ) : !scKeywords.data?.rows.length ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No search queries found for this period yet.
+                  </div>
+                ) : (
+                  <div>
+                    {scKeywords.data.rows.map((k) => (
+                      <div
+                        key={k.query}
+                        className="grid grid-cols-[2fr_0.8fr_0.8fr_0.7fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
                       >
-                        {k.opportunity}
-                      </Badge>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Card>
+                        <div className="truncate font-medium">{k.query}</div>
+                        <div className="tabular-nums">{k.clicks.toLocaleString()}</div>
+                        <div className="tabular-nums">{k.impressions.toLocaleString()}</div>
+                        <div className="tabular-nums">{(k.ctr * 100).toFixed(1)}%</div>
+                        <div className="tabular-nums">{k.position.toFixed(1)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* PAGES */}
           <TabsContent value="pages" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-2">
-              {pages.map((p) => (
-                <Card key={p.id} className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Globe className="h-3.5 w-3.5" /> {p.path}
-                      </div>
-                      <h3 className="mt-1 truncate font-display text-lg">{p.title}</h3>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-display text-3xl">{p.score}</div>
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                        Score
-                      </div>
-                    </div>
-                  </div>
-                  <Progress value={p.score} className="mt-3 h-1.5" />
-                  <div className="mt-4 space-y-2">
-                    {p.issues.length === 0 ? (
-                      <div className="flex items-center gap-2 text-sm text-emerald-700">
-                        <CheckCircle2 className="h-4 w-4" /> No outstanding issues
-                      </div>
-                    ) : (
-                      p.issues.map((issue) => (
-                        <div
-                          key={issue}
-                          className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm"
-                        >
-                          <span>{issue}</span>
-                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-                            <Wand2 className="h-3 w-3" /> Fix with AI
-                          </Button>
+            {!isConnected ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="rounded-full">
+                    Example data
+                  </Badge>
+                  <Button size="sm" className="gap-2" onClick={() => connectSearchConsole.mutate()}>
+                    <Link2 className="h-4 w-4" /> Connect Search Console
+                  </Button>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {pages.map((p) => (
+                    <Card key={p.id} className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Globe className="h-3.5 w-3.5" /> {p.path}
+                          </div>
+                          <h3 className="mt-1 truncate font-display text-lg">{p.title}</h3>
                         </div>
-                      ))
-                    )}
+                        <div className="text-right">
+                          <div className="font-display text-3xl">{p.score}</div>
+                          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                            Score
+                          </div>
+                        </div>
+                      </div>
+                      <Progress value={p.score} className="mt-3 h-1.5" />
+                      <div className="mt-4 space-y-2">
+                        {p.issues.length === 0 ? (
+                          <div className="flex items-center gap-2 text-sm text-emerald-700">
+                            <CheckCircle2 className="h-4 w-4" /> No outstanding issues
+                          </div>
+                        ) : (
+                          p.issues.map((issue) => (
+                            <div
+                              key={issue}
+                              className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm"
+                            >
+                              <span>{issue}</span>
+                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                                <Wand2 className="h-3 w-3" /> Fix with AI
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="mt-4 flex items-center justify-between">
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full ${
+                            p.status === "Healthy"
+                              ? "border-emerald-200 text-emerald-700"
+                              : p.status === "Needs work"
+                                ? "border-amber-200 text-amber-700"
+                                : "border-rose-200 text-rose-700"
+                          }`}
+                        >
+                          {p.status}
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                          Open page <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Real pages from Google Search Console · last 28 days, top{" "}
+                    {scPages.data?.rows.length ?? 0} by clicks. Click "Audit" for a real PageSpeed
+                    technical check on any page (takes up to a minute — it's a real Lighthouse run,
+                    not a lookup).
                   </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <Badge
-                      variant="outline"
-                      className={`rounded-full ${
-                        p.status === "Healthy"
-                          ? "border-emerald-200 text-emerald-700"
-                          : p.status === "Needs work"
-                            ? "border-amber-200 text-amber-700"
-                            : "border-rose-200 text-rose-700"
-                      }`}
-                    >
-                      {p.status}
-                    </Badge>
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                      Open page <ExternalLink className="h-3 w-3" />
-                    </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => scPages.refetch()}
+                    disabled={scPages.isFetching}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${scPages.isFetching ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
+                {scPages.isLoading ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Loading real page data…
+                  </p>
+                ) : scPages.isError ? (
+                  <p className="text-center text-sm text-destructive">
+                    {(scPages.error as Error).message}
+                  </p>
+                ) : !scPages.data?.rows.length ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No pages found for this period yet.
+                  </p>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {scPages.data.rows.map((p) => {
+                      const isThisRowAuditing = pageSpeedAudit.isPending && auditedUrl === p.page;
+                      const hasResult = auditResult && auditedUrl === p.page;
+                      return (
+                        <Card key={p.page} className="p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Globe className="h-3.5 w-3.5" />
+                                <span className="truncate">{p.page}</span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>{p.clicks.toLocaleString()} clicks</span>
+                                <span>{p.impressions.toLocaleString()} impressions</span>
+                                <span>{(p.ctr * 100).toFixed(1)}% CTR</span>
+                                <span>Avg. position {p.position.toFixed(1)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {hasResult ? (
+                            <div className="mt-4 space-y-3">
+                              <div className="grid grid-cols-4 gap-2 text-center">
+                                {(
+                                  [
+                                    ["Performance", auditResult.scores.performance],
+                                    ["SEO", auditResult.scores.seo],
+                                    ["Accessibility", auditResult.scores.accessibility],
+                                    ["Best practices", auditResult.scores.bestPractices],
+                                  ] as const
+                                ).map(([label, score]) => (
+                                  <div key={label} className="rounded-lg bg-muted/40 p-2">
+                                    <div
+                                      className={`font-display text-xl ${
+                                        score == null
+                                          ? "text-muted-foreground"
+                                          : score >= 90
+                                            ? "text-emerald-700"
+                                            : score >= 50
+                                              ? "text-amber-700"
+                                              : "text-rose-700"
+                                      }`}
+                                    >
+                                      {score ?? "—"}
+                                    </div>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                      {label}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                {auditResult.coreWebVitals.lcp && (
+                                  <span>LCP {auditResult.coreWebVitals.lcp}</span>
+                                )}
+                                {auditResult.coreWebVitals.cls && (
+                                  <span>CLS {auditResult.coreWebVitals.cls}</span>
+                                )}
+                                {auditResult.coreWebVitals.inp && (
+                                  <span>INP {auditResult.coreWebVitals.inp}</span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                disabled={isThisRowAuditing}
+                                onClick={() => {
+                                  setAuditedUrl(p.page);
+                                  setAuditResult(null);
+                                  pageSpeedAudit.mutate(p.page, {
+                                    onSuccess: (result) => setAuditResult(result),
+                                  });
+                                }}
+                              >
+                                <Gauge
+                                  className={`h-3.5 w-3.5 ${isThisRowAuditing ? "animate-spin" : ""}`}
+                                />
+                                {isThisRowAuditing ? "Auditing…" : "Audit page speed"}
+                              </Button>
+                              {pageSpeedAudit.isError && auditedUrl === p.page && (
+                                <p className="mt-2 text-xs text-destructive">
+                                  {(pageSpeedAudit.error as Error).message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="mt-4 flex items-center justify-between">
+                            <a
+                              href={p.page}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Open page <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
-                </Card>
-              ))}
-            </div>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* GBP */}
@@ -662,9 +1154,17 @@ function SeoPage() {
                   </div>
                   <Progress value={82} className="h-1.5" />
                   <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Hours, menu link, attributes set</li>
-                    <li className="flex items-center gap-2"><ImageIcon className="h-4 w-4 text-amber-600" /> Add 4 more interior photos this month</li>
-                    <li className="flex items-center gap-2"><Megaphone className="h-4 w-4 text-amber-600" /> No GBP post in last 9 days</li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Hours, menu link,
+                      attributes set
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4 text-amber-600" /> Add 4 more interior photos
+                      this month
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Megaphone className="h-4 w-4 text-amber-600" /> No GBP post in last 9 days
+                    </li>
                   </ul>
                 </div>
               </Card>
@@ -878,13 +1378,41 @@ function SeoPage() {
                 </p>
                 <div className="mt-5 space-y-4">
                   {[
-                    { id: "meta", label: "Auto-apply meta titles & descriptions", desc: "Within brand voice, max 60/160 chars.", on: true },
-                    { id: "schema", label: "Auto-add structured data", desc: "Restaurant, Menu, Product, FAQ, Event.", on: true },
-                    { id: "alt", label: "Generate image alt text", desc: "Skips photos already with alt.", on: true },
-                    { id: "blog", label: "Publish blog drafts", desc: "Always require human review.", on: false },
-                    { id: "gbp", label: "Publish GBP posts", desc: "Auto-publish weekly update on Mondays.", on: false },
+                    {
+                      id: "meta",
+                      label: "Auto-apply meta titles & descriptions",
+                      desc: "Within brand voice, max 60/160 chars.",
+                      on: true,
+                    },
+                    {
+                      id: "schema",
+                      label: "Auto-add structured data",
+                      desc: "Restaurant, Menu, Product, FAQ, Event.",
+                      on: true,
+                    },
+                    {
+                      id: "alt",
+                      label: "Generate image alt text",
+                      desc: "Skips photos already with alt.",
+                      on: true,
+                    },
+                    {
+                      id: "blog",
+                      label: "Publish blog drafts",
+                      desc: "Always require human review.",
+                      on: false,
+                    },
+                    {
+                      id: "gbp",
+                      label: "Publish GBP posts",
+                      desc: "Auto-publish weekly update on Mondays.",
+                      on: false,
+                    },
                   ].map((s) => (
-                    <div key={s.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/70 p-3">
+                    <div
+                      key={s.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-border/70 p-3"
+                    >
                       <div>
                         <Label className="text-sm font-medium">{s.label}</Label>
                         <p className="text-xs text-muted-foreground">{s.desc}</p>
@@ -913,12 +1441,48 @@ function SeoPage() {
           <TabsContent value="technical" className="mt-4">
             <div className="grid gap-4 lg:grid-cols-3">
               {[
-                { label: "Performance", value: 78, icon: Zap, tone: "amber", hint: "LCP 2.9s · CLS 0.04 · INP 220ms" },
-                { label: "Accessibility", value: 92, icon: Eye, tone: "emerald", hint: "3 contrast warnings on /menu" },
-                { label: "Best practices", value: 88, icon: Shield, tone: "emerald", hint: "1 mixed-content asset" },
-                { label: "SEO basics", value: 84, icon: Search, tone: "emerald", hint: "2 missing meta descriptions" },
-                { label: "Mobile usability", value: 95, icon: Smartphone, tone: "emerald", hint: "Tap targets OK" },
-                { label: "Indexability", value: 71, icon: Activity, tone: "amber", hint: "8 pages discovered, not indexed" },
+                {
+                  label: "Performance",
+                  value: 78,
+                  icon: Zap,
+                  tone: "amber",
+                  hint: "LCP 2.9s · CLS 0.04 · INP 220ms",
+                },
+                {
+                  label: "Accessibility",
+                  value: 92,
+                  icon: Eye,
+                  tone: "emerald",
+                  hint: "3 contrast warnings on /menu",
+                },
+                {
+                  label: "Best practices",
+                  value: 88,
+                  icon: Shield,
+                  tone: "emerald",
+                  hint: "1 mixed-content asset",
+                },
+                {
+                  label: "SEO basics",
+                  value: 84,
+                  icon: Search,
+                  tone: "emerald",
+                  hint: "2 missing meta descriptions",
+                },
+                {
+                  label: "Mobile usability",
+                  value: 95,
+                  icon: Smartphone,
+                  tone: "emerald",
+                  hint: "Tap targets OK",
+                },
+                {
+                  label: "Indexability",
+                  value: 71,
+                  icon: Activity,
+                  tone: "amber",
+                  hint: "8 pages discovered, not indexed",
+                },
               ].map((m) => {
                 const Icon = m.icon;
                 return (
@@ -942,7 +1506,9 @@ function SeoPage() {
                 <div className="flex items-center justify-between border-b border-border/70 p-4">
                   <div>
                     <h3 className="font-display text-lg">Crawl & indexing</h3>
-                    <p className="text-sm text-muted-foreground">From Google Search Console + your sitemap.</p>
+                    <p className="text-sm text-muted-foreground">
+                      From Google Search Console + your sitemap.
+                    </p>
                   </div>
                   <Button variant="outline" size="sm" className="gap-2">
                     <RefreshCw className="h-4 w-4" /> Re-crawl
@@ -957,7 +1523,10 @@ function SeoPage() {
                   { label: "Server error (5xx)", value: 0, tone: "muted" },
                   { label: "Soft 404", value: 0, tone: "muted" },
                 ].map((r) => (
-                  <div key={r.label} className="flex items-center justify-between border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                  <div
+                    key={r.label}
+                    className="flex items-center justify-between border-b border-border/50 px-4 py-3 text-sm last:border-0"
+                  >
                     <span>{r.label}</span>
                     <div className="flex items-center gap-3">
                       <span className="tabular-nums">{r.value}</span>
@@ -981,7 +1550,9 @@ function SeoPage() {
                     <div key={v.name}>
                       <div className="mb-1 flex items-center justify-between text-sm">
                         <span className="font-medium">{v.name}</span>
-                        <span className="text-muted-foreground">{v.value} <span className="text-xs">/ {v.target}</span></span>
+                        <span className="text-muted-foreground">
+                          {v.value} <span className="text-xs">/ {v.target}</span>
+                        </span>
                       </div>
                       <div className="flex h-2 overflow-hidden rounded-full bg-muted">
                         <div className="bg-emerald-500" style={{ width: `${v.good}%` }} />
@@ -1003,7 +1574,10 @@ function SeoPage() {
                     { name: "Canonical tags", status: "Warn", detail: "3 pages missing canonical" },
                     { name: "hreflang", status: "—", detail: "Single-language site" },
                   ].map((f) => (
-                    <div key={f.name} className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm">
+                    <div
+                      key={f.name}
+                      className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm"
+                    >
                       <div>
                         <div className="font-medium">{f.name}</div>
                         <div className="text-xs text-muted-foreground">{f.detail}</div>
@@ -1045,24 +1619,67 @@ function SeoPage() {
                 {(biz === "restaurant"
                   ? [
                       { type: "Restaurant", coverage: 100, pages: "Homepage", status: "Live" },
-                      { type: "Menu / MenuItem", coverage: 68, pages: "18 of 26 dishes", status: "Partial" },
-                      { type: "LocalBusiness", coverage: 100, pages: "Homepage, Contact", status: "Live" },
+                      {
+                        type: "Menu / MenuItem",
+                        coverage: 68,
+                        pages: "18 of 26 dishes",
+                        status: "Partial",
+                      },
+                      {
+                        type: "LocalBusiness",
+                        coverage: 100,
+                        pages: "Homepage, Contact",
+                        status: "Live",
+                      },
                       { type: "Event", coverage: 40, pages: "2 of 5 events", status: "Partial" },
                       { type: "FAQPage", coverage: 0, pages: "Not implemented", status: "Missing" },
-                      { type: "BreadcrumbList", coverage: 100, pages: "All routes", status: "Live" },
-                      { type: "Review / AggregateRating", coverage: 100, pages: "Homepage", status: "Live" },
+                      {
+                        type: "BreadcrumbList",
+                        coverage: 100,
+                        pages: "All routes",
+                        status: "Live",
+                      },
+                      {
+                        type: "Review / AggregateRating",
+                        coverage: 100,
+                        pages: "Homepage",
+                        status: "Live",
+                      },
                     ]
                   : [
                       { type: "LocalBusiness", coverage: 100, pages: "Homepage", status: "Live" },
-                      { type: "Service", coverage: 55, pages: "11 of 20 services", status: "Partial" },
-                      { type: "Project / CreativeWork", coverage: 30, pages: "6 of 20 case studies", status: "Partial" },
+                      {
+                        type: "Service",
+                        coverage: 55,
+                        pages: "11 of 20 services",
+                        status: "Partial",
+                      },
+                      {
+                        type: "Project / CreativeWork",
+                        coverage: 30,
+                        pages: "6 of 20 case studies",
+                        status: "Partial",
+                      },
                       { type: "FAQPage", coverage: 80, pages: "Pricing, Process", status: "Live" },
                       { type: "AggregateRating", coverage: 100, pages: "Homepage", status: "Live" },
-                      { type: "GeoCoordinates", coverage: 100, pages: "Service areas", status: "Live" },
-                      { type: "BreadcrumbList", coverage: 100, pages: "All routes", status: "Live" },
+                      {
+                        type: "GeoCoordinates",
+                        coverage: 100,
+                        pages: "Service areas",
+                        status: "Live",
+                      },
+                      {
+                        type: "BreadcrumbList",
+                        coverage: 100,
+                        pages: "All routes",
+                        status: "Live",
+                      },
                     ]
                 ).map((s) => (
-                  <div key={s.type} className="grid grid-cols-[1.2fr_1fr_0.8fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                  <div
+                    key={s.type}
+                    className="grid grid-cols-[1.2fr_1fr_0.8fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
+                  >
                     <div>
                       <div className="font-medium">{s.type}</div>
                       <div className="text-xs text-muted-foreground">{s.pages}</div>
@@ -1092,10 +1709,14 @@ function SeoPage() {
 
               <Card className="p-6">
                 <h3 className="font-display text-xl">Live snippet preview</h3>
-                <p className="text-sm text-muted-foreground">How Google may render your homepage.</p>
+                <p className="text-sm text-muted-foreground">
+                  How Google may render your homepage.
+                </p>
                 <div className="mt-4 rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-emerald-700">
-                    {biz === "restaurant" ? "maisonolive.com › menu" : "northbayremodel.com › services"}
+                    {biz === "restaurant"
+                      ? "maisonolive.com › menu"
+                      : "northbayremodel.com › services"}
                   </div>
                   <div className="mt-1 text-lg text-[hsl(220,80%,40%)] underline">
                     {biz === "restaurant"
@@ -1150,24 +1771,77 @@ function SeoPage() {
                 </div>
                 {(biz === "restaurant"
                   ? [
-                      { title: "Truffle season: a love letter to autumn", type: "Journal", target: "truffle tagliatelle sf", status: "In review", date: "Oct 14" },
-                      { title: "Best date night spots in Hayes Valley", type: "Landing", target: "date night restaurant sf", status: "Drafting", date: "Oct 18" },
-                      { title: "How we source our olive oil", type: "Story", target: "italian olive oil sf", status: "Idea", date: "—" },
-                      { title: "Holiday private buyouts 2026", type: "Landing", target: "private dining san francisco", status: "Live", date: "Sep 28" },
+                      {
+                        title: "Truffle season: a love letter to autumn",
+                        type: "Journal",
+                        target: "truffle tagliatelle sf",
+                        status: "In review",
+                        date: "Oct 14",
+                      },
+                      {
+                        title: "Best date night spots in Hayes Valley",
+                        type: "Landing",
+                        target: "date night restaurant sf",
+                        status: "Drafting",
+                        date: "Oct 18",
+                      },
+                      {
+                        title: "How we source our olive oil",
+                        type: "Story",
+                        target: "italian olive oil sf",
+                        status: "Idea",
+                        date: "—",
+                      },
+                      {
+                        title: "Holiday private buyouts 2026",
+                        type: "Landing",
+                        target: "private dining san francisco",
+                        status: "Live",
+                        date: "Sep 28",
+                      },
                     ]
                   : [
-                      { title: "Kitchen remodels in Walnut Creek", type: "Service area", target: "kitchen remodel walnut creek", status: "Live", date: "Sep 12" },
-                      { title: "Cost guide: full bathroom remodel 2026", type: "Guide", target: "bathroom remodel cost bay area", status: "In review", date: "Oct 14" },
-                      { title: "ADU build, Berkeley · case study", type: "Case study", target: "adu contractor berkeley", status: "Drafting", date: "Oct 22" },
-                      { title: "Permits 101 for SF homeowners", type: "Guide", target: "sf remodeling permits", status: "Idea", date: "—" },
+                      {
+                        title: "Kitchen remodels in Walnut Creek",
+                        type: "Service area",
+                        target: "kitchen remodel walnut creek",
+                        status: "Live",
+                        date: "Sep 12",
+                      },
+                      {
+                        title: "Cost guide: full bathroom remodel 2026",
+                        type: "Guide",
+                        target: "bathroom remodel cost bay area",
+                        status: "In review",
+                        date: "Oct 14",
+                      },
+                      {
+                        title: "ADU build, Berkeley · case study",
+                        type: "Case study",
+                        target: "adu contractor berkeley",
+                        status: "Drafting",
+                        date: "Oct 22",
+                      },
+                      {
+                        title: "Permits 101 for SF homeowners",
+                        type: "Guide",
+                        target: "sf remodeling permits",
+                        status: "Idea",
+                        date: "—",
+                      },
                     ]
                 ).map((c) => (
-                  <div key={c.title} className="grid grid-cols-[1.6fr_0.7fr_1fr_0.7fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                  <div
+                    key={c.title}
+                    className="grid grid-cols-[1.6fr_0.7fr_1fr_0.7fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
+                  >
                     <div className="min-w-0">
                       <div className="truncate font-medium">{c.title}</div>
                       <div className="text-xs text-muted-foreground">Target: {c.target}</div>
                     </div>
-                    <Badge variant="secondary" className="rounded-full text-[11px]">{c.type}</Badge>
+                    <Badge variant="secondary" className="rounded-full text-[11px]">
+                      {c.type}
+                    </Badge>
                     <Badge
                       variant="outline"
                       className={`rounded-full justify-self-start ${
@@ -1199,12 +1873,24 @@ function SeoPage() {
                 </p>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {(biz === "restaurant"
-                    ? ["Hayes Valley", "SoMa", "Mission", "Anniversary", "Group dining", "Vegetarian"]
+                    ? [
+                        "Hayes Valley",
+                        "SoMa",
+                        "Mission",
+                        "Anniversary",
+                        "Group dining",
+                        "Vegetarian",
+                      ]
                     : ["Oakland", "Berkeley", "Walnut Creek", "Kitchen", "Bath", "ADU"]
                   ).map((t) => (
-                    <div key={t} className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm">
+                    <div
+                      key={t}
+                      className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm"
+                    >
                       <span>{t}</span>
-                      <Badge variant="outline" className="rounded-full text-[10px]">Live</Badge>
+                      <Badge variant="outline" className="rounded-full text-[10px]">
+                        Live
+                      </Badge>
                     </div>
                   ))}
                 </div>
@@ -1213,11 +1899,21 @@ function SeoPage() {
 
                 <h4 className="text-sm font-medium">AI brief generator</h4>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pick a keyword cluster and the agent drafts a brief with H-structure, FAQs and internal links.
+                  Pick a keyword cluster and the agent drafts a brief with H-structure, FAQs and
+                  internal links.
                 </p>
                 <div className="mt-3 flex gap-2">
-                  <Input placeholder={biz === "restaurant" ? "e.g. sunday brunch hayes valley" : "e.g. bathroom remodel oakland"} className="h-9" />
-                  <Button className="gap-2"><Sparkles className="h-4 w-4" /> Brief</Button>
+                  <Input
+                    placeholder={
+                      biz === "restaurant"
+                        ? "e.g. sunday brunch hayes valley"
+                        : "e.g. bathroom remodel oakland"
+                    }
+                    className="h-9"
+                  />
+                  <Button className="gap-2">
+                    <Sparkles className="h-4 w-4" /> Brief
+                  </Button>
                 </div>
 
                 <div className="mt-4 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -1240,7 +1936,9 @@ function SeoPage() {
                 { label: "Toxic links", value: "7", delta: "−2" },
               ].map((s) => (
                 <Card key={s.label} className="p-5">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{s.label}</div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    {s.label}
+                  </div>
                   <div className="mt-2 font-display text-3xl">{s.value}</div>
                   <div className="text-xs text-emerald-700">{s.delta} · 30d</div>
                 </Card>
@@ -1252,31 +1950,100 @@ function SeoPage() {
                 <div className="flex items-center justify-between border-b border-border/70 p-4">
                   <h3 className="font-display text-lg">Recent backlinks</h3>
                   <div className="flex gap-2">
-                    <Badge variant="outline" className="rounded-full">DoFollow</Badge>
-                    <Badge variant="outline" className="rounded-full">All types</Badge>
+                    <Badge variant="outline" className="rounded-full">
+                      DoFollow
+                    </Badge>
+                    <Badge variant="outline" className="rounded-full">
+                      All types
+                    </Badge>
                   </div>
                 </div>
                 {(biz === "restaurant"
                   ? [
-                      { domain: "sfchronicle.com", anchor: "Thrasher's Pub", da: 91, type: "Editorial", date: "2d" },
-                      { domain: "eater.com", anchor: "modern italian in hayes valley", da: 89, type: "Editorial", date: "5d" },
-                      { domain: "opentable.com", anchor: "Reserve", da: 88, type: "Profile", date: "1w" },
-                      { domain: "hayesvalleysf.org", anchor: "neighborhood guide", da: 41, type: "Resource", date: "2w" },
-                      { domain: "foodblog-sara.com", anchor: "truffle tagliatelle", da: 28, type: "Blog", date: "3w" },
+                      {
+                        domain: "sfchronicle.com",
+                        anchor: "Thrasher's Pub",
+                        da: 91,
+                        type: "Editorial",
+                        date: "2d",
+                      },
+                      {
+                        domain: "eater.com",
+                        anchor: "modern italian in hayes valley",
+                        da: 89,
+                        type: "Editorial",
+                        date: "5d",
+                      },
+                      {
+                        domain: "opentable.com",
+                        anchor: "Reserve",
+                        da: 88,
+                        type: "Profile",
+                        date: "1w",
+                      },
+                      {
+                        domain: "hayesvalleysf.org",
+                        anchor: "neighborhood guide",
+                        da: 41,
+                        type: "Resource",
+                        date: "2w",
+                      },
+                      {
+                        domain: "foodblog-sara.com",
+                        anchor: "truffle tagliatelle",
+                        da: 28,
+                        type: "Blog",
+                        date: "3w",
+                      },
                     ]
                   : [
-                      { domain: "houzz.com", anchor: "North Bay Remodel", da: 92, type: "Profile", date: "3d" },
-                      { domain: "sfgate.com", anchor: "bay area contractor", da: 90, type: "Editorial", date: "1w" },
-                      { domain: "angi.com", anchor: "kitchen remodeling", da: 86, type: "Profile", date: "1w" },
-                      { domain: "berkeleychamber.com", anchor: "member directory", da: 52, type: "Citation", date: "2w" },
-                      { domain: "designerblog.io", anchor: "ADU case study", da: 34, type: "Blog", date: "3w" },
+                      {
+                        domain: "houzz.com",
+                        anchor: "North Bay Remodel",
+                        da: 92,
+                        type: "Profile",
+                        date: "3d",
+                      },
+                      {
+                        domain: "sfgate.com",
+                        anchor: "bay area contractor",
+                        da: 90,
+                        type: "Editorial",
+                        date: "1w",
+                      },
+                      {
+                        domain: "angi.com",
+                        anchor: "kitchen remodeling",
+                        da: 86,
+                        type: "Profile",
+                        date: "1w",
+                      },
+                      {
+                        domain: "berkeleychamber.com",
+                        anchor: "member directory",
+                        da: 52,
+                        type: "Citation",
+                        date: "2w",
+                      },
+                      {
+                        domain: "designerblog.io",
+                        anchor: "ADU case study",
+                        da: 34,
+                        type: "Blog",
+                        date: "3w",
+                      },
                     ]
                 ).map((b) => (
-                  <div key={b.domain} className="grid grid-cols-[1.2fr_1.4fr_0.6fr_0.7fr_0.5fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0">
+                  <div
+                    key={b.domain}
+                    className="grid grid-cols-[1.2fr_1.4fr_0.6fr_0.7fr_0.5fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
+                  >
                     <div className="font-medium">{b.domain}</div>
                     <div className="truncate text-muted-foreground">"{b.anchor}"</div>
                     <div className="tabular-nums">DA {b.da}</div>
-                    <Badge variant="secondary" className="rounded-full text-[11px]">{b.type}</Badge>
+                    <Badge variant="secondary" className="rounded-full text-[11px]">
+                      {b.type}
+                    </Badge>
                     <div className="text-right text-xs text-muted-foreground">{b.date}</div>
                   </div>
                 ))}
@@ -1292,7 +2059,10 @@ function SeoPage() {
                     ? ["thrillist.com", "infatuation.com", "sfeater.com", "tastecooking.com"]
                     : ["bobvila.com", "thisoldhouse.com", "remodelista.com", "dwell.com"]
                   ).map((d) => (
-                    <div key={d} className="flex items-center justify-between rounded-xl border border-border/70 p-3 text-sm">
+                    <div
+                      key={d}
+                      className="flex items-center justify-between rounded-xl border border-border/70 p-3 text-sm"
+                    >
                       <div>
                         <div className="font-medium">{d}</div>
                         <div className="text-xs text-muted-foreground">Links to 2 competitors</div>
@@ -1320,9 +2090,7 @@ function SeoPage() {
               </Card>
             </div>
           </TabsContent>
-
         </Tabs>
-
       </div>
 
       {/* Keyword drawer */}
@@ -1332,7 +2100,9 @@ function SeoPage() {
             <>
               <SheetHeader>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="rounded-full">{selected.intent}</Badge>
+                  <Badge variant="secondary" className="rounded-full">
+                    {selected.intent}
+                  </Badge>
                   {rankDelta(selected.rank, selected.prev)}
                 </div>
                 <SheetTitle className="font-display text-2xl">{selected.term}</SheetTitle>
@@ -1346,9 +2116,18 @@ function SeoPage() {
               <div className="mt-6 h-40">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={visibilitySeries}>
-                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                    <CartesianGrid
+                      stroke="hsl(var(--border))"
+                      strokeDasharray="3 3"
+                      vertical={false}
+                    />
                     <XAxis dataKey="d" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} reversed domain={[1, 20]} />
+                    <YAxis
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      reversed
+                      domain={[1, 20]}
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "hsl(var(--card))",
@@ -1357,7 +2136,13 @@ function SeoPage() {
                         fontSize: 12,
                       }}
                     />
-                    <Line type="monotone" dataKey="visibility" stroke="hsl(var(--primary))" strokeWidth={2} dot />
+                    <Line
+                      type="monotone"
+                      dataKey="visibility"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      dot
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1374,8 +2159,12 @@ function SeoPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button className="gap-2"><Wand2 className="h-4 w-4" /> Draft on-page fix</Button>
-                  <Button variant="outline" className="gap-2"><Pencil className="h-4 w-4" /> Edit landing page</Button>
+                  <Button className="gap-2">
+                    <Wand2 className="h-4 w-4" /> Draft on-page fix
+                  </Button>
+                  <Button variant="outline" className="gap-2">
+                    <Pencil className="h-4 w-4" /> Edit landing page
+                  </Button>
                 </div>
 
                 <div>
@@ -1383,8 +2172,15 @@ function SeoPage() {
                     Related terms
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {["best italian sf", "pasta hayes valley", "truffle dinner sf", "date night restaurant sf"].map((r) => (
-                      <Badge key={r} variant="outline" className="rounded-full">{r}</Badge>
+                    {[
+                      "best italian sf",
+                      "pasta hayes valley",
+                      "truffle dinner sf",
+                      "date night restaurant sf",
+                    ].map((r) => (
+                      <Badge key={r} variant="outline" className="rounded-full">
+                        {r}
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -1408,8 +2204,8 @@ function SeoPage() {
                 </div>
                 <SheetTitle className="font-display text-2xl">{activeTask.summary}</SheetTitle>
                 <SheetDescription>
-                  Confidence {activeTask.confidence}% · trained on your brand voice and last 90
-                  days of performance.
+                  Confidence {activeTask.confidence}% · trained on your brand voice and last 90 days
+                  of performance.
                 </SheetDescription>
               </SheetHeader>
 
@@ -1435,8 +2231,12 @@ function SeoPage() {
                 <Separator />
 
                 <div className="flex gap-2">
-                  <Button className="flex-1 gap-2"><Send className="h-4 w-4" /> Approve & apply</Button>
-                  <Button variant="outline" className="flex-1">Send back</Button>
+                  <Button className="flex-1 gap-2">
+                    <Send className="h-4 w-4" /> Approve & apply
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    Send back
+                  </Button>
                 </div>
               </div>
             </>
