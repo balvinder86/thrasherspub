@@ -26,6 +26,10 @@ authUrl.searchParams.set(
     // filter during onboarding, so new vendors are never missed because
     // someone forgot to label their emails by hand.
     "https://www.googleapis.com/auth/gmail.settings.basic",
+    // Needed to send real purchase-order emails to vendors from this
+    // same connected account, since Resend's domain verification is
+    // blocked by a Wix DNS limitation (see project memory).
+    "https://www.googleapis.com/auth/gmail.send",
   ].join(" "),
 );
 authUrl.searchParams.set("access_type", "offline");
