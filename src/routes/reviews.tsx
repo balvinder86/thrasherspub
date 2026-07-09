@@ -14,8 +14,10 @@ import {
   Bot,
   CheckCircle2,
   Inbox,
+  Link2,
   QrCode,
   RefreshCw,
+  Search,
   Send,
   Sparkles,
   Star,
@@ -25,6 +27,7 @@ import {
 
 import { Topbar } from "@/components/dashboard/Topbar";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -35,6 +38,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -112,11 +116,26 @@ function timeAgo(iso: string): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-function NotBuiltYet({ title, description }: { title: string; description: string }) {
+// A guardrail row that isn't wired to anything real yet — kept visible
+// (per the original design) so the roadmap stays obvious, but shown
+// firmly off/disabled rather than pretending it does something.
+function PlannedToggleRow({ label, description }: { label: string; description: string }) {
   return (
-    <Card className="rounded-2xl border-dashed border-border bg-card/50 p-10 text-center">
-      <p className="font-display text-lg">{title}</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
+    <div className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-background/60 p-3">
+      <Switch checked={false} disabled />
+      <div>
+        <div className="text-sm font-medium text-muted-foreground">{label}</div>
+        <div className="text-xs text-muted-foreground/80">{description}</div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyInsightCard({ title, description }: { title: string; description: string }) {
+  return (
+    <Card className="rounded-2xl border-dashed border-border bg-card/50 p-6">
+      <h3 className="font-display text-lg text-muted-foreground">{title}</h3>
+      <p className="mt-3 text-sm text-muted-foreground/80">{description}</p>
     </Card>
   );
 }
@@ -130,6 +149,7 @@ function ReviewsPage() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ratingFilter, setRatingFilter] = useState<"all" | "low" | "mid" | "high">("all");
+  const [search, setSearch] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
 
   const active = reviews.find((r) => r.id === activeId) ?? null;
@@ -140,14 +160,19 @@ function ReviewsPage() {
   };
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return reviews.filter((r) => {
       if (r.status === "dismissed") return false;
-      if (ratingFilter === "low") return r.starRating <= 2;
-      if (ratingFilter === "mid") return r.starRating === 3;
-      if (ratingFilter === "high") return r.starRating >= 4;
+      if (ratingFilter === "low" && r.starRating > 2) return false;
+      if (ratingFilter === "mid" && r.starRating !== 3) return false;
+      if (ratingFilter === "high" && r.starRating < 4) return false;
+      if (q) {
+        const haystack = `${r.reviewerName} ${r.reviewText ?? ""}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     });
-  }, [reviews, ratingFilter]);
+  }, [reviews, ratingFilter, search]);
 
   const kpis = useMemo(() => {
     const needsReply = reviews.filter(
@@ -227,14 +252,17 @@ function ReviewsPage() {
             <TabsTrigger value="inbox" className="gap-2">
               <Inbox className="h-3.5 w-3.5" /> Inbox
             </TabsTrigger>
-            <TabsTrigger value="agent" className="gap-2">
-              <Bot className="h-3.5 w-3.5" /> Agent
+            <TabsTrigger value="ai" className="gap-2">
+              <Bot className="h-3.5 w-3.5" /> AI Agent
             </TabsTrigger>
             <TabsTrigger value="insights" className="gap-2">
               <Sparkles className="h-3.5 w-3.5" /> Insights
             </TabsTrigger>
             <TabsTrigger value="generate" className="gap-2">
               <QrCode className="h-3.5 w-3.5" /> Get reviews
+            </TabsTrigger>
+            <TabsTrigger value="platforms" className="gap-2">
+              <Link2 className="h-3.5 w-3.5" /> Platforms
             </TabsTrigger>
           </TabsList>
 
@@ -260,6 +288,21 @@ function ReviewsPage() {
                   {label}
                 </Button>
               ))}
+              <Badge
+                variant="secondary"
+                className="rounded-full text-[10px] uppercase tracking-wider"
+              >
+                Source: Google
+              </Badge>
+              <div className="ml-auto flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search guest or review text…"
+                  className="w-40 bg-transparent text-xs outline-none placeholder:text-muted-foreground sm:w-56"
+                />
+              </div>
             </Card>
 
             {isLoading && <p className="text-sm text-muted-foreground">Loading reviews…</p>}
@@ -289,6 +332,7 @@ function ReviewsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{r.reviewerName}</span>
+                        <span className="text-xs text-muted-foreground">Google</span>
                         <Stars value={r.starRating} />
                         <span className="text-xs text-muted-foreground">
                           · {timeAgo(r.reviewFoundAt)}
@@ -324,16 +368,16 @@ function ReviewsPage() {
               {!isLoading && filtered.length === 0 && (
                 <Card className="rounded-2xl border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
                   {reviews.length === 0
-                    ? 'No reviews yet — click "Check now" on the Agent tab to look for real Google reviews.'
+                    ? 'No reviews yet — click "Check now" on the AI Agent tab to look for real Google reviews.'
                     : "No reviews match this filter."}
                 </Card>
               )}
             </div>
           </TabsContent>
 
-          {/* AGENT */}
-          <TabsContent value="agent" className="mt-6">
-            <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
+          {/* AI AGENT */}
+          <TabsContent value="ai" className="mt-6 grid gap-4 lg:grid-cols-3">
+            <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft lg:col-span-2">
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
                   <Bot className="h-5 w-5" />
@@ -341,8 +385,8 @@ function ReviewsPage() {
                 <div>
                   <h3 className="font-display text-lg">Reply agent</h3>
                   <p className="text-xs text-muted-foreground">
-                    Real par-level math, not an autonomous agent — nothing here posts to Google
-                    automatically.
+                    Every reply is drafted by AI and held for your approval — nothing posts to
+                    Google automatically.
                   </p>
                 </div>
               </div>
@@ -351,11 +395,7 @@ function ReviewsPage() {
 
               {connection ? (
                 <>
-                  <p className="text-sm leading-relaxed text-foreground/90">
-                    AI drafts a reply for every new review found on Google. Nothing is posted until
-                    you approve it from the Inbox.
-                  </p>
-                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-5 sm:grid-cols-2">
                     <div>
                       <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                         Connected business
@@ -388,6 +428,26 @@ function ReviewsPage() {
                       </div>
                     </div>
                   </div>
+
+                  <Separator className="my-5" />
+
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Brand voice
+                    </div>
+                    <p className="mt-2 text-sm text-foreground/90">
+                      {connection.businessDescription ||
+                        "No business description set — replies fall back to a generic tone."}
+                    </p>
+                    <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                      Reply contact: {connection.replyContactEmail || "—"}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Tone is chosen automatically from the star rating (warm for 5★, empathetic for
+                      1–2★). A manual tone override isn't built yet.
+                    </p>
+                  </div>
+
                   <Button
                     className="mt-5 gap-2"
                     onClick={() => preview.mutate()}
@@ -417,23 +477,186 @@ function ReviewsPage() {
                   a one-time local setup step — ask your developer to run the session login script.
                 </p>
               )}
+
+              <Separator className="my-5" />
+
+              <div className="space-y-3">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Guardrails
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-background p-3">
+                  <Switch checked disabled />
+                  <div>
+                    <div className="text-sm font-medium">Every reply requires your approval</div>
+                    <div className="text-xs text-muted-foreground">
+                      There is no auto-send mode. Every AI draft is held here until you approve it.
+                    </div>
+                  </div>
+                </div>
+                <PlannedToggleRow
+                  label="Auto-send 5★ replies"
+                  description="Not built yet — would let top-rated reviews post without a manual approval click."
+                />
+                <PlannedToggleRow
+                  label="Offer recovery on negative reviews"
+                  description="Not built yet — would suggest a comp or invite-back when a review reads negative."
+                />
+                <PlannedToggleRow
+                  label="Never promise refunds"
+                  description="Not built yet — would flag refund language and route it to a manager instead of posting."
+                />
+              </div>
+            </Card>
+
+            <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
+              <h3 className="font-display text-lg">Training</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This agent doesn't learn from your edits yet. Every reply is generated fresh from
+                the brand voice settings above, not from a memory of past replies. An
+                indexing/training pipeline isn't built.
+              </p>
             </Card>
           </TabsContent>
 
           {/* INSIGHTS */}
-          <TabsContent value="insights" className="mt-6">
-            <NotBuiltYet
-              title="This isn't built yet"
-              description="Trending praise/complaints and a staff mentions leaderboard would need real text analysis across your reviews — not built in this version."
+          <TabsContent value="insights" className="mt-6 grid gap-4 lg:grid-cols-3">
+            <EmptyInsightCard
+              title="Trending praise"
+              description="Would surface the dishes, staff, and details guests mention most in positive reviews. Needs text analysis across your reviews — not built yet."
+            />
+            <EmptyInsightCard
+              title="Trending complaints"
+              description="Would surface recurring themes in critical reviews — wait times, temperature, billing, etc. Needs text analysis — not built yet."
+            />
+            <EmptyInsightCard
+              title="Staff leaderboard"
+              description="Would rank staff by how often they're named in positive reviews. Needs name detection across review text — not built yet."
             />
           </TabsContent>
 
           {/* GENERATE */}
-          <TabsContent value="generate" className="mt-6">
-            <NotBuiltYet
-              title="This isn't built yet"
-              description="Automatically asking happy guests to leave a review (SMS, email, or a QR code on the check) would need a messaging pipeline that doesn't exist yet."
-            />
+          <TabsContent value="generate" className="mt-6 grid gap-4 lg:grid-cols-2">
+            <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
+              <h3 className="font-display text-lg">Ask happy guests for reviews</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Automatic after-visit asks, routed to Google based on guest history. None of this is
+                built yet — no messaging pipeline exists.
+              </p>
+              <div className="mt-5 space-y-3">
+                <PlannedToggleRow
+                  label="SMS after dinner (4h delay)"
+                  description="Not built yet — no SMS provider is connected."
+                />
+                <PlannedToggleRow
+                  label="Email next morning"
+                  description="Not built yet — would reuse the email pipeline already used for vendor invoices."
+                />
+                <PlannedToggleRow
+                  label="QR card on check folio"
+                  description="Not built yet — would print a QR code guests can scan at the table."
+                />
+              </div>
+            </Card>
+            <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
+              <h3 className="font-display text-lg">Last 30 days</h3>
+              <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-xl bg-secondary p-4">
+                  <div className="font-display text-2xl text-muted-foreground">—</div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Asks sent
+                  </div>
+                </div>
+                <div className="rounded-xl bg-secondary p-4">
+                  <div className="font-display text-2xl text-muted-foreground">—</div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    New reviews
+                  </div>
+                </div>
+                <div className="rounded-xl bg-secondary p-4">
+                  <div className="font-display text-2xl text-muted-foreground">—</div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Avg rating
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                No review-request campaigns have run yet — this card will fill in once that's built.
+              </p>
+            </Card>
+          </TabsContent>
+
+          {/* PLATFORMS */}
+          <TabsContent value="platforms" className="mt-6">
+            <Card className="rounded-2xl border-border/70 bg-card p-2 shadow-soft">
+              <div className="grid grid-cols-12 gap-4 px-4 py-3 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <div className="col-span-5">Platform</div>
+                <div className="col-span-2">Rating</div>
+                <div className="col-span-2">Reviews</div>
+                <div className="col-span-3 text-right">Status</div>
+              </div>
+
+              <div className="grid grid-cols-12 items-center gap-4 border-t border-border/60 px-4 py-4">
+                <div className="col-span-5 flex items-center gap-3">
+                  <span className="grid h-9 w-9 place-items-center rounded-lg bg-secondary">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[oklch(0.7_0.15_85)]" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium">Google</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Native reply agent · two-way replies
+                    </div>
+                  </div>
+                </div>
+                <div className="col-span-2 inline-flex items-center gap-1 text-sm">
+                  {kpis.avgRating != null ? (
+                    <>
+                      <Star className="h-3.5 w-3.5 fill-primary text-primary" />{" "}
+                      {kpis.avgRating.toFixed(1)}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </div>
+                <div className="col-span-2 text-sm">{reviews.length || "—"}</div>
+                <div className="col-span-3 flex items-center justify-end gap-2">
+                  {connection ? (
+                    <Badge variant="secondary" className="rounded-full text-success">
+                      <CheckCircle2 className="mr-1 h-3 w-3" /> Connected
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Not connected</span>
+                  )}
+                </div>
+              </div>
+
+              {(["Yelp", "Tripadvisor", "OpenTable", "DoorDash"] as const).map((p) => (
+                <div
+                  key={p}
+                  className="grid grid-cols-12 items-center gap-4 border-t border-border/60 px-4 py-4 opacity-60"
+                >
+                  <div className="col-span-5 flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-secondary">
+                      <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
+                    </span>
+                    <div>
+                      <div className="text-sm font-medium">{p}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        No integration built yet
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-span-2 text-sm text-muted-foreground">—</div>
+                  <div className="col-span-2 text-sm text-muted-foreground">—</div>
+                  <div className="col-span-3 flex items-center justify-end">
+                    <span className="text-xs text-muted-foreground">Not available</span>
+                  </div>
+                </div>
+              ))}
+            </Card>
+            <p className="mt-3 px-1 text-xs text-muted-foreground">
+              Only Google has a working reply agent today. Yelp, Tripadvisor, OpenTable and DoorDash
+              would each need their own integration built before they could appear here for real.
+            </p>
           </TabsContent>
         </Tabs>
       </main>

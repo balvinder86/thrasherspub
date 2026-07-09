@@ -61,6 +61,8 @@ export function useReviews() {
 
 export type ReviewAgentConnection = {
   businessName: string;
+  businessDescription: string | null;
+  replyContactEmail: string | null;
   searchQuery: string;
   businessProfileId: string;
   cookiesCapturedAt: string | null;
@@ -89,12 +91,14 @@ export function useReviewAgentConnection() {
 
       const { data: settings, error: settingsErr } = await supabase
         .from("review_agent_settings")
-        .select("business_name")
+        .select("business_name, business_description, reply_contact_email")
         .maybeSingle();
       if (settingsErr) throw settingsErr;
 
       return {
         businessName: settings?.business_name ?? "",
+        businessDescription: settings?.business_description ?? null,
+        replyContactEmail: settings?.reply_contact_email ?? null,
         searchQuery: cred.search_query,
         businessProfileId: cred.business_profile_id,
         cookiesCapturedAt: cred.cookies_captured_at,
