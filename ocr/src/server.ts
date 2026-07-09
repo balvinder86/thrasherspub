@@ -13,7 +13,15 @@
 // browser.
 
 import { createServer } from "node:http";
-import { getInvoice, downloadInvoiceFile, setEnqueued, setFailed, persistResult, insertInvoiceLine } from "./db.js";
+import {
+  getInvoice,
+  downloadInvoiceFile,
+  setEnqueued,
+  setFailed,
+  persistResult,
+  insertInvoiceLine,
+  listStuckInvoices,
+} from "./db.js";
 import { enqueue, checkJob } from "./mindee.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
@@ -108,3 +116,36 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`invoice-ocr service listening on :${PORT}`));
+
+// Background sweep — this service runs continuously (unlike the sync
+// jobs, which are one-shot Railway crons), so it can just re-check its
+// own in-flight jobs on a timer instead of relying on a browser tab
+// being open to trigger the poll. Re-checking a job that's still
+// genuinely processing is a no-op (handleCheck returns early), so
+// there's no risk of double-inserting invoice lines on repeat sweeps —
+// only a job that just flipped to ready/failed does real work, and it
+// won't match the "processing" filter again on the next sweep.
+const RECHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+async function recheckStuckInvoices() {
+  let stuck: { id: string }[];
+  try {
+    stuck = await listStuckInvoices();
+  } catch (e) {
+    console.error("[background-recheck] failed to list stuck invoices:", e);
+    return;
+  }
+  for (const { id } of stuck) {
+    try {
+      const result = await handleCheck(id);
+      if (result.status !== "processing") {
+        console.log(`[background-recheck] ${id}: ${result.status}`);
+      }
+    } catch (e) {
+      console.error(`[background-recheck] ${id} failed:`, e);
+    }
+  }
+}
+
+setInterval(recheckStuckInvoices, RECHECK_INTERVAL_MS);
+recheckStuckInvoices();

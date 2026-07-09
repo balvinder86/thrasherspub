@@ -45,6 +45,21 @@ export async function setFailed(invoiceId: string) {
   await supabase.from("invoices").update({ ocr_status: "failed" }).eq("id", invoiceId);
 }
 
+// Invoices that finished enqueueing (have a real mindee_job_id) but
+// never got their result claimed — previously this only happened when
+// a human had that exact invoice's review Sheet open in the browser,
+// so an email-ingested invoice nobody manually opened could sit
+// "processing" forever even after Mindee actually finished the job.
+export async function listStuckInvoices(): Promise<{ id: string }[]> {
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("ocr_status", "processing")
+    .not("mindee_job_id", "is", null);
+  if (error) throw new Error(`list stuck invoices failed: ${error.message}`);
+  return data ?? [];
+}
+
 export async function persistResult(
   invoice: Invoice,
   result: { invoiceNumber: string | null; date: string | null; totalAmount: number | null },
