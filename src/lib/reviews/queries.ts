@@ -246,3 +246,33 @@ export function useDismissReview() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reviews"] }),
   });
 }
+
+export type InsightsTheme = { theme: string; count: number };
+export type InsightsResult = {
+  insufficientData: boolean;
+  praiseThemes: InsightsTheme[];
+  complaintThemes: InsightsTheme[];
+  sampleSize: { positive: number; negative: number };
+};
+
+// Calls the analyze-review-insights Edge Function — real Claude
+// analysis of actual review text, on-demand (not auto-run, not
+// persisted). No new table: cheap enough to recompute each time given
+// real review volumes, and this is a derived view, not source data.
+export function useAnalyzeInsights() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (): Promise<InsightsResult> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("analyze-review-insights", {
+        body: { restaurant_id: restaurantId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "analysis failed",
+        );
+      }
+      return data as InsightsResult;
+    },
+  });
+}

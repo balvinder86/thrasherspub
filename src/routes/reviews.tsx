@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import type { UseMutationResult } from "@tanstack/react-query";
 import {
   useReviews,
   useReviewAgentConnection,
@@ -8,9 +9,13 @@ import {
   useDismissReview,
   useRegenerateReply,
   useSetAutoSend5Star,
+  useAnalyzeInsights,
   type Review,
   type ReviewStatus,
+  type InsightsResult,
+  type InsightsTheme,
 } from "@/lib/reviews/queries";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle,
   Bot,
@@ -241,6 +246,73 @@ function EmptyInsightCard({ title, description }: { title: string; description: 
   );
 }
 
+function ThemeListCard({
+  title,
+  emptyHint,
+  mutation,
+  pick,
+  badgeVariant,
+}: {
+  title: string;
+  emptyHint: string;
+  mutation: UseMutationResult<InsightsResult, Error, void, unknown>;
+  pick: (data: InsightsResult) => InsightsTheme[];
+  badgeVariant: "positive" | "negative";
+}) {
+  const badgeCls =
+    badgeVariant === "positive"
+      ? "bg-success/10 text-success border-success/20"
+      : "bg-destructive/10 text-destructive border-destructive/20";
+
+  return (
+    <Card className="rounded-2xl border-border/70 bg-card p-6 shadow-soft">
+      <h3 className="font-display text-lg">{title}</h3>
+
+      {mutation.isIdle && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {emptyHint} Click "Analyze reviews" above to run this for real.
+        </p>
+      )}
+
+      {mutation.isPending && (
+        <p className="mt-3 text-sm text-muted-foreground">Reading your reviews…</p>
+      )}
+
+      {mutation.isError && (
+        <p className="mt-3 text-sm text-destructive">{mutation.error.message}</p>
+      )}
+
+      {mutation.isSuccess && mutation.data.insufficientData && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Not enough reviews with written text yet ({mutation.data.sampleSize.positive} positive,{" "}
+          {mutation.data.sampleSize.negative} negative) — need at least a few to find real patterns.
+        </p>
+      )}
+
+      {mutation.isSuccess && !mutation.data.insufficientData && (
+        <>
+          {pick(mutation.data).length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No clear recurring theme yet — reviews are too varied so far.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3 text-sm">
+              {pick(mutation.data).map((t) => (
+                <li key={t.theme} className="flex items-center gap-3">
+                  <span className="flex-1">{t.theme}</span>
+                  <Badge variant="secondary" className={`rounded-full border ${badgeCls}`}>
+                    {t.count}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function ReviewsPage() {
   const { data: reviews = [], isLoading, error } = useReviews();
   const { data: connection } = useReviewAgentConnection();
@@ -249,6 +321,7 @@ function ReviewsPage() {
   const dismiss = useDismissReview();
   const regenerate = useRegenerateReply();
   const setAutoSend5Star = useSetAutoSend5Star();
+  const analyzeInsights = useAnalyzeInsights();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [confirmingAutoSend, setConfirmingAutoSend] = useState(false);
@@ -256,6 +329,7 @@ function ReviewsPage() {
   const [search, setSearch] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("inbox");
 
   const active = reviews.find((r) => r.id === activeId) ?? null;
 
@@ -311,6 +385,39 @@ function ReviewsPage() {
         : null;
 
     return { needsReply, postedCount: posted.length, avgRating, avgResponseMs };
+  }, [reviews]);
+
+  // Weekly review volume + avg rating, purely from data already
+  // captured (star rating + real write date where we have it) — no AI
+  // involved. Sparse weeks are shown as real zeros, not hidden, same
+  // honesty pattern as the other trend charts in this app.
+  const ratingTrend = useMemo(() => {
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setHours(0, 0, 0, 0);
+    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
+
+    const buckets = Array.from({ length: 8 }, (_, i) => {
+      const start = new Date(currentWeekStart.getTime() - (7 - i) * WEEK_MS);
+      return { start, end: new Date(start.getTime() + WEEK_MS), count: 0, ratingSum: 0 };
+    });
+
+    for (const r of reviews) {
+      if (r.status === "dismissed") continue;
+      const written = new Date(r.reviewWrittenAt ?? r.reviewFoundAt);
+      const bucket = buckets.find((b) => written >= b.start && written < b.end);
+      if (bucket) {
+        bucket.count++;
+        bucket.ratingSum += r.starRating;
+      }
+    }
+
+    return buckets.map((b) => ({
+      week: b.start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      count: b.count,
+      avgRating: b.count > 0 ? b.ratingSum / b.count : null,
+    }));
   }, [reviews]);
 
   const formatResponseTime = (ms: number) => {
@@ -369,7 +476,7 @@ function ReviewsPage() {
           />
         </section>
 
-        <Tabs defaultValue="inbox" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-card">
             <TabsTrigger value="inbox" className="gap-2">
               <Inbox className="h-3.5 w-3.5" /> Inbox
@@ -727,19 +834,104 @@ function ReviewsPage() {
           </TabsContent>
 
           {/* INSIGHTS */}
-          <TabsContent value="insights" className="mt-6 grid gap-4 lg:grid-cols-3">
-            <EmptyInsightCard
-              title="Trending praise"
-              description="Would surface the dishes, staff, and details guests mention most in positive reviews. Needs text analysis across your reviews — not built yet."
-            />
-            <EmptyInsightCard
-              title="Trending complaints"
-              description="Would surface recurring themes in critical reviews — wait times, temperature, billing, etc. Needs text analysis — not built yet."
-            />
-            <EmptyInsightCard
-              title="Staff leaderboard"
-              description="Would rank staff by how often they're named in positive reviews. Needs name detection across review text — not built yet."
-            />
+          <TabsContent value="insights" className="mt-6 space-y-4">
+            <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    Weekly trend
+                  </div>
+                  <h3 className="mt-1 font-display text-xl">Review volume · last 8 weeks</h3>
+                </div>
+              </div>
+              {reviews.length === 0 ? (
+                <div className="mt-4 flex h-[220px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
+                  No reviews yet — click "Check now" on the AI Agent tab to look for real Google
+                  reviews.
+                </div>
+              ) : activeTab !== "insights" ? (
+                <div className="mt-4 h-[220px]" />
+              ) : (
+                <div className="mt-4 h-[220px]">
+                  {/* Only mounted once this tab is actually active — Radix
+                      keeps inactive TabsContent in the DOM (hidden, not
+                      unmounted), and ResponsiveContainer measures 0 width
+                      if it mounts while its parent is display:none. */}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ratingTrend}>
+                      <CartesianGrid
+                        stroke="var(--border)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis dataKey="week" stroke="var(--muted-foreground)" fontSize={11} />
+                      <YAxis stroke="var(--muted-foreground)" fontSize={11} allowDecimals={false} />
+                      <Tooltip
+                        formatter={(value: number, name: string, item) => {
+                          if (name === "count") {
+                            const avg = (item.payload as { avgRating: number | null }).avgRating;
+                            return [
+                              `${value} review${value === 1 ? "" : "s"}${avg != null ? ` · avg ${avg.toFixed(1)}★` : ""}`,
+                              "This week",
+                            ];
+                          }
+                          return [value, name];
+                        }}
+                        contentStyle={{ borderRadius: 10, border: "1px solid var(--border)" }}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="var(--primary)"
+                        radius={[4, 4, 0, 0]}
+                        isAnimationActive={false}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+
+            <Card className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-border/70 bg-card p-4 shadow-soft">
+              <div>
+                <div className="text-sm font-medium">Trending praise & complaints</div>
+                <p className="text-xs text-muted-foreground">
+                  Real Claude analysis of your actual review text — reads what guests wrote and
+                  finds recurring themes. Not run automatically; click to analyze.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => analyzeInsights.mutate()}
+                disabled={analyzeInsights.isPending}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${analyzeInsights.isPending ? "animate-spin" : ""}`}
+                />
+                {analyzeInsights.isPending ? "Analyzing…" : "Analyze reviews"}
+              </Button>
+            </Card>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <ThemeListCard
+                title="Trending praise"
+                emptyHint="Would surface the dishes, staff, and details guests mention most in positive reviews."
+                mutation={analyzeInsights}
+                pick={(d) => d.praiseThemes}
+                badgeVariant="positive"
+              />
+              <ThemeListCard
+                title="Trending complaints"
+                emptyHint="Would surface recurring themes in critical reviews — wait times, temperature, billing, etc."
+                mutation={analyzeInsights}
+                pick={(d) => d.complaintThemes}
+                badgeVariant="negative"
+              />
+              <EmptyInsightCard
+                title="Staff leaderboard"
+                description="Would rank staff by how often they're named in positive reviews. Needs a staff roster and name detection across review text — not built yet."
+              />
+            </div>
           </TabsContent>
 
           {/* GENERATE */}
