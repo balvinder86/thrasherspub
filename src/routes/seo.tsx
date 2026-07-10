@@ -17,6 +17,11 @@ import {
   useUpdateCitationProfile,
   useCitationChecks,
   useSetCitationCheck,
+  useTrackedQueries,
+  useAddTrackedQuery,
+  useDeleteTrackedQuery,
+  useCompetitorScans,
+  useRunCompetitorScan,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
@@ -25,6 +30,7 @@ import {
   type MetricSeries,
   type CitationDirectory,
   type CitationCheckStatus,
+  type CompetitorScan,
 } from "@/lib/seo/queries";
 import { useReviewAgentConnection } from "@/lib/reviews/queries";
 import {
@@ -465,6 +471,11 @@ function SeoPage() {
   const updateCitationProfile = useUpdateCitationProfile();
   const { data: citationChecks } = useCitationChecks();
   const setCitationCheck = useSetCitationCheck();
+  const { data: trackedQueries } = useTrackedQueries();
+  const addTrackedQuery = useAddTrackedQuery();
+  const deleteTrackedQuery = useDeleteTrackedQuery();
+  const { data: competitorScans } = useCompetitorScans();
+  const runCompetitorScan = useRunCompetitorScan();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -482,6 +493,8 @@ function SeoPage() {
   const [profileForm, setProfileForm] = useState({ address: "", phone: "", website: "" });
   const [profileFormDirty, setProfileFormDirty] = useState(false);
   const [citationNotes, setCitationNotes] = useState<Record<string, string>>({});
+  const [newQueryText, setNewQueryText] = useState("");
+  const [scanningQueryId, setScanningQueryId] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -489,6 +502,16 @@ function SeoPage() {
       setTimeout(() => setCopiedField((f) => (f === fieldId ? null : f)), 1500);
     });
   };
+
+  const latestScanByQueryId = useMemo(() => {
+    const map = new Map<string, CompetitorScan>();
+    for (const scan of competitorScans ?? []) {
+      if (scan.trackedQueryId && !map.has(scan.trackedQueryId)) {
+        map.set(scan.trackedQueryId, scan);
+      }
+    }
+    return map;
+  }, [competitorScans]);
 
   useEffect(() => {
     if (citationProfile && !profileFormDirty) {
@@ -1512,14 +1535,156 @@ function SeoPage() {
 
           {/* COMPETITORS */}
           <TabsContent value="competitors" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Would compare your real Search Console visibility against nearby competitors and
-                surface keywords where they outrank you — needs a paid rank-tracking tool (Semrush,
-                Ahrefs) since Search Console only reports your own site's data.
-              </p>
-            </Card>
+            <div className="space-y-4">
+              <Card className="p-6">
+                <div className="text-sm font-medium">Real local-pack tracking</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  For a real search you pick (e.g. "sports bar bothell wa"), this scans Google's
+                  actual local 3-pack — the real businesses, ratings, and review counts Google shows
+                  for that search, and whether you're in it. Keyword-level comparison (which
+                  keywords a competitor outranks you on) still needs a paid rank-tracking tool like
+                  Semrush or Ahrefs — Search Console only reports your own site's data, so that part
+                  genuinely can't be built here.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <Input
+                    placeholder="e.g. sports bar bothell wa"
+                    value={newQueryText}
+                    onChange={(e) => setNewQueryText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newQueryText.trim()) {
+                        addTrackedQuery.mutate(newQueryText.trim(), {
+                          onSuccess: () => setNewQueryText(""),
+                        });
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!newQueryText.trim() || addTrackedQuery.isPending}
+                    onClick={() =>
+                      addTrackedQuery.mutate(newQueryText.trim(), {
+                        onSuccess: () => setNewQueryText(""),
+                      })
+                    }
+                  >
+                    Track
+                  </Button>
+                </div>
+                {addTrackedQuery.isError && (
+                  <p className="mt-2 text-xs text-destructive">
+                    {(addTrackedQuery.error as Error).message}
+                  </p>
+                )}
+              </Card>
+
+              {!trackedQueries?.length ? (
+                <p className="text-center text-sm text-muted-foreground">
+                  No tracked searches yet — add one above (try a search real customers might use,
+                  like "[cuisine] restaurant near [your city]").
+                </p>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {trackedQueries.map((tq) => {
+                    const scan = latestScanByQueryId.get(tq.id);
+                    const isScanning = runCompetitorScan.isPending && scanningQueryId === tq.id;
+
+                    return (
+                      <Card key={tq.id} className="p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="truncate">{tq.query}</span>
+                            </div>
+                            {scan ? (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {scan.ownInPack
+                                  ? `You're #${scan.ownPosition} in the local pack`
+                                  : "Not in the local pack for this search"}{" "}
+                                · scanned {timeAgo(scan.scannedAt)}
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-xs text-muted-foreground">Not scanned yet</p>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => deleteTrackedQuery.mutate(tq.id)}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 gap-2"
+                          disabled={isScanning}
+                          onClick={() => {
+                            setScanningQueryId(tq.id);
+                            runCompetitorScan.mutate(tq.id);
+                          }}
+                        >
+                          <RefreshCw
+                            className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
+                          />
+                          {isScanning ? "Scanning Google…" : scan ? "Rescan" : "Scan now"}
+                        </Button>
+                        {runCompetitorScan.isError && scanningQueryId === tq.id && (
+                          <p className="mt-2 text-xs text-destructive">
+                            {(runCompetitorScan.error as Error).message}
+                          </p>
+                        )}
+
+                        {scan && scan.localPack.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            {scan.localPack.map((entry) => (
+                              <div
+                                key={entry.position}
+                                className={`rounded-lg border p-3 ${
+                                  entry.isOwn
+                                    ? "border-primary/40 bg-primary/5"
+                                    : "border-border bg-muted/20"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
+                                      {entry.position}
+                                    </span>
+                                    <span className="truncate text-sm font-medium">
+                                      {entry.name}
+                                    </span>
+                                    {entry.isOwn && (
+                                      <Badge variant="outline" className="rounded-full text-[10px]">
+                                        You
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {entry.rating != null && (
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      {entry.rating}★ ({entry.reviewCount?.toLocaleString()})
+                                    </span>
+                                  )}
+                                </div>
+                                {(entry.category || entry.address) && (
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {[entry.category, entry.address].filter(Boolean).join(" · ")}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* AGENT */}

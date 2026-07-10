@@ -477,3 +477,134 @@ export function useSetCitationCheck() {
     },
   });
 }
+
+export type TrackedQuery = { id: string; query: string; createdAt: string };
+
+// Plain config the tenant manages directly — no Google automation
+// involved in tracking/untracking a query, only in scanning it.
+export function useTrackedQueries() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["competitor-tracked-queries", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<TrackedQuery[]> => {
+      const { data, error } = await supabase
+        .from("competitor_tracked_queries")
+        .select("id, query, created_at")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map((r) => ({ id: r.id, query: r.query, createdAt: r.created_at }));
+    },
+  });
+}
+
+export function useAddTrackedQuery() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (query: string) => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { error } = await supabase
+        .from("competitor_tracked_queries")
+        .insert({ restaurant_id: restaurantId, query });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["competitor-tracked-queries", restaurantId] });
+    },
+  });
+}
+
+export function useDeleteTrackedQuery() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("competitor_tracked_queries").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["competitor-tracked-queries", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["competitor-scans", restaurantId] });
+    },
+  });
+}
+
+export type LocalPackEntry = {
+  position: number;
+  name: string;
+  rating: number | null;
+  reviewCount: number | null;
+  category: string | null;
+  address: string | null;
+  isOwn: boolean;
+};
+
+export type CompetitorScan = {
+  id: string;
+  trackedQueryId: string | null;
+  query: string;
+  scannedAt: string;
+  localPack: LocalPackEntry[];
+  ownInPack: boolean;
+  ownPosition: number | null;
+};
+
+// Real scan history — one row per real scan (append-only, like
+// reviews), so a trend across repeated scans is possible. Fetches
+// recent scans and reduces to the latest per tracked query
+// client-side rather than a DISTINCT ON query.
+export function useCompetitorScans() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["competitor-scans", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<CompetitorScan[]> => {
+      const { data, error } = await supabase
+        .from("competitor_scans")
+        .select("id, tracked_query_id, query, scanned_at, local_pack, own_in_pack, own_position")
+        .order("scanned_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        id: r.id,
+        trackedQueryId: r.tracked_query_id,
+        query: r.query,
+        scannedAt: r.scanned_at,
+        localPack: r.local_pack as LocalPackEntry[],
+        ownInPack: r.own_in_pack,
+        ownPosition: r.own_position,
+      }));
+    },
+  });
+}
+
+// Real local-pack scan for one tracked query — same Google session
+// already connected for the review-reply agent and GBP Insights, no
+// new credential flow. Takes a few seconds per scan.
+export function useRunCompetitorScan() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      trackedQueryId: string,
+    ): Promise<{ localPack: LocalPackEntry[]; ownInPack: boolean; ownPosition: number | null }> => {
+      const { data, error } = await supabase.functions.invoke("review-agent", {
+        body: { action: "competitor_scan", tracked_query_id: trackedQueryId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "scan failed",
+        );
+      }
+      return data as {
+        localPack: LocalPackEntry[];
+        ownInPack: boolean;
+        ownPosition: number | null;
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["competitor-scans", restaurantId] });
+    },
+  });
+}

@@ -28,7 +28,9 @@ export type RestaurantReviewConfig = {
 // reference restaurants(id) independently, with no FK between the two
 // tables themselves, so there's no relationship for PostgREST to
 // auto-detect and join on.
-export async function getReviewAgentConfigs(restaurantId?: string): Promise<RestaurantReviewConfig[]> {
+export async function getReviewAgentConfigs(
+  restaurantId?: string,
+): Promise<RestaurantReviewConfig[]> {
   let credQuery = supabase
     .from("review_agent_credentials")
     .select("id, restaurant_id, business_profile_id, search_query, vault_secret_name")
@@ -77,9 +79,11 @@ export async function getReviewAgentConfigs(restaurantId?: string): Promise<Rest
 // it's generic (looks up any named secret), not provider-specific.
 export async function getGoogleCookies(vaultSecretName: string): Promise<GoogleCookie[]> {
   const { data, error } = await supabase.rpc("get_pos_secret", { secret_name: vaultSecretName });
-  if (error || !data) throw new Error(`vault secret '${vaultSecretName}' not found: ${error?.message ?? ""}`);
+  if (error || !data)
+    throw new Error(`vault secret '${vaultSecretName}' not found: ${error?.message ?? ""}`);
   const parsed = JSON.parse(data);
-  if (!Array.isArray(parsed.cookies)) throw new Error(`vault secret '${vaultSecretName}' missing cookies array`);
+  if (!Array.isArray(parsed.cookies))
+    throw new Error(`vault secret '${vaultSecretName}' missing cookies array`);
   return parsed.cookies;
 }
 
@@ -180,12 +184,18 @@ export async function markReviewPosted(reviewId: string, at: Date) {
 }
 
 export async function markReviewPostFailed(reviewId: string, errorMessage: string) {
-  await supabase.from("reviews").update({ status: "post_failed", post_error: errorMessage }).eq("id", reviewId);
+  await supabase
+    .from("reviews")
+    .update({ status: "post_failed", post_error: errorMessage })
+    .eq("id", reviewId);
 }
 
-export async function getCredentialsForRestaurant(restaurantId: string): Promise<RestaurantReviewConfig> {
+export async function getCredentialsForRestaurant(
+  restaurantId: string,
+): Promise<RestaurantReviewConfig> {
   const configs = await getReviewAgentConfigs(restaurantId);
-  if (configs.length === 0) throw new Error(`no review agent connected for restaurant ${restaurantId}`);
+  if (configs.length === 0)
+    throw new Error(`no review agent connected for restaurant ${restaurantId}`);
   return configs[0];
 }
 
@@ -214,6 +224,43 @@ export async function getReviewForRegenerate(reviewId: string): Promise<ReviewFo
 }
 
 export async function updateDraftReply(reviewId: string, draftReply: string) {
-  const { error } = await supabase.from("reviews").update({ ai_draft_reply: draftReply }).eq("id", reviewId);
+  const { error } = await supabase
+    .from("reviews")
+    .update({ ai_draft_reply: draftReply })
+    .eq("id", reviewId);
   if (error) throw new Error(`update ai_draft_reply failed: ${error.message}`);
+}
+
+export async function getTrackedQuery(
+  restaurantId: string,
+  trackedQueryId: string,
+): Promise<{ id: string; query: string }> {
+  const { data, error } = await supabase
+    .from("competitor_tracked_queries")
+    .select("id, query")
+    .eq("id", trackedQueryId)
+    .eq("restaurant_id", restaurantId)
+    .single();
+  if (error || !data)
+    throw new Error(`tracked query not found: ${error?.message ?? trackedQueryId}`);
+  return data;
+}
+
+export async function insertCompetitorScan(input: {
+  restaurantId: string;
+  trackedQueryId: string;
+  query: string;
+  localPack: unknown;
+  ownInPack: boolean;
+  ownPosition: number | null;
+}) {
+  const { error } = await supabase.from("competitor_scans").insert({
+    restaurant_id: input.restaurantId,
+    tracked_query_id: input.trackedQueryId,
+    query: input.query,
+    local_pack: input.localPack,
+    own_in_pack: input.ownInPack,
+    own_position: input.ownPosition,
+  });
+  if (error) throw new Error(`insert competitor_scans failed: ${error.message}`);
 }

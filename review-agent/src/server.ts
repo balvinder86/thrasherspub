@@ -23,17 +23,22 @@ import {
   markReviewPostFailed,
   getReviewForRegenerate,
   updateDraftReply,
+  getTrackedQuery,
+  insertCompetitorScan,
   type RestaurantReviewConfig,
 } from "./db.js";
 import { scanUnrepliedReviews, postReplyToReview } from "./browser.js";
 import { generateReply } from "./claude.js";
 import { scanGbpInsights } from "./gbp-insights.js";
+import { scanLocalPack } from "./competitor-scan.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const SERVICE_TOKEN = process.env.REVIEW_AGENT_SERVICE_TOKEN;
 if (!SERVICE_TOKEN) throw new Error("REVIEW_AGENT_SERVICE_TOKEN must be set");
 
-async function readJsonBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {
+async function readJsonBody(
+  req: import("node:http").IncomingMessage,
+): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf-8");
@@ -47,7 +52,8 @@ async function scanConfig(config: RestaurantReviewConfig) {
     cookies,
     config.businessProfileId,
     config.searchQuery,
-    (reviewerName, starRating, comment) => generateReply(reviewerName, starRating, comment, config.settings),
+    (reviewerName, starRating, comment) =>
+      generateReply(reviewerName, starRating, comment, config.settings),
     config.maxRepliesPerRun,
     config.autoSend5Star,
   );
@@ -136,6 +142,26 @@ async function handleGbpInsights(restaurantId: string) {
   return insights;
 }
 
+async function handleCompetitorScan(restaurantId: string, trackedQueryId: string) {
+  const tracked = await getTrackedQuery(restaurantId, trackedQueryId);
+  const config = await getCredentialsForRestaurant(restaurantId);
+  const cookies = await getGoogleCookies(config.vaultSecretName);
+
+  const localPack = await scanLocalPack(cookies, tracked.query, config.settings.businessName);
+  const own = localPack.find((e) => e.isOwn) ?? null;
+
+  await insertCompetitorScan({
+    restaurantId,
+    trackedQueryId: tracked.id,
+    query: tracked.query,
+    localPack,
+    ownInPack: !!own,
+    ownPosition: own?.position ?? null,
+  });
+
+  return { localPack, ownInPack: !!own, ownPosition: own?.position ?? null };
+}
+
 async function handleRegenerate(reviewId: string) {
   const review = await getReviewForRegenerate(reviewId);
   const config = await getCredentialsForRestaurant(review.restaurantId);
@@ -190,6 +216,17 @@ const server = createServer(async (req, res) => {
         return;
       }
       respond(200, { ok: true, ...(await handleGbpInsights(restaurantId)) });
+      return;
+    }
+
+    if (req.url === "/competitor-scan" && req.method === "POST") {
+      const restaurantId = body.restaurant_id;
+      const trackedQueryId = body.tracked_query_id;
+      if (typeof restaurantId !== "string" || typeof trackedQueryId !== "string") {
+        respond(400, { ok: false, error: "restaurant_id and tracked_query_id are required" });
+        return;
+      }
+      respond(200, { ok: true, ...(await handleCompetitorScan(restaurantId, trackedQueryId)) });
       return;
     }
 

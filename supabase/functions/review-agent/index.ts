@@ -6,10 +6,11 @@
 // tenant's restaurant_id/review_id must be blocked explicitly here),
 // then forward to Railway with a shared secret the browser never sees.
 //
-//   { action: "scan", restaurant_id }         — read-only, drafts new reviews
-//   { action: "post", review_id }             — posts one approved reply live
-//   { action: "regenerate", review_id }       — re-drafts one reply via Claude
-//   { action: "gbp_insights", restaurant_id } — read-only, real GBP Insights scrape
+//   { action: "scan", restaurant_id }               — read-only, drafts new reviews
+//   { action: "post", review_id }                   — posts one approved reply live
+//   { action: "regenerate", review_id }             — re-drafts one reply via Claude
+//   { action: "gbp_insights", restaurant_id }       — read-only, real GBP Insights scrape
+//   { action: "competitor_scan", tracked_query_id } — read-only, real local-pack scan
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, step: "auth", error: "invalid session" }, 401);
     }
 
-    const { action, restaurant_id, review_id } = await req.json();
+    const { action, restaurant_id, review_id, tracked_query_id } = await req.json();
 
     if (action === "scan") {
       if (!restaurant_id) {
@@ -150,6 +151,47 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "competitor_scan") {
+      if (!tracked_query_id) {
+        return json({ ok: false, step: "input", error: "tracked_query_id is required" }, 400);
+      }
+
+      const { data: tracked, error: trackedErr } = await supabase
+        .from("competitor_tracked_queries")
+        .select("id, restaurant_id")
+        .eq("id", tracked_query_id)
+        .single();
+      if (trackedErr || !tracked) {
+        return json(
+          { ok: false, step: "load_tracked_query", error: trackedErr?.message ?? "not found" },
+          404,
+        );
+      }
+
+      try {
+        await assertMember(userData.user.id, tracked.restaurant_id);
+      } catch (e) {
+        return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
+      }
+
+      const railwayRes = await fetch(`${REVIEW_AGENT_SERVICE_URL}/competitor-scan`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REVIEW_AGENT_SERVICE_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          restaurant_id: tracked.restaurant_id,
+          tracked_query_id: tracked.id,
+        }),
+      });
+      const railwayBody = await railwayRes.json().catch(() => null);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
+    }
+
     if (action === "regenerate") {
       if (!review_id) {
         return json({ ok: false, step: "input", error: "review_id is required" }, 400);
@@ -192,7 +234,7 @@ Deno.serve(async (req) => {
       {
         ok: false,
         step: "input",
-        error: "action must be 'scan', 'post', 'regenerate', or 'gbp_insights'",
+        error: "action must be 'scan', 'post', 'regenerate', 'gbp_insights', or 'competitor_scan'",
       },
       400,
     );
