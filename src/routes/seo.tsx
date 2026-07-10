@@ -8,48 +8,38 @@ import {
   useSearchConsolePages,
   usePageSpeedAudit,
   useRefetchSearchConsoleConnection,
+  useGenerateSeoSuggestions,
   type PageSpeedResult,
+  type SeoSuggestions,
 } from "@/lib/seo/queries";
 import {
-  Activity,
   ArrowDownRight,
   ArrowUpRight,
   Bot,
   Building2,
+  Check,
   CheckCircle2,
   Code2,
+  Copy,
   ExternalLink,
   Eye,
-  FileCode,
   FileText,
   Gauge,
   Globe,
-  Hammer,
-  Image as ImageIcon,
-  Layers,
   Link2,
   MapPin,
-  Megaphone,
   MousePointerClick,
   PenSquare,
   Pencil,
-  Phone,
-  Plus,
   RefreshCw,
   Search,
-  Send,
   Share2,
-  Shield,
-  Smartphone,
   Sparkles,
-  Star,
   Target,
   TrendingDown,
   TrendingUp,
-  Utensils,
   Wand2,
   XCircle,
-  Zap,
 } from "lucide-react";
 import {
   Area,
@@ -253,63 +243,6 @@ const pages: Page[] = [
   },
 ];
 
-const competitors = [
-  { name: "Trattoria Bianca", visibility: 71, delta: -2, share: 18 },
-  { name: "Thrasher's Pub", visibility: 64, delta: 6, share: 16, you: true },
-  { name: "Osteria Nord", visibility: 58, delta: 1, share: 14 },
-  { name: "Vino & Sale", visibility: 49, delta: -4, share: 11 },
-  { name: "Café Marais", visibility: 42, delta: 3, share: 9 },
-];
-
-const citations = [
-  { name: "Google Business Profile", status: "Verified", napMatch: true, lastSync: "2h ago" },
-  { name: "Yelp", status: "Verified", napMatch: true, lastSync: "1d ago" },
-  { name: "Apple Maps", status: "Verified", napMatch: false, lastSync: "3d ago" },
-  { name: "Tripadvisor", status: "Claimed", napMatch: true, lastSync: "1d ago" },
-  { name: "OpenTable", status: "Synced", napMatch: true, lastSync: "12h ago" },
-  { name: "Bing Places", status: "Unclaimed", napMatch: false, lastSync: "—" },
-  { name: "Facebook Page", status: "Verified", napMatch: true, lastSync: "4h ago" },
-  { name: "Foursquare", status: "Claimed", napMatch: false, lastSync: "6d ago" },
-];
-
-const agentQueue = [
-  {
-    id: "a1",
-    kind: "Meta rewrite",
-    target: "/menu",
-    summary: "Tighten title to 58ch and add seasonal hook for fall menu.",
-    confidence: 92,
-  },
-  {
-    id: "a2",
-    kind: "GBP post",
-    target: "Google Business Profile",
-    summary: "Weekly update: white truffle week, Oct 14–20, with reservation CTA.",
-    confidence: 88,
-  },
-  {
-    id: "a3",
-    kind: "Schema markup",
-    target: "/menu/tagliatelle",
-    summary: "Add Product + Offer schema with price, allergens and image.",
-    confidence: 95,
-  },
-  {
-    id: "a4",
-    kind: "Blog draft",
-    target: "/journal/truffle-season",
-    summary: "900-word editorial targeting 'truffle tagliatelle sf' (+ 6 related terms).",
-    confidence: 81,
-  },
-  {
-    id: "a5",
-    kind: "Alt text",
-    target: "/menu (2 images)",
-    summary: "Generate descriptive alt for hero and pasta course photography.",
-    confidence: 97,
-  },
-];
-
 // ---------- helpers ----------
 
 function Kpi({
@@ -321,29 +254,41 @@ function Kpi({
 }: {
   label: string;
   value: string;
-  delta: { value: string; up: boolean };
+  delta?: { value: string; up: boolean };
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <Card className="p-5">
+    <Card className={`p-5 ${!delta ? "border-dashed" : ""}`}>
       <div className="flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/40">
-          <Icon className="h-5 w-5 text-foreground/70" />
-        </div>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            delta.up ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+            delta ? "bg-accent/40" : "bg-muted"
           }`}
         >
-          {delta.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-          {delta.value}
-        </span>
+          <Icon className={`h-5 w-5 ${delta ? "text-foreground/70" : "text-muted-foreground"}`} />
+        </div>
+        {delta && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              delta.up ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+            }`}
+          >
+            {delta.up ? (
+              <ArrowUpRight className="h-3 w-3" />
+            ) : (
+              <ArrowDownRight className="h-3 w-3" />
+            )}
+            {delta.value}
+          </span>
+        )}
       </div>
       <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 font-display text-3xl">{value}</div>
+      <div className={`mt-1 font-display text-3xl ${!delta ? "text-muted-foreground" : ""}`}>
+        {value}
+      </div>
       <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
     </Card>
   );
@@ -379,11 +324,6 @@ function timeAgo(iso: string): string {
 
 function SeoPage() {
   const [selected, setSelected] = useState<Keyword | null>(null);
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [activeTask, setActiveTask] = useState<(typeof agentQueue)[number] | null>(null);
-  const [biz, setBiz] = useState<"restaurant" | "contractor">("restaurant");
-
-  const quickWins = useMemo(() => keywords.filter((k) => k.opportunity === "Quick win").length, []);
 
   const { data: scConnection, isLoading: scConnectionLoading } = useSearchConsoleConnection();
   const connectSearchConsole = useConnectSearchConsole();
@@ -393,6 +333,7 @@ function SeoPage() {
   const scPages = useSearchConsolePages(isConnected);
   const pageSpeedAudit = usePageSpeedAudit();
   const refetchConnection = useRefetchSearchConsoleConnection();
+  const generateSeoSuggestions = useGenerateSeoSuggestions();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -400,6 +341,16 @@ function SeoPage() {
   } | null>(null);
   const [auditedUrl, setAuditedUrl] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<PageSpeedResult | null>(null);
+  const [suggestingUrl, setSuggestingUrl] = useState<string | null>(null);
+  const [suggestionsByUrl, setSuggestionsByUrl] = useState<Record<string, SeoSuggestions>>({});
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, fieldId: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField((f) => (f === fieldId ? null : f)), 1500);
+    });
+  };
 
   // The OAuth callback (search-console-oauth-callback) redirects back
   // here with ?searchConsole=connected|error — a full page load, not a
@@ -420,33 +371,7 @@ function SeoPage() {
       <Topbar eyebrow="Discovery" title="SEO & local search" />
 
       <div className="space-y-6 px-6 py-6">
-        {/* Business type switcher */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-full border border-border bg-card p-1 text-sm">
-            {(
-              [
-                { id: "restaurant", label: "Restaurant", icon: Utensils },
-                { id: "contractor", label: "Contractor", icon: Hammer },
-              ] as const
-            ).map((b) => {
-              const Icon = b.icon;
-              const active = biz === b.id;
-              return (
-                <button
-                  key={b.id}
-                  onClick={() => setBiz(b.id)}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 transition ${
-                    active
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {b.label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {scConnectionLoading ? (
               "Checking Search Console connection…"
@@ -522,30 +447,26 @@ function SeoPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Kpi
             label="Local pack rank"
-            value="#3"
-            delta={{ value: "+2 spots", up: true }}
-            hint="Avg across 12 tracked terms in 5km"
+            value="—"
+            hint="Needs a paid rank-tracking tool (Semrush, Moz) — not built"
             icon={MapPin}
           />
           <Kpi
             label="Search visibility"
-            value="64%"
-            delta={{ value: "+6 pts", up: true }}
-            hint="Share of voice vs 8 competitors"
+            value="—"
+            hint="'Share of voice' isn't a real Search Console metric — needs a paid tool"
             icon={Eye}
           />
           <Kpi
             label="GBP actions"
-            value="2,148"
-            delta={{ value: "+18%", up: true }}
-            hint="Calls, directions, website · 28d"
+            value="—"
+            hint="Calls, directions, website clicks — would need a separate Business Profile Insights integration, not built"
             icon={MousePointerClick}
           />
           <Kpi
             label="AI tasks shipped"
-            value="37"
-            delta={{ value: "12 pending", up: true }}
-            hint="Auto-applied or queued for review"
+            value="—"
+            hint="No auto-apply agent exists yet — see the AI agent tab"
             icon={Sparkles}
           />
         </div>
@@ -674,53 +595,17 @@ function SeoPage() {
             </div>
           </Card>
 
-          <Card className="flex flex-col gap-4 bg-gradient-to-br from-accent/40 via-card to-card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  <Bot className="h-3.5 w-3.5" />
-                  AI SEO agent
-                </div>
-                <h2 className="mt-1 font-display text-2xl">12 tasks ready</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {quickWins} quick-win keywords, 3 meta rewrites and 1 schema fix.
-                </p>
-              </div>
-              <Badge className="rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                Live
-              </Badge>
+          <Card className="flex flex-col gap-3 border-dashed bg-card/50 p-6">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <Bot className="h-3.5 w-3.5" />
+              AI SEO agent
             </div>
-            <div className="space-y-2">
-              {agentQueue.slice(0, 3).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setActiveTask(t);
-                    setAgentOpen(true);
-                  }}
-                  className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-background/60 p-3 text-left transition hover:border-primary/40 hover:bg-background"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Wand2 className="h-3 w-3" />
-                      {t.kind}
-                    </div>
-                    <div className="truncate text-sm font-medium">{t.summary}</div>
-                  </div>
-                  <span className="ml-3 text-xs text-muted-foreground">{t.confidence}%</span>
-                </button>
-              ))}
-            </div>
-            <Button
-              className="mt-auto w-full gap-2"
-              onClick={() => {
-                setActiveTask(agentQueue[0]);
-                setAgentOpen(true);
-              }}
-            >
-              <Sparkles className="h-4 w-4" />
-              Review agent queue
-            </Button>
+            <h2 className="font-display text-2xl text-muted-foreground">Not built yet</h2>
+            <p className="text-sm text-muted-foreground">
+              Would draft meta title/description rewrites, schema markup fixes, and alt text from
+              the real keyword and page data above, and hold every change for your review — no
+              auto-apply mode. Nothing here is real yet.
+            </p>
           </Card>
         </div>
 
@@ -1101,994 +986,375 @@ function SeoPage() {
 
           {/* GBP */}
           <TabsContent value="gbp" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <Card className="p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Google Business Profile
-                    </div>
-                    <h3 className="mt-1 font-display text-2xl">Thrasher's Pub · Hayes Valley</h3>
-                    <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> 4.7 · 832
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Phone className="h-3.5 w-3.5" /> (415) 555-0148
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" /> 421 Hayes St
-                      </span>
-                    </div>
-                  </div>
-                  <Badge className="rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                    Verified
-                  </Badge>
-                </div>
-
-                <Separator className="my-5" />
-
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {[
-                    { label: "Profile views", value: "12.4k", trend: "+9%" },
-                    { label: "Search impressions", value: "48.1k", trend: "+14%" },
-                    { label: "Direction taps", value: "1,082", trend: "+22%" },
-                    { label: "Calls", value: "318", trend: "+6%" },
-                  ].map((s) => (
-                    <div key={s.label} className="rounded-xl border border-border/70 bg-card p-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                        {s.label}
-                      </div>
-                      <div className="mt-1 font-display text-xl">{s.value}</div>
-                      <div className="text-xs text-emerald-700">{s.trend}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator className="my-5" />
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-sm font-medium">Profile completeness</h4>
-                    <span className="text-xs text-muted-foreground">82%</span>
-                  </div>
-                  <Progress value={82} className="h-1.5" />
-                  <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Hours, menu link,
-                      attributes set
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4 text-amber-600" /> Add 4 more interior photos
-                      this month
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Megaphone className="h-4 w-4 text-amber-600" /> No GBP post in last 9 days
-                    </li>
-                  </ul>
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-xl">Scheduled posts</h3>
-                  <Button size="sm" variant="outline" className="gap-2">
-                    <Plus className="h-4 w-4" /> New post
-                  </Button>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {[
-                    { when: "Tomorrow · 9:00", title: "White truffle week", kind: "Offer" },
-                    { when: "Fri · 18:00", title: "Live jazz Saturday", kind: "Event" },
-                    { when: "Next Mon · 10:00", title: "New fall lunch menu", kind: "Update" },
-                  ].map((p) => (
-                    <div
-                      key={p.title}
-                      className="flex items-center justify-between rounded-xl border border-border/70 p-3"
-                    >
-                      <div>
-                        <div className="text-xs text-muted-foreground">{p.when}</div>
-                        <div className="text-sm font-medium">{p.title}</div>
-                      </div>
-                      <Badge variant="secondary" className="rounded-full text-[11px]">
-                        {p.kind}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-                <Button className="mt-5 w-full gap-2" variant="secondary">
-                  <Wand2 className="h-4 w-4" /> Draft this week's posts with AI
-                </Button>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Profile views, search impressions, direction taps, calls, and post scheduling would
+                need a new Google Business Profile Insights integration — a different part of
+                Google's UI than the review-reply automation already built on the Reviews page. Not
+                attempted yet.
+              </p>
+            </Card>
           </TabsContent>
 
           {/* CITATIONS */}
           <TabsContent value="citations" className="mt-4">
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-border/70 p-4">
-                <div>
-                  <h3 className="font-display text-lg">Local citations & directories</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Name, address and phone consistency across the web.
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <RefreshCw className="h-4 w-4" /> Re-scan
-                </Button>
-              </div>
-              <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_auto] gap-3 border-b border-border/70 bg-muted/30 px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                <div>Directory</div>
-                <div>Status</div>
-                <div>NAP match</div>
-                <div>Last sync</div>
-                <div></div>
-              </div>
-              {citations.map((c) => (
-                <div
-                  key={c.name}
-                  className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
-                >
-                  <div className="font-medium">{c.name}</div>
-                  <div>
-                    <Badge
-                      variant="outline"
-                      className={`rounded-full ${
-                        c.status === "Unclaimed"
-                          ? "border-rose-200 text-rose-700"
-                          : "border-emerald-200 text-emerald-700"
-                      }`}
-                    >
-                      {c.status}
-                    </Badge>
-                  </div>
-                  <div>
-                    {c.napMatch ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700">
-                        <CheckCircle2 className="h-4 w-4" /> Match
-                      </span>
-                    ) : (
-                      <span className="text-rose-700">Mismatch</span>
-                    )}
-                  </div>
-                  <div className="text-muted-foreground">{c.lastSync}</div>
-                  <div className="text-right">
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                      Manage <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Would check name/address/phone consistency across Yelp, Apple Maps, Tripadvisor,
+                Bing, and other directories — no free API covers this across platforms; would need a
+                paid citation-tracking service (Moz Local, Yext) or manual entry.
+              </p>
             </Card>
           </TabsContent>
 
           {/* COMPETITORS */}
           <TabsContent value="competitors" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Share of local voice</h3>
-                <p className="text-sm text-muted-foreground">
-                  Visibility across 12 tracked terms in a 5km radius.
-                </p>
-                <div className="mt-4 space-y-3">
-                  {competitors.map((c) => (
-                    <div key={c.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className={c.you ? "font-semibold" : ""}>
-                          {c.name} {c.you && <Badge className="ml-1 rounded-full">You</Badge>}
-                        </span>
-                        <span className="tabular-nums text-muted-foreground">{c.visibility}%</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Progress
-                          value={c.visibility}
-                          className={`h-2 flex-1 ${c.you ? "" : "opacity-70"}`}
-                        />
-                        <span
-                          className={`w-10 text-right text-xs ${
-                            c.delta >= 0 ? "text-emerald-700" : "text-rose-700"
-                          }`}
-                        >
-                          {c.delta >= 0 ? "+" : ""}
-                          {c.delta}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Where rivals beat you</h3>
-                <p className="text-sm text-muted-foreground">
-                  Keywords where a competitor ranks higher.
-                </p>
-                <div className="mt-4 space-y-3">
-                  {[
-                    { term: "private dining san francisco", winner: "Trattoria Bianca", gap: 10 },
-                    { term: "italian wine list sf", winner: "Vino & Sale", gap: 6 },
-                    { term: "chef tasting menu hayes", winner: "Osteria Nord", gap: 3 },
-                    { term: "anniversary dinner sf", winner: "Trattoria Bianca", gap: 8 },
-                  ].map((g) => (
-                    <div
-                      key={g.term}
-                      className="flex items-center justify-between rounded-xl border border-border/70 p-3"
-                    >
-                      <div>
-                        <div className="text-sm font-medium">{g.term}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {g.winner} leads by {g.gap} positions
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm" className="gap-1 text-xs">
-                        <Wand2 className="h-3 w-3" /> Plan content
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Would compare your real Search Console visibility against nearby competitors and
+                surface keywords where they outrank you — needs a paid rank-tracking tool (Semrush,
+                Ahrefs) since Search Console only reports your own site's data.
+              </p>
+            </Card>
           </TabsContent>
 
           {/* AGENT */}
           <TabsContent value="agent" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <Card className="p-0">
-                <div className="flex items-center justify-between border-b border-border/70 p-4">
-                  <div>
-                    <h3 className="font-display text-lg">Agent queue</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Drafts and fixes waiting for review.
-                    </p>
-                  </div>
-                  <Button size="sm" className="gap-2">
-                    <Send className="h-4 w-4" /> Approve all safe
-                  </Button>
-                </div>
-                {agentQueue.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      setActiveTask(t);
-                      setAgentOpen(true);
-                    }}
-                    className="flex w-full items-start justify-between gap-3 border-b border-border/50 p-4 text-left transition hover:bg-accent/30 last:border-0"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Wand2 className="h-3.5 w-3.5" />
-                        {t.kind} · {t.target}
-                      </div>
-                      <div className="mt-1 text-sm font-medium">{t.summary}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-display text-lg">{t.confidence}%</div>
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                        Confidence
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Agent settings</h3>
-                <p className="text-sm text-muted-foreground">
-                  Decide what the agent ships automatically.
+            {!isConnected ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Search Console first
                 </p>
-                <div className="mt-5 space-y-4">
-                  {[
-                    {
-                      id: "meta",
-                      label: "Auto-apply meta titles & descriptions",
-                      desc: "Within brand voice, max 60/160 chars.",
-                      on: true,
-                    },
-                    {
-                      id: "schema",
-                      label: "Auto-add structured data",
-                      desc: "Restaurant, Menu, Product, FAQ, Event.",
-                      on: true,
-                    },
-                    {
-                      id: "alt",
-                      label: "Generate image alt text",
-                      desc: "Skips photos already with alt.",
-                      on: true,
-                    },
-                    {
-                      id: "blog",
-                      label: "Publish blog drafts",
-                      desc: "Always require human review.",
-                      on: false,
-                    },
-                    {
-                      id: "gbp",
-                      label: "Publish GBP posts",
-                      desc: "Auto-publish weekly update on Mondays.",
-                      on: false,
-                    },
-                  ].map((s) => (
-                    <div
-                      key={s.id}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-border/70 p-3"
-                    >
-                      <div>
-                        <Label className="text-sm font-medium">{s.label}</Label>
-                        <p className="text-xs text-muted-foreground">{s.desc}</p>
-                      </div>
-                      <Switch defaultChecked={s.on} />
-                    </div>
-                  ))}
-                </div>
-
-                <Separator className="my-5" />
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-sm font-medium">Brand voice training</h4>
-                    <span className="text-xs text-muted-foreground">68%</span>
-                  </div>
-                  <Progress value={68} className="h-1.5" />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Trained on 24 pages, 142 reviews and your editorial guidelines.
-                  </p>
-                </div>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  The AI agent drafts suggestions for your real pages, ranked by real Search Console
+                  performance — connect on the Pages tab to pick which pages to improve.
+                </p>
+                <Button
+                  size="sm"
+                  className="mx-auto mt-4 gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                >
+                  <Link2 className="h-4 w-4" /> Connect Search Console
+                </Button>
               </Card>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Claude drafts a real meta title, description, and structured data for one real
+                    page at a time — it fetches the page's actual live HTML, so this reflects what's
+                    really on the site right now. Nothing is applied automatically; copy what you
+                    want into your own site's SEO settings. Each run takes ~15 seconds and calls a
+                    real AI model.
+                  </div>
+                </div>
+                {scPages.isLoading ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Loading real page data…
+                  </p>
+                ) : scPages.isError ? (
+                  <p className="text-center text-sm text-destructive">
+                    {(scPages.error as Error).message}
+                  </p>
+                ) : !scPages.data?.rows.length ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No pages found for this period yet.
+                  </p>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {scPages.data.rows.map((p) => {
+                      const isThisRowGenerating =
+                        generateSeoSuggestions.isPending && suggestingUrl === p.page;
+                      const result = suggestionsByUrl[p.page];
+                      const genError =
+                        generateSeoSuggestions.isError && suggestingUrl === p.page
+                          ? (generateSeoSuggestions.error as Error).message
+                          : null;
+
+                      return (
+                        <Card key={p.page} className="p-5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Globe className="h-3.5 w-3.5" />
+                              <span className="truncate">{p.page}</span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>{p.clicks.toLocaleString()} clicks</span>
+                              <span>{p.impressions.toLocaleString()} impressions</span>
+                              <span>Avg. position {p.position.toFixed(1)}</span>
+                            </div>
+                          </div>
+
+                          {!result ? (
+                            <div className="mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                disabled={isThisRowGenerating}
+                                onClick={() => {
+                                  setSuggestingUrl(p.page);
+                                  generateSeoSuggestions.mutate(
+                                    {
+                                      url: p.page,
+                                      clicks: p.clicks,
+                                      impressions: p.impressions,
+                                      position: p.position,
+                                    },
+                                    {
+                                      onSuccess: (data) =>
+                                        setSuggestionsByUrl((prev) => ({
+                                          ...prev,
+                                          [p.page]: data,
+                                        })),
+                                    },
+                                  );
+                                }}
+                              >
+                                <Sparkles
+                                  className={`h-3.5 w-3.5 ${isThisRowGenerating ? "animate-pulse" : ""}`}
+                                />
+                                {isThisRowGenerating
+                                  ? "Drafting with AI…"
+                                  : "Generate AI suggestions"}
+                              </Button>
+                              {genError && (
+                                <p className="mt-2 text-xs text-destructive">{genError}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-4">
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Current title
+                                  </span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {result.current.title || "(none found)"}
+                                </p>
+                                <div className="flex items-start justify-between gap-2 rounded-lg bg-muted/40 p-2.5">
+                                  <p className="text-sm">{result.suggestions.suggestedTitle}</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        result.suggestions.suggestedTitle,
+                                        `${p.page}-title`,
+                                      )
+                                    }
+                                  >
+                                    {copiedField === `${p.page}-title` ? (
+                                      <Check className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {result.suggestions.titleReasoning}
+                                </p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                  Current description
+                                </span>
+                                <p className="text-sm text-muted-foreground">
+                                  {result.current.description || "(none found)"}
+                                </p>
+                                <div className="flex items-start justify-between gap-2 rounded-lg bg-muted/40 p-2.5">
+                                  <p className="text-sm">
+                                    {result.suggestions.suggestedDescription}
+                                  </p>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        result.suggestions.suggestedDescription,
+                                        `${p.page}-desc`,
+                                      )
+                                    }
+                                  >
+                                    {copiedField === `${p.page}-desc` ? (
+                                      <Check className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {result.suggestions.descriptionReasoning}
+                                </p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                  Structured data
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {result.current.schemaTypes.map((t) => (
+                                    <Badge
+                                      key={t}
+                                      variant="outline"
+                                      className="rounded-full text-xs"
+                                    >
+                                      <CheckCircle2 className="mr-1 h-3 w-3" /> {t}
+                                    </Badge>
+                                  ))}
+                                  {result.suggestions.missingSchemaTypes.map((t) => (
+                                    <Badge
+                                      key={t}
+                                      variant="outline"
+                                      className="rounded-full border-amber-200 text-xs text-amber-700"
+                                    >
+                                      Missing: {t}
+                                    </Badge>
+                                  ))}
+                                  {result.current.schemaTypes.length === 0 &&
+                                    result.suggestions.missingSchemaTypes.length === 0 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        No structured data detected or suggested.
+                                      </span>
+                                    )}
+                                </div>
+                                {result.suggestions.suggestedSchemaJsonLd && (
+                                  <div className="mt-2 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                        <Code2 className="h-3 w-3" /> Suggested JSON-LD
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 gap-1 text-xs"
+                                        onClick={() =>
+                                          copyToClipboard(
+                                            result.suggestions.suggestedSchemaJsonLd!,
+                                            `${p.page}-schema`,
+                                          )
+                                        }
+                                      >
+                                        {copiedField === `${p.page}-schema` ? (
+                                          <Check className="h-3 w-3" />
+                                        ) : (
+                                          <Copy className="h-3 w-3" />
+                                        )}
+                                        Copy
+                                      </Button>
+                                    </div>
+                                    <pre className="max-h-48 overflow-auto rounded-lg bg-muted/40 p-2.5 text-[11px] leading-relaxed">
+                                      {result.suggestions.suggestedSchemaJsonLd}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-2 text-xs"
+                                disabled={isThisRowGenerating}
+                                onClick={() => {
+                                  setSuggestingUrl(p.page);
+                                  generateSeoSuggestions.mutate(
+                                    {
+                                      url: p.page,
+                                      clicks: p.clicks,
+                                      impressions: p.impressions,
+                                      position: p.position,
+                                    },
+                                    {
+                                      onSuccess: (data) =>
+                                        setSuggestionsByUrl((prev) => ({
+                                          ...prev,
+                                          [p.page]: data,
+                                        })),
+                                    },
+                                  );
+                                }}
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${isThisRowGenerating ? "animate-spin" : ""}`}
+                                />
+                                Regenerate
+                              </Button>
+                            </div>
+                          )}
+
+                          <div className="mt-4 flex items-center justify-between">
+                            <a
+                              href={p.page}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Open page <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
           {/* TECHNICAL */}
           <TabsContent value="technical" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-3">
-              {[
-                {
-                  label: "Performance",
-                  value: 78,
-                  icon: Zap,
-                  tone: "amber",
-                  hint: "LCP 2.9s · CLS 0.04 · INP 220ms",
-                },
-                {
-                  label: "Accessibility",
-                  value: 92,
-                  icon: Eye,
-                  tone: "emerald",
-                  hint: "3 contrast warnings on /menu",
-                },
-                {
-                  label: "Best practices",
-                  value: 88,
-                  icon: Shield,
-                  tone: "emerald",
-                  hint: "1 mixed-content asset",
-                },
-                {
-                  label: "SEO basics",
-                  value: 84,
-                  icon: Search,
-                  tone: "emerald",
-                  hint: "2 missing meta descriptions",
-                },
-                {
-                  label: "Mobile usability",
-                  value: 95,
-                  icon: Smartphone,
-                  tone: "emerald",
-                  hint: "Tap targets OK",
-                },
-                {
-                  label: "Indexability",
-                  value: 71,
-                  icon: Activity,
-                  tone: "amber",
-                  hint: "8 pages discovered, not indexed",
-                },
-              ].map((m) => {
-                const Icon = m.icon;
-                return (
-                  <Card key={m.label} className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/40">
-                        <Icon className="h-5 w-5 text-foreground/70" />
-                      </div>
-                      <div className="font-display text-3xl">{m.value}</div>
-                    </div>
-                    <div className="mt-3 text-sm font-medium">{m.label}</div>
-                    <Progress value={m.value} className="mt-2 h-1.5" />
-                    <div className="mt-2 text-xs text-muted-foreground">{m.hint}</div>
-                  </Card>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/70 p-4">
-                  <div>
-                    <h3 className="font-display text-lg">Crawl & indexing</h3>
-                    <p className="text-sm text-muted-foreground">
-                      From Google Search Console + your sitemap.
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <RefreshCw className="h-4 w-4" /> Re-crawl
-                  </Button>
-                </div>
-                {[
-                  { label: "Submitted in sitemap", value: 42, tone: "muted" },
-                  { label: "Indexed", value: 31, tone: "emerald" },
-                  { label: "Discovered – not indexed", value: 8, tone: "amber" },
-                  { label: "Crawled – not indexed", value: 2, tone: "amber" },
-                  { label: "Blocked by robots.txt", value: 1, tone: "rose" },
-                  { label: "Server error (5xx)", value: 0, tone: "muted" },
-                  { label: "Soft 404", value: 0, tone: "muted" },
-                ].map((r) => (
-                  <div
-                    key={r.label}
-                    className="flex items-center justify-between border-b border-border/50 px-4 py-3 text-sm last:border-0"
-                  >
-                    <span>{r.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="tabular-nums">{r.value}</span>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-                        Inspect <ExternalLink className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Core Web Vitals</h3>
-                <p className="text-sm text-muted-foreground">28-day field data, mobile.</p>
-                <div className="mt-4 space-y-4">
-                  {[
-                    { name: "LCP", good: 72, ni: 19, poor: 9, target: "≤ 2.5s", value: "2.9s" },
-                    { name: "INP", good: 81, ni: 12, poor: 7, target: "≤ 200ms", value: "220ms" },
-                    { name: "CLS", good: 94, ni: 4, poor: 2, target: "≤ 0.1", value: "0.04" },
-                  ].map((v) => (
-                    <div key={v.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className="font-medium">{v.name}</span>
-                        <span className="text-muted-foreground">
-                          {v.value} <span className="text-xs">/ {v.target}</span>
-                        </span>
-                      </div>
-                      <div className="flex h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="bg-emerald-500" style={{ width: `${v.good}%` }} />
-                        <div className="bg-amber-400" style={{ width: `${v.ni}%` }} />
-                        <div className="bg-rose-500" style={{ width: `${v.poor}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator className="my-5" />
-
-                <h4 className="text-sm font-medium">Site files</h4>
-                <div className="mt-2 space-y-2">
-                  {[
-                    { name: "robots.txt", status: "OK", detail: "Sitemap referenced" },
-                    { name: "sitemap.xml", status: "OK", detail: "42 URLs · updated 2h ago" },
-                    { name: "SSL certificate", status: "OK", detail: "Renews in 64 days" },
-                    { name: "Canonical tags", status: "Warn", detail: "3 pages missing canonical" },
-                    { name: "hreflang", status: "—", detail: "Single-language site" },
-                  ].map((f) => (
-                    <div
-                      key={f.name}
-                      className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm"
-                    >
-                      <div>
-                        <div className="font-medium">{f.name}</div>
-                        <div className="text-xs text-muted-foreground">{f.detail}</div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`rounded-full ${
-                          f.status === "OK"
-                            ? "border-emerald-200 text-emerald-700"
-                            : f.status === "Warn"
-                              ? "border-amber-200 text-amber-700"
-                              : ""
-                        }`}
-                      >
-                        {f.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">
+                Per-page scores are already real — see the Pages tab
+              </p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Click "Audit page speed" on any page in the Pages tab for a real, on-demand
+                Performance/SEO/Accessibility/Best-practices score and Core Web Vitals via Google
+                PageSpeed Insights. A site-wide crawl/indexing view (sitemap coverage, robots.txt,
+                canonical tags) would need additional Search Console API scopes — not built yet.
+              </p>
+            </Card>
           </TabsContent>
 
           {/* SCHEMA */}
           <TabsContent value="schema" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/70 p-4">
-                  <div>
-                    <h3 className="font-display text-lg">Structured data coverage</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Rich results unlock star ratings, prices, hours and FAQs in search.
-                    </p>
-                  </div>
-                  <Button size="sm" className="gap-2">
-                    <Wand2 className="h-4 w-4" /> Generate missing
-                  </Button>
-                </div>
-                {(biz === "restaurant"
-                  ? [
-                      { type: "Restaurant", coverage: 100, pages: "Homepage", status: "Live" },
-                      {
-                        type: "Menu / MenuItem",
-                        coverage: 68,
-                        pages: "18 of 26 dishes",
-                        status: "Partial",
-                      },
-                      {
-                        type: "LocalBusiness",
-                        coverage: 100,
-                        pages: "Homepage, Contact",
-                        status: "Live",
-                      },
-                      { type: "Event", coverage: 40, pages: "2 of 5 events", status: "Partial" },
-                      { type: "FAQPage", coverage: 0, pages: "Not implemented", status: "Missing" },
-                      {
-                        type: "BreadcrumbList",
-                        coverage: 100,
-                        pages: "All routes",
-                        status: "Live",
-                      },
-                      {
-                        type: "Review / AggregateRating",
-                        coverage: 100,
-                        pages: "Homepage",
-                        status: "Live",
-                      },
-                    ]
-                  : [
-                      { type: "LocalBusiness", coverage: 100, pages: "Homepage", status: "Live" },
-                      {
-                        type: "Service",
-                        coverage: 55,
-                        pages: "11 of 20 services",
-                        status: "Partial",
-                      },
-                      {
-                        type: "Project / CreativeWork",
-                        coverage: 30,
-                        pages: "6 of 20 case studies",
-                        status: "Partial",
-                      },
-                      { type: "FAQPage", coverage: 80, pages: "Pricing, Process", status: "Live" },
-                      { type: "AggregateRating", coverage: 100, pages: "Homepage", status: "Live" },
-                      {
-                        type: "GeoCoordinates",
-                        coverage: 100,
-                        pages: "Service areas",
-                        status: "Live",
-                      },
-                      {
-                        type: "BreadcrumbList",
-                        coverage: 100,
-                        pages: "All routes",
-                        status: "Live",
-                      },
-                    ]
-                ).map((s) => (
-                  <div
-                    key={s.type}
-                    className="grid grid-cols-[1.2fr_1fr_0.8fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
-                  >
-                    <div>
-                      <div className="font-medium">{s.type}</div>
-                      <div className="text-xs text-muted-foreground">{s.pages}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={s.coverage} className="h-1.5 w-full" />
-                      <span className="text-xs text-muted-foreground">{s.coverage}%</span>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={`rounded-full ${
-                        s.status === "Live"
-                          ? "border-emerald-200 text-emerald-700"
-                          : s.status === "Partial"
-                            ? "border-amber-200 text-amber-700"
-                            : "border-rose-200 text-rose-700"
-                      }`}
-                    >
-                      {s.status}
-                    </Badge>
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                      <FileCode className="h-3 w-3" /> Edit
-                    </Button>
-                  </div>
-                ))}
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Live snippet preview</h3>
-                <p className="text-sm text-muted-foreground">
-                  How Google may render your homepage.
-                </p>
-                <div className="mt-4 rounded-xl border border-border bg-card p-4">
-                  <div className="text-xs text-emerald-700">
-                    {biz === "restaurant"
-                      ? "maisonolive.com › menu"
-                      : "northbayremodel.com › services"}
-                  </div>
-                  <div className="mt-1 text-lg text-[hsl(220,80%,40%)] underline">
-                    {biz === "restaurant"
-                      ? "Thrasher's Pub — Modern Italian in Hayes Valley"
-                      : "North Bay Remodel — Kitchen & Bath Contractor"}
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                    4.7 (832) · $$ · Open until 11 PM
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    {biz === "restaurant"
-                      ? "Seasonal tasting menu, hand-cut pasta and a 200-bottle Italian wine list…"
-                      : "Licensed kitchen, bath and full-home remodels across the Bay Area. Free estimates…"}
-                  </div>
-                </div>
-
-                <Separator className="my-5" />
-
-                <h4 className="text-sm font-medium">Validation</h4>
-                <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-emerald-700">
-                    <CheckCircle2 className="h-4 w-4" /> 0 errors
-                  </div>
-                  <div className="flex items-center gap-2 text-amber-700">
-                    <Activity className="h-4 w-4" /> 3 warnings (missing image dimensions)
-                  </div>
-                  <Button variant="outline" size="sm" className="mt-2 gap-2">
-                    <ExternalLink className="h-3 w-3" /> Open in Rich Results Test
-                  </Button>
-                </div>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Would check your real pages for structured data (Restaurant, Menu, FAQPage, etc.) by
+                parsing their actual HTML for JSON-LD — genuinely buildable without new API access,
+                just not built this round.
+              </p>
+            </Card>
           </TabsContent>
 
           {/* CONTENT */}
           <TabsContent value="content" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <Card className="p-0">
-                <div className="flex items-center justify-between border-b border-border/70 p-4">
-                  <div>
-                    <h3 className="font-display text-lg">Content engine</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {biz === "restaurant"
-                        ? "Editorial calendar for menus, journal posts and seasonal landing pages."
-                        : "Programmatic service-area pages, case studies and how-to guides."}
-                    </p>
-                  </div>
-                  <Button size="sm" className="gap-2">
-                    <Plus className="h-4 w-4" /> New brief
-                  </Button>
-                </div>
-                {(biz === "restaurant"
-                  ? [
-                      {
-                        title: "Truffle season: a love letter to autumn",
-                        type: "Journal",
-                        target: "truffle tagliatelle sf",
-                        status: "In review",
-                        date: "Oct 14",
-                      },
-                      {
-                        title: "Best date night spots in Hayes Valley",
-                        type: "Landing",
-                        target: "date night restaurant sf",
-                        status: "Drafting",
-                        date: "Oct 18",
-                      },
-                      {
-                        title: "How we source our olive oil",
-                        type: "Story",
-                        target: "italian olive oil sf",
-                        status: "Idea",
-                        date: "—",
-                      },
-                      {
-                        title: "Holiday private buyouts 2026",
-                        type: "Landing",
-                        target: "private dining san francisco",
-                        status: "Live",
-                        date: "Sep 28",
-                      },
-                    ]
-                  : [
-                      {
-                        title: "Kitchen remodels in Walnut Creek",
-                        type: "Service area",
-                        target: "kitchen remodel walnut creek",
-                        status: "Live",
-                        date: "Sep 12",
-                      },
-                      {
-                        title: "Cost guide: full bathroom remodel 2026",
-                        type: "Guide",
-                        target: "bathroom remodel cost bay area",
-                        status: "In review",
-                        date: "Oct 14",
-                      },
-                      {
-                        title: "ADU build, Berkeley · case study",
-                        type: "Case study",
-                        target: "adu contractor berkeley",
-                        status: "Drafting",
-                        date: "Oct 22",
-                      },
-                      {
-                        title: "Permits 101 for SF homeowners",
-                        type: "Guide",
-                        target: "sf remodeling permits",
-                        status: "Idea",
-                        date: "—",
-                      },
-                    ]
-                ).map((c) => (
-                  <div
-                    key={c.title}
-                    className="grid grid-cols-[1.6fr_0.7fr_1fr_0.7fr_auto] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{c.title}</div>
-                      <div className="text-xs text-muted-foreground">Target: {c.target}</div>
-                    </div>
-                    <Badge variant="secondary" className="rounded-full text-[11px]">
-                      {c.type}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={`rounded-full justify-self-start ${
-                        c.status === "Live"
-                          ? "border-emerald-200 text-emerald-700"
-                          : c.status === "In review"
-                            ? "border-amber-200 text-amber-700"
-                            : ""
-                      }`}
-                    >
-                      {c.status}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{c.date}</span>
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                      <Pencil className="h-3 w-3" /> Open
-                    </Button>
-                  </div>
-                ))}
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">
-                  {biz === "restaurant" ? "Local landing pages" : "Service areas"}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {biz === "restaurant"
-                    ? "Neighborhood + occasion pages built from your menu and reviews."
-                    : "Generate a page per city × service to rank in local packs."}
-                </p>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  {(biz === "restaurant"
-                    ? [
-                        "Hayes Valley",
-                        "SoMa",
-                        "Mission",
-                        "Anniversary",
-                        "Group dining",
-                        "Vegetarian",
-                      ]
-                    : ["Oakland", "Berkeley", "Walnut Creek", "Kitchen", "Bath", "ADU"]
-                  ).map((t) => (
-                    <div
-                      key={t}
-                      className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-sm"
-                    >
-                      <span>{t}</span>
-                      <Badge variant="outline" className="rounded-full text-[10px]">
-                        Live
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator className="my-5" />
-
-                <h4 className="text-sm font-medium">AI brief generator</h4>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Pick a keyword cluster and the agent drafts a brief with H-structure, FAQs and
-                  internal links.
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    placeholder={
-                      biz === "restaurant"
-                        ? "e.g. sunday brunch hayes valley"
-                        : "e.g. bathroom remodel oakland"
-                    }
-                    className="h-9"
-                  />
-                  <Button className="gap-2">
-                    <Sparkles className="h-4 w-4" /> Brief
-                  </Button>
-                </div>
-
-                <div className="mt-4 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                  <div className="font-medium text-foreground">Coverage gap</div>
-                  {biz === "restaurant"
-                    ? "You have no page targeting 'wine pairing dinner sf' (590 searches/mo)."
-                    : "You have no page targeting 'garage conversion oakland' (720 searches/mo)."}
-                </div>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Would suggest new landing pages and content briefs from real keyword gaps in your
+                Search Console data (search terms you get impressions for but have no dedicated page
+                targeting) — no editorial calendar or AI brief generator exists yet.
+              </p>
+            </Card>
           </TabsContent>
 
           {/* BACKLINKS */}
           <TabsContent value="backlinks" className="mt-4">
-            <div className="grid gap-4 lg:grid-cols-4">
-              {[
-                { label: "Domain authority", value: "42", delta: "+3" },
-                { label: "Referring domains", value: "186", delta: "+12" },
-                { label: "Total backlinks", value: "1,948", delta: "+74" },
-                { label: "Toxic links", value: "7", delta: "−2" },
-              ].map((s) => (
-                <Card key={s.label} className="p-5">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    {s.label}
-                  </div>
-                  <div className="mt-2 font-display text-3xl">{s.value}</div>
-                  <div className="text-xs text-emerald-700">{s.delta} · 30d</div>
-                </Card>
-              ))}
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/70 p-4">
-                  <h3 className="font-display text-lg">Recent backlinks</h3>
-                  <div className="flex gap-2">
-                    <Badge variant="outline" className="rounded-full">
-                      DoFollow
-                    </Badge>
-                    <Badge variant="outline" className="rounded-full">
-                      All types
-                    </Badge>
-                  </div>
-                </div>
-                {(biz === "restaurant"
-                  ? [
-                      {
-                        domain: "sfchronicle.com",
-                        anchor: "Thrasher's Pub",
-                        da: 91,
-                        type: "Editorial",
-                        date: "2d",
-                      },
-                      {
-                        domain: "eater.com",
-                        anchor: "modern italian in hayes valley",
-                        da: 89,
-                        type: "Editorial",
-                        date: "5d",
-                      },
-                      {
-                        domain: "opentable.com",
-                        anchor: "Reserve",
-                        da: 88,
-                        type: "Profile",
-                        date: "1w",
-                      },
-                      {
-                        domain: "hayesvalleysf.org",
-                        anchor: "neighborhood guide",
-                        da: 41,
-                        type: "Resource",
-                        date: "2w",
-                      },
-                      {
-                        domain: "foodblog-sara.com",
-                        anchor: "truffle tagliatelle",
-                        da: 28,
-                        type: "Blog",
-                        date: "3w",
-                      },
-                    ]
-                  : [
-                      {
-                        domain: "houzz.com",
-                        anchor: "North Bay Remodel",
-                        da: 92,
-                        type: "Profile",
-                        date: "3d",
-                      },
-                      {
-                        domain: "sfgate.com",
-                        anchor: "bay area contractor",
-                        da: 90,
-                        type: "Editorial",
-                        date: "1w",
-                      },
-                      {
-                        domain: "angi.com",
-                        anchor: "kitchen remodeling",
-                        da: 86,
-                        type: "Profile",
-                        date: "1w",
-                      },
-                      {
-                        domain: "berkeleychamber.com",
-                        anchor: "member directory",
-                        da: 52,
-                        type: "Citation",
-                        date: "2w",
-                      },
-                      {
-                        domain: "designerblog.io",
-                        anchor: "ADU case study",
-                        da: 34,
-                        type: "Blog",
-                        date: "3w",
-                      },
-                    ]
-                ).map((b) => (
-                  <div
-                    key={b.domain}
-                    className="grid grid-cols-[1.2fr_1.4fr_0.6fr_0.7fr_0.5fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
-                  >
-                    <div className="font-medium">{b.domain}</div>
-                    <div className="truncate text-muted-foreground">"{b.anchor}"</div>
-                    <div className="tabular-nums">DA {b.da}</div>
-                    <Badge variant="secondary" className="rounded-full text-[11px]">
-                      {b.type}
-                    </Badge>
-                    <div className="text-right text-xs text-muted-foreground">{b.date}</div>
-                  </div>
-                ))}
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="font-display text-xl">Outreach opportunities</h3>
-                <p className="text-sm text-muted-foreground">
-                  Sites linking to competitors but not to you.
-                </p>
-                <div className="mt-4 space-y-2">
-                  {(biz === "restaurant"
-                    ? ["thrillist.com", "infatuation.com", "sfeater.com", "tastecooking.com"]
-                    : ["bobvila.com", "thisoldhouse.com", "remodelista.com", "dwell.com"]
-                  ).map((d) => (
-                    <div
-                      key={d}
-                      className="flex items-center justify-between rounded-xl border border-border/70 p-3 text-sm"
-                    >
-                      <div>
-                        <div className="font-medium">{d}</div>
-                        <div className="text-xs text-muted-foreground">Links to 2 competitors</div>
-                      </div>
-                      <Button variant="outline" size="sm" className="gap-1 text-xs">
-                        <Wand2 className="h-3 w-3" /> Draft pitch
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator className="my-5" />
-
-                <div className="rounded-xl bg-rose-50 p-3 text-sm">
-                  <div className="flex items-center gap-2 font-medium text-rose-700">
-                    <Shield className="h-4 w-4" /> 7 toxic links flagged
-                  </div>
-                  <p className="mt-1 text-xs text-rose-700/80">
-                    Spammy directories and link farms. Review and disavow.
-                  </p>
-                  <Button variant="outline" size="sm" className="mt-3 gap-1 text-xs">
-                    Generate disavow file
-                  </Button>
-                </div>
-              </Card>
-            </div>
+            <Card className="border-dashed bg-card/50 p-10 text-center">
+              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Domain authority, referring domains, and backlink tracking all need a paid
+                backlink-index tool (Ahrefs, Semrush, Moz) — no free API exists for this.
+              </p>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
@@ -2191,58 +1457,6 @@ function SeoPage() {
       </Sheet>
 
       {/* Agent task drawer */}
-      <Sheet open={agentOpen} onOpenChange={setAgentOpen}>
-        <SheetContent className="w-full sm:max-w-xl">
-          {activeTask && (
-            <>
-              <SheetHeader>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="rounded-full gap-1">
-                    <Bot className="h-3 w-3" /> {activeTask.kind}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">{activeTask.target}</span>
-                </div>
-                <SheetTitle className="font-display text-2xl">{activeTask.summary}</SheetTitle>
-                <SheetDescription>
-                  Confidence {activeTask.confidence}% · trained on your brand voice and last 90 days
-                  of performance.
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="mt-5 space-y-3">
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    Draft
-                  </Label>
-                  <Textarea
-                    className="mt-2 min-h-[180px]"
-                    defaultValue={`Thrasher's Pub · Modern Italian in Hayes Valley\n\nSeasonal tasting menu featuring white truffle, hand-cut tagliatelle, and a 200-bottle Italian wine list. Reserve a table tonight.`}
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {["Warmer", "Shorter", "More local", "Add CTA"].map((t) => (
-                    <Badge key={t} variant="outline" className="cursor-pointer rounded-full">
-                      <Wand2 className="mr-1 h-3 w-3" /> {t}
-                    </Badge>
-                  ))}
-                </div>
-
-                <Separator />
-
-                <div className="flex gap-2">
-                  <Button className="flex-1 gap-2">
-                    <Send className="h-4 w-4" /> Approve & apply
-                  </Button>
-                  <Button variant="outline" className="flex-1">
-                    Send back
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

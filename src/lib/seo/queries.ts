@@ -176,3 +176,44 @@ export function useRefetchSearchConsoleConnection() {
     queryClient.invalidateQueries({ queryKey: ["search-console-connection", restaurantId] });
   };
 }
+
+export type SeoSuggestions = {
+  current: { title: string | null; description: string | null; schemaTypes: string[] };
+  suggestions: {
+    suggestedTitle: string;
+    suggestedDescription: string;
+    titleReasoning: string;
+    descriptionReasoning: string;
+    missingSchemaTypes: string[];
+    suggestedSchemaJsonLd: string | null;
+  };
+};
+
+// Real Claude-drafted title/description/schema suggestions for one
+// real page — fetches the page's actual live HTML server-side, so
+// this genuinely reflects what's really on the site right now. On
+// demand only (~15s per call, real API cost), never automatic.
+export function useGenerateSeoSuggestions() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (input: {
+      url: string;
+      clicks?: number;
+      impressions?: number;
+      position?: number;
+    }): Promise<SeoSuggestions> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("seo-ai-suggestions", {
+        body: { restaurant_id: restaurantId, ...input },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ??
+            error?.message ??
+            "could not generate suggestions",
+        );
+      }
+      return data as SeoSuggestions;
+    },
+  });
+}
