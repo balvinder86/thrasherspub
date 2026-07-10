@@ -6,9 +6,10 @@
 // tenant's restaurant_id/review_id must be blocked explicitly here),
 // then forward to Railway with a shared secret the browser never sees.
 //
-//   { action: "scan", restaurant_id }       — read-only, drafts new reviews
-//   { action: "post", review_id }           — posts one approved reply live
-//   { action: "regenerate", review_id }     — re-drafts one reply via Claude
+//   { action: "scan", restaurant_id }         — read-only, drafts new reviews
+//   { action: "post", review_id }             — posts one approved reply live
+//   { action: "regenerate", review_id }       — re-drafts one reply via Claude
+//   { action: "gbp_insights", restaurant_id } — read-only, real GBP Insights scrape
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -80,7 +81,10 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ restaurant_id }),
       });
       const railwayBody = await railwayRes.json().catch(() => null);
-      return json(railwayBody ?? { ok: false, error: "empty response from review agent service" }, railwayRes.status);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
     }
 
     if (action === "post") {
@@ -94,7 +98,10 @@ Deno.serve(async (req) => {
         .eq("id", review_id)
         .single();
       if (reviewErr || !review) {
-        return json({ ok: false, step: "load_review", error: reviewErr?.message ?? "not found" }, 404);
+        return json(
+          { ok: false, step: "load_review", error: reviewErr?.message ?? "not found" },
+          404,
+        );
       }
 
       try {
@@ -112,7 +119,35 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ review_id }),
       });
       const railwayBody = await railwayRes.json().catch(() => null);
-      return json(railwayBody ?? { ok: false, error: "empty response from review agent service" }, railwayRes.status);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
+    }
+
+    if (action === "gbp_insights") {
+      if (!restaurant_id) {
+        return json({ ok: false, step: "input", error: "restaurant_id is required" }, 400);
+      }
+      try {
+        await assertMember(userData.user.id, restaurant_id);
+      } catch (e) {
+        return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
+      }
+
+      const railwayRes = await fetch(`${REVIEW_AGENT_SERVICE_URL}/gbp-insights`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REVIEW_AGENT_SERVICE_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ restaurant_id }),
+      });
+      const railwayBody = await railwayRes.json().catch(() => null);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
     }
 
     if (action === "regenerate") {
@@ -126,7 +161,10 @@ Deno.serve(async (req) => {
         .eq("id", review_id)
         .single();
       if (reviewErr || !review) {
-        return json({ ok: false, step: "load_review", error: reviewErr?.message ?? "not found" }, 404);
+        return json(
+          { ok: false, step: "load_review", error: reviewErr?.message ?? "not found" },
+          404,
+        );
       }
 
       try {
@@ -144,10 +182,20 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ review_id }),
       });
       const railwayBody = await railwayRes.json().catch(() => null);
-      return json(railwayBody ?? { ok: false, error: "empty response from review agent service" }, railwayRes.status);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
     }
 
-    return json({ ok: false, step: "input", error: "action must be 'scan', 'post', or 'regenerate'" }, 400);
+    return json(
+      {
+        ok: false,
+        step: "input",
+        error: "action must be 'scan', 'post', 'regenerate', or 'gbp_insights'",
+      },
+      400,
+    );
   } catch (e) {
     return json({ ok: false, step: "unexpected", error: String(e) }, 500);
   }

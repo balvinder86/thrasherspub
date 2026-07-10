@@ -27,6 +27,7 @@ import {
 } from "./db.js";
 import { scanUnrepliedReviews, postReplyToReview } from "./browser.js";
 import { generateReply } from "./claude.js";
+import { scanGbpInsights } from "./gbp-insights.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const SERVICE_TOKEN = process.env.REVIEW_AGENT_SERVICE_TOKEN;
@@ -127,6 +128,14 @@ async function handlePost(reviewId: string) {
   }
 }
 
+async function handleGbpInsights(restaurantId: string) {
+  const config = await getCredentialsForRestaurant(restaurantId);
+  const cookies = await getGoogleCookies(config.vaultSecretName);
+  const insights = await scanGbpInsights(cookies, config.businessProfileId);
+  await markCookiesValid(config.credentialId, new Date());
+  return insights;
+}
+
 async function handleRegenerate(reviewId: string) {
   const review = await getReviewForRegenerate(reviewId);
   const config = await getCredentialsForRestaurant(review.restaurantId);
@@ -171,6 +180,16 @@ const server = createServer(async (req, res) => {
         return;
       }
       respond(200, { ok: true, ...(await handlePost(reviewId)) });
+      return;
+    }
+
+    if (req.url === "/gbp-insights" && req.method === "POST") {
+      const restaurantId = body.restaurant_id;
+      if (typeof restaurantId !== "string") {
+        respond(400, { ok: false, error: "restaurant_id is required" });
+        return;
+      }
+      respond(200, { ok: true, ...(await handleGbpInsights(restaurantId)) });
       return;
     }
 

@@ -314,3 +314,45 @@ export function useGenerateContentBrief() {
     },
   });
 }
+
+export type MonthlyPoint = { month: string; value: number };
+export type MetricSeries = { total: number; label: string; series: MonthlyPoint[] };
+export type PlatformBreakdownItem = { label: string; count: number; pct: number };
+export type SearchTermItem = { term: string; count: number };
+
+export type GbpInsights = {
+  timePeriod: string | null;
+  interactions: MetricSeries | null;
+  profileViews: { total: number; byPlatform: PlatformBreakdownItem[] } | null;
+  searchImpressions: { total: number; topSearchTerms: SearchTermItem[] } | null;
+  calls: MetricSeries | null;
+  bookings: MetricSeries | null;
+  directions: MetricSeries | null;
+  websiteClicks: MetricSeries | null;
+};
+
+// Real Google Business Profile Insights — reuses the same review-agent
+// Google session cookies already connected on the Reviews page (no
+// separate connect flow). A real Playwright scrape of Google's own
+// Performance panel (~15-25s), so this is on-demand only via the
+// existing review-agent Edge Function/Railway service, same shared
+// infra as the review-reply agent.
+export function useGenerateGbpInsights() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (): Promise<GbpInsights> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("review-agent", {
+        body: { action: "gbp_insights", restaurant_id: restaurantId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ??
+            error?.message ??
+            "could not load Business Profile insights",
+        );
+      }
+      return data as GbpInsights;
+    },
+  });
+}

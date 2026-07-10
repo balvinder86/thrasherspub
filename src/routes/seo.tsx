@@ -12,16 +12,21 @@ import {
   useSchemaCheck,
   useSearchConsoleContentGaps,
   useGenerateContentBrief,
+  useGenerateGbpInsights,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
   type ContentBrief,
+  type GbpInsights,
+  type MetricSeries,
 } from "@/lib/seo/queries";
+import { useReviewAgentConnection } from "@/lib/reviews/queries";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Bot,
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
   Code2,
@@ -36,6 +41,7 @@ import {
   MousePointerClick,
   PenSquare,
   Pencil,
+  Phone,
   RefreshCw,
   Search,
   Share2,
@@ -325,6 +331,69 @@ function timeAgo(iso: string): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+function GbpKpi({
+  icon: Icon,
+  label,
+  metric,
+  total,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  metric?: MetricSeries | null;
+  total?: number;
+}) {
+  const value = metric ? metric.total : total;
+  return (
+    <Card className={`p-5 ${value == null ? "border-dashed" : ""}`}>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" /> {label}
+      </div>
+      <div className={`mt-2 font-display text-2xl ${value == null ? "text-muted-foreground" : ""}`}>
+        {value != null ? value.toLocaleString() : "Not available"}
+      </div>
+    </Card>
+  );
+}
+
+function GbpMiniTrend({ label, metric }: { label: string; metric?: MetricSeries | null }) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="font-display text-lg">{metric ? metric.total.toLocaleString() : "—"}</span>
+      </div>
+      {metric && metric.series.length > 0 ? (
+        <div className="mt-2 h-24">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={metric.series}>
+              <XAxis dataKey="month" hide />
+              <YAxis hide domain={[0, "dataMax"]} />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="var(--primary)"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">Not available from this scan.</p>
+      )}
+    </Card>
+  );
+}
+
 // ---------- page ----------
 
 function SeoPage() {
@@ -342,6 +411,9 @@ function SeoPage() {
   const generateSeoSuggestions = useGenerateSeoSuggestions();
   const schemaCheck = useSchemaCheck();
   const generateContentBrief = useGenerateContentBrief();
+  const { data: reviewAgentConnection, isLoading: reviewAgentConnectionLoading } =
+    useReviewAgentConnection();
+  const generateGbpInsights = useGenerateGbpInsights();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -355,6 +427,7 @@ function SeoPage() {
   const [schemaCheckResult, setSchemaCheckResult] = useState<SchemaCheckResult | null>(null);
   const [briefingQuery, setBriefingQuery] = useState<string | null>(null);
   const [briefsByQuery, setBriefsByQuery] = useState<Record<string, ContentBrief>>({});
+  const [gbpInsights, setGbpInsights] = useState<GbpInsights | null>(null);
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -997,15 +1070,196 @@ function SeoPage() {
 
           {/* GBP */}
           <TabsContent value="gbp" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Profile views, search impressions, direction taps, calls, and post scheduling would
-                need a new Google Business Profile Insights integration — a different part of
-                Google's UI than the review-reply automation already built on the Reviews page. Not
-                attempted yet.
-              </p>
-            </Card>
+            {reviewAgentConnectionLoading ? (
+              <p className="text-center text-sm text-muted-foreground">Checking connection…</p>
+            ) : !reviewAgentConnection ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Google Business Profile first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  Insights reuse the same Google connection as the review-reply agent on the Reviews
+                  page — connect there first, then come back here.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Real Google Business Profile performance — profile interactions, views, search
+                    impressions, calls, directions, and website clicks, scraped live from Google's
+                    own Performance panel. Takes 15-25 seconds per scan; not automatic.
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={generateGbpInsights.isPending}
+                    onClick={() =>
+                      generateGbpInsights.mutate(undefined, {
+                        onSuccess: (data) => setGbpInsights(data),
+                      })
+                    }
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${generateGbpInsights.isPending ? "animate-spin" : ""}`}
+                    />
+                    {generateGbpInsights.isPending
+                      ? "Scanning Google…"
+                      : gbpInsights
+                        ? "Rescan"
+                        : "Scan Business Profile"}
+                  </Button>
+                </div>
+
+                {generateGbpInsights.isError && (
+                  <p className="text-sm text-destructive">
+                    {(generateGbpInsights.error as Error).message}
+                  </p>
+                )}
+
+                {!gbpInsights ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Click "Scan Business Profile" for real, current numbers from Google.
+                  </p>
+                ) : (
+                  <>
+                    {gbpInsights.timePeriod && (
+                      <Badge variant="outline" className="rounded-full">
+                        {gbpInsights.timePeriod}
+                      </Badge>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <GbpKpi
+                        icon={Building2}
+                        label="Interactions"
+                        metric={gbpInsights.interactions}
+                      />
+                      <GbpKpi
+                        icon={Eye}
+                        label="Profile views"
+                        total={gbpInsights.profileViews?.total}
+                      />
+                      <GbpKpi
+                        icon={Search}
+                        label="Search impressions"
+                        total={gbpInsights.searchImpressions?.total}
+                      />
+                      <GbpKpi icon={Phone} label="Calls" metric={gbpInsights.calls} />
+                      <GbpKpi icon={MapPin} label="Directions" metric={gbpInsights.directions} />
+                      <GbpKpi
+                        icon={MousePointerClick}
+                        label="Website clicks"
+                        metric={gbpInsights.websiteClicks}
+                      />
+                      <GbpKpi icon={Calendar} label="Bookings" metric={gbpInsights.bookings} />
+                    </div>
+
+                    {gbpInsights.interactions && gbpInsights.interactions.series.length > 0 && (
+                      <Card className="p-6">
+                        <div className="text-sm font-medium">
+                          {gbpInsights.interactions.label || "Business Profile interactions"}
+                        </div>
+                        <div className="mt-4 h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={gbpInsights.interactions.series}>
+                              <defs>
+                                <linearGradient id="gbpInteractions" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid
+                                stroke="var(--border)"
+                                strokeDasharray="3 3"
+                                vertical={false}
+                              />
+                              <XAxis
+                                dataKey="month"
+                                stroke="var(--muted-foreground)"
+                                fontSize={11}
+                              />
+                              <YAxis
+                                stroke="var(--muted-foreground)"
+                                fontSize={12}
+                                allowDecimals={false}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  background: "var(--card)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                }}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="value"
+                                stroke="var(--primary)"
+                                fill="url(#gbpInteractions)"
+                                strokeWidth={2}
+                                isAnimationActive={false}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </Card>
+                    )}
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {gbpInsights.profileViews && (
+                        <Card className="p-6">
+                          <div className="text-sm font-medium">How people found your profile</div>
+                          <div className="mt-4 space-y-3">
+                            {gbpInsights.profileViews.byPlatform.map((p) => (
+                              <div key={p.label}>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-muted-foreground">{p.label}</span>
+                                  <span className="font-medium">
+                                    {p.count.toLocaleString()} · {p.pct}%
+                                  </span>
+                                </div>
+                                <Progress value={p.pct} className="mt-1 h-1.5" />
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+
+                      {gbpInsights.searchImpressions && (
+                        <Card className="p-6">
+                          <div className="text-sm font-medium">
+                            Top real search terms that showed your profile
+                          </div>
+                          <div className="mt-4 space-y-2">
+                            {gbpInsights.searchImpressions.topSearchTerms.map((t, i) => (
+                              <div
+                                key={t.term}
+                                className="flex items-center justify-between text-sm"
+                              >
+                                <span className="truncate text-muted-foreground">
+                                  {i + 1}. {t.term}
+                                </span>
+                                <span className="shrink-0 font-medium">
+                                  {t.count.toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <GbpMiniTrend label="Calls" metric={gbpInsights.calls} />
+                      <GbpMiniTrend label="Directions" metric={gbpInsights.directions} />
+                      <GbpMiniTrend label="Website clicks" metric={gbpInsights.websiteClicks} />
+                      <GbpMiniTrend label="Bookings" metric={gbpInsights.bookings} />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* CITATIONS */}
