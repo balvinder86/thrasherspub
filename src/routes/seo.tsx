@@ -10,9 +10,12 @@ import {
   useRefetchSearchConsoleConnection,
   useGenerateSeoSuggestions,
   useSchemaCheck,
+  useSearchConsoleContentGaps,
+  useGenerateContentBrief,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
+  type ContentBrief,
 } from "@/lib/seo/queries";
 import {
   ArrowDownRight,
@@ -333,10 +336,12 @@ function SeoPage() {
   const overview = useSearchConsoleOverview(isConnected);
   const scKeywords = useSearchConsoleKeywords(isConnected);
   const scPages = useSearchConsolePages(isConnected);
+  const contentGaps = useSearchConsoleContentGaps(isConnected);
   const pageSpeedAudit = usePageSpeedAudit();
   const refetchConnection = useRefetchSearchConsoleConnection();
   const generateSeoSuggestions = useGenerateSeoSuggestions();
   const schemaCheck = useSchemaCheck();
+  const generateContentBrief = useGenerateContentBrief();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -348,6 +353,8 @@ function SeoPage() {
   const [suggestionsByUrl, setSuggestionsByUrl] = useState<Record<string, SeoSuggestions>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [schemaCheckResult, setSchemaCheckResult] = useState<SchemaCheckResult | null>(null);
+  const [briefingQuery, setBriefingQuery] = useState<string | null>(null);
+  const [briefsByQuery, setBriefsByQuery] = useState<Record<string, ContentBrief>>({});
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -1497,14 +1504,219 @@ function SeoPage() {
 
           {/* CONTENT */}
           <TabsContent value="content" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Would suggest new landing pages and content briefs from real keyword gaps in your
-                Search Console data (search terms you get impressions for but have no dedicated page
-                targeting) — no editorial calendar or AI brief generator exists yet.
-              </p>
-            </Card>
+            {!isConnected ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Search Console first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  Content gaps are computed from real queries and pages in your Search Console data
+                  — connect to find them.
+                </p>
+                <Button
+                  size="sm"
+                  className="mx-auto mt-4 gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                >
+                  <Link2 className="h-4 w-4" /> Connect Search Console
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Real search queries (last 28 days) that earn impressions but rank past page 1,
+                  computed purely from your Search Console numbers — no page currently targets them
+                  well. Claude drafts a content brief for any gap you want to pursue.
+                </div>
+                {contentGaps.isLoading ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Finding real content gaps…
+                  </p>
+                ) : contentGaps.isError ? (
+                  <p className="text-center text-sm text-destructive">
+                    {(contentGaps.error as Error).message}
+                  </p>
+                ) : !contentGaps.data?.rows.length ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No real content gaps found in this period — every query earning meaningful
+                    impressions is already ranking on page 1.
+                  </p>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {contentGaps.data.rows.map((g) => {
+                      const isThisRowBriefing =
+                        generateContentBrief.isPending && briefingQuery === g.query;
+                      const brief = briefsByQuery[g.query];
+                      const briefError =
+                        generateContentBrief.isError && briefingQuery === g.query
+                          ? (generateContentBrief.error as Error).message
+                          : null;
+
+                      return (
+                        <Card key={g.query} className="p-5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Search className="h-3.5 w-3.5" />
+                              <span className="truncate font-medium text-foreground">
+                                {g.query}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>{g.totalImpressions.toLocaleString()} impressions</span>
+                              <span>{g.totalClicks.toLocaleString()} clicks</span>
+                              <span>Avg. position {g.avgPosition.toFixed(1)}</span>
+                            </div>
+                            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                              Currently best served by:
+                              <a
+                                href={g.currentBestPage}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="truncate underline decoration-dotted hover:text-foreground"
+                              >
+                                {g.currentBestPage}
+                              </a>
+                            </div>
+                          </div>
+
+                          {!brief ? (
+                            <div className="mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                disabled={isThisRowBriefing}
+                                onClick={() => {
+                                  setBriefingQuery(g.query);
+                                  generateContentBrief.mutate(
+                                    {
+                                      keyword: g.query,
+                                      clicks: g.totalClicks,
+                                      impressions: g.totalImpressions,
+                                      position: g.avgPosition,
+                                      currentBestPage: g.currentBestPage,
+                                    },
+                                    {
+                                      onSuccess: (data) =>
+                                        setBriefsByQuery((prev) => ({ ...prev, [g.query]: data })),
+                                    },
+                                  );
+                                }}
+                              >
+                                <Sparkles
+                                  className={`h-3.5 w-3.5 ${isThisRowBriefing ? "animate-pulse" : ""}`}
+                                />
+                                {isThisRowBriefing ? "Drafting brief…" : "Draft content brief"}
+                              </Button>
+                              {briefError && (
+                                <p className="mt-2 text-xs text-destructive">{briefError}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                  Suggested page
+                                </span>
+                                <div className="flex items-start justify-between gap-2 rounded-lg bg-muted/40 p-2.5">
+                                  <div>
+                                    <p className="text-sm font-medium">{brief.suggestedTitle}</p>
+                                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                                      {brief.suggestedUrlSlug}
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      H1: {brief.suggestedH1}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        `${brief.suggestedTitle}\n${brief.suggestedUrlSlug}\nH1: ${brief.suggestedH1}`,
+                                        `${g.query}-title`,
+                                      )
+                                    }
+                                  >
+                                    {copiedField === `${g.query}-title` ? (
+                                      <Check className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Outline
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 gap-1 text-xs"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        brief.outline.map((o, i) => `${i + 1}. ${o}`).join("\n"),
+                                        `${g.query}-outline`,
+                                      )
+                                    }
+                                  >
+                                    {copiedField === `${g.query}-outline` ? (
+                                      <Check className="h-3 w-3" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                    Copy
+                                  </Button>
+                                </div>
+                                <ol className="list-decimal space-y-0.5 pl-4 text-sm">
+                                  {brief.outline.map((o, i) => (
+                                    <li key={i}>{o}</li>
+                                  ))}
+                                </ol>
+                              </div>
+
+                              <p className="text-xs text-muted-foreground">{brief.reasoning}</p>
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-2 text-xs"
+                                disabled={isThisRowBriefing}
+                                onClick={() => {
+                                  setBriefingQuery(g.query);
+                                  generateContentBrief.mutate(
+                                    {
+                                      keyword: g.query,
+                                      clicks: g.totalClicks,
+                                      impressions: g.totalImpressions,
+                                      position: g.avgPosition,
+                                      currentBestPage: g.currentBestPage,
+                                    },
+                                    {
+                                      onSuccess: (data) =>
+                                        setBriefsByQuery((prev) => ({ ...prev, [g.query]: data })),
+                                    },
+                                  );
+                                }}
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${isThisRowBriefing ? "animate-spin" : ""}`}
+                                />
+                                Regenerate
+                              </Button>
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* BACKLINKS */}

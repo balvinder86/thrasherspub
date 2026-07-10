@@ -4,7 +4,7 @@
 // sections. No persistence: Search Console's own API already serves
 // historical date-range queries, so there's nothing to snapshot here.
 //
-//   { restaurant_id, view: "overview" | "keywords" | "pages" }
+//   { restaurant_id, view: "overview" | "keywords" | "pages" | "content-gaps" }
 //
 // Verifies the caller's session JWT, then verifies restaurant
 // membership before touching anything (the service-role client below
@@ -65,10 +65,10 @@ type SearchAnalyticsRow = {
   position: number;
 };
 
-async function queryOneDimension(
+async function queryDimensions(
   accessToken: string,
   siteUrl: string,
-  dimension: "date" | "query" | "page",
+  dimensions: Array<"date" | "query" | "page">,
   startDate: string,
   endDate: string,
   rowLimit: number,
@@ -81,7 +81,7 @@ async function queryOneDimension(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ startDate, endDate, dimensions: [dimension], rowLimit }),
+      body: JSON.stringify({ startDate, endDate, dimensions, rowLimit }),
     },
   );
   const body = await res.json();
@@ -89,6 +89,77 @@ async function queryOneDimension(
     throw new Error(`Search Console API error (${res.status}): ${JSON.stringify(body)}`);
   }
   return body.rows ?? [];
+}
+
+function queryOneDimension(
+  accessToken: string,
+  siteUrl: string,
+  dimension: "date" | "query" | "page",
+  startDate: string,
+  endDate: string,
+  rowLimit: number,
+): Promise<SearchAnalyticsRow[]> {
+  return queryDimensions(accessToken, siteUrl, [dimension], startDate, endDate, rowLimit);
+}
+
+// A real content gap: a search query that genuinely earns impressions
+// but isn't ranking well (avg position past page 1) — computed purely
+// from real Search Console numbers, no AI judgment involved. The
+// "current best page" is whichever real page actually earned the most
+// clicks for that query in the period (ties broken by impressions).
+const GAP_MIN_IMPRESSIONS = 15;
+const GAP_MIN_POSITION = 10;
+
+function computeContentGaps(rows: SearchAnalyticsRow[]) {
+  const byQuery = new Map<
+    string,
+    {
+      totalClicks: number;
+      totalImpressions: number;
+      positionSum: number;
+      positionCount: number;
+      bestPage: string;
+      bestPageClicks: number;
+      bestPageImpressions: number;
+    }
+  >();
+  for (const r of rows) {
+    const [query, page] = r.keys;
+    const entry = byQuery.get(query) ?? {
+      totalClicks: 0,
+      totalImpressions: 0,
+      positionSum: 0,
+      positionCount: 0,
+      bestPage: page,
+      bestPageClicks: -1,
+      bestPageImpressions: -1,
+    };
+    entry.totalClicks += r.clicks;
+    entry.totalImpressions += r.impressions;
+    entry.positionSum += r.position * r.impressions;
+    entry.positionCount += r.impressions;
+    if (
+      r.clicks > entry.bestPageClicks ||
+      (r.clicks === entry.bestPageClicks && r.impressions > entry.bestPageImpressions)
+    ) {
+      entry.bestPage = page;
+      entry.bestPageClicks = r.clicks;
+      entry.bestPageImpressions = r.impressions;
+    }
+    byQuery.set(query, entry);
+  }
+
+  return [...byQuery.entries()]
+    .map(([query, e]) => ({
+      query,
+      totalClicks: e.totalClicks,
+      totalImpressions: e.totalImpressions,
+      avgPosition: e.positionCount > 0 ? e.positionSum / e.positionCount : 0,
+      currentBestPage: e.bestPage,
+    }))
+    .filter((g) => g.totalImpressions >= GAP_MIN_IMPRESSIONS && g.avgPosition > GAP_MIN_POSITION)
+    .sort((a, b) => b.totalImpressions - a.totalImpressions)
+    .slice(0, 20);
 }
 
 Deno.serve(async (req) => {
@@ -112,8 +183,11 @@ Deno.serve(async (req) => {
     if (!restaurant_id) {
       return json({ ok: false, error: "restaurant_id is required" }, 400);
     }
-    if (!["overview", "keywords", "pages"].includes(view)) {
-      return json({ ok: false, error: "view must be 'overview', 'keywords', or 'pages'" }, 400);
+    if (!["overview", "keywords", "pages", "content-gaps"].includes(view)) {
+      return json(
+        { ok: false, error: "view must be 'overview', 'keywords', 'pages', or 'content-gaps'" },
+        400,
+      );
     }
 
     const { data: membership } = await supabase
@@ -210,6 +284,20 @@ Deno.serve(async (req) => {
         },
         200,
       );
+    }
+
+    if (view === "content-gaps") {
+      const start = new Date(end);
+      start.setDate(start.getDate() - 28);
+      const rows = await queryDimensions(
+        googleAccessToken,
+        cred.site_url,
+        ["query", "page"],
+        isoDate(start),
+        isoDate(end),
+        500,
+      );
+      return json({ ok: true, connected: true, rows: computeContentGaps(rows) }, 200);
     }
 
     // view === "pages"

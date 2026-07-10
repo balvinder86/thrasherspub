@@ -90,7 +90,7 @@ export type PageRow = {
 
 async function callSearchConsoleData<T>(
   restaurantId: string,
-  view: "overview" | "keywords" | "pages",
+  view: "overview" | "keywords" | "pages" | "content-gaps",
 ): Promise<{ connected: boolean; rows: T[] }> {
   const { data, error } = await supabase.functions.invoke("search-console-data", {
     body: { restaurant_id: restaurantId, view },
@@ -130,6 +130,27 @@ export function useSearchConsolePages(enabled: boolean) {
     queryKey: ["search-console-pages", restaurantId],
     enabled: enabled && !!restaurantId,
     queryFn: () => callSearchConsoleData<PageRow>(restaurantId!, "pages"),
+  });
+}
+
+export type ContentGapRow = {
+  query: string;
+  totalClicks: number;
+  totalImpressions: number;
+  avgPosition: number;
+  currentBestPage: string;
+};
+
+// Real queries with genuine impressions but a poor average position
+// (past page 1) and no dedicated page — computed server-side purely
+// from real Search Console numbers (query+page dimensions), no AI
+// judgment involved in *finding* the gap, only in drafting a fix.
+export function useSearchConsoleContentGaps(enabled: boolean) {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["search-console-content-gaps", restaurantId],
+    enabled: enabled && !!restaurantId,
+    queryFn: () => callSearchConsoleData<ContentGapRow>(restaurantId!, "content-gaps"),
   });
 }
 
@@ -252,6 +273,44 @@ export function useSchemaCheck() {
         );
       }
       return data as SchemaCheckResult;
+    },
+  });
+}
+
+export type ContentBrief = {
+  suggestedUrlSlug: string;
+  suggestedTitle: string;
+  suggestedH1: string;
+  outline: string[];
+  reasoning: string;
+};
+
+// Real Claude-drafted content brief for one real keyword gap —
+// grounded in the actual HTML of whichever real page currently ranks
+// best for that query, so it doesn't suggest duplicating it. On
+// demand only (~15s per call, real API cost), never automatic.
+export function useGenerateContentBrief() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (input: {
+      keyword: string;
+      clicks?: number;
+      impressions?: number;
+      position?: number;
+      currentBestPage?: string;
+    }): Promise<ContentBrief> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("content-brief", {
+        body: { restaurant_id: restaurantId, ...input },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ??
+            error?.message ??
+            "could not generate content brief",
+        );
+      }
+      return (data as { brief: ContentBrief }).brief;
     },
   });
 }
