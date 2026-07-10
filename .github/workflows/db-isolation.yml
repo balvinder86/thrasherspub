@@ -114,6 +114,9 @@ jobs:
       # the `vault` schema, which only exists on real Supabase
       # projects, not a bare throwaway Postgres.
 
+      - name: Apply Phase 2 citations schema
+        run: $PSQL -f db/phase2/36_citations.sql
+
       - name: Seed test tenants
         run: $PSQL -f db/phase0/02_seed.sql
 

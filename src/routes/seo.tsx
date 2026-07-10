@@ -13,12 +13,18 @@ import {
   useSearchConsoleContentGaps,
   useGenerateContentBrief,
   useGenerateGbpInsights,
+  useCitationProfile,
+  useUpdateCitationProfile,
+  useCitationChecks,
+  useSetCitationCheck,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
   type ContentBrief,
   type GbpInsights,
   type MetricSeries,
+  type CitationDirectory,
+  type CitationCheckStatus,
 } from "@/lib/seo/queries";
 import { useReviewAgentConnection } from "@/lib/reviews/queries";
 import {
@@ -254,6 +260,47 @@ const pages: Page[] = [
   },
 ];
 
+// Real, zero-automation directory list for the Citations tab — no
+// free API checks name/address/phone consistency across these, so
+// each one links to that platform's own real search so the owner can
+// check it themselves and record what they found.
+const CITATION_DIRECTORIES: {
+  id: CitationDirectory;
+  label: string;
+  searchUrl: (query: string) => string;
+}[] = [
+  {
+    id: "google",
+    label: "Google",
+    searchUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "yelp",
+    label: "Yelp",
+    searchUrl: (q) => `https://www.yelp.com/search?find_desc=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "apple_maps",
+    label: "Apple Maps",
+    searchUrl: (q) => `https://maps.apple.com/?q=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "bing",
+    label: "Bing",
+    searchUrl: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "tripadvisor",
+    label: "Tripadvisor",
+    searchUrl: (q) => `https://www.tripadvisor.com/Search?q=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "facebook",
+    label: "Facebook",
+    searchUrl: (q) => `https://www.facebook.com/search/pages/?q=${encodeURIComponent(q)}`,
+  },
+];
+
 // ---------- helpers ----------
 
 function Kpi({
@@ -414,6 +461,10 @@ function SeoPage() {
   const { data: reviewAgentConnection, isLoading: reviewAgentConnectionLoading } =
     useReviewAgentConnection();
   const generateGbpInsights = useGenerateGbpInsights();
+  const { data: citationProfile, isLoading: citationProfileLoading } = useCitationProfile();
+  const updateCitationProfile = useUpdateCitationProfile();
+  const { data: citationChecks } = useCitationChecks();
+  const setCitationCheck = useSetCitationCheck();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -428,6 +479,9 @@ function SeoPage() {
   const [briefingQuery, setBriefingQuery] = useState<string | null>(null);
   const [briefsByQuery, setBriefsByQuery] = useState<Record<string, ContentBrief>>({});
   const [gbpInsights, setGbpInsights] = useState<GbpInsights | null>(null);
+  const [profileForm, setProfileForm] = useState({ address: "", phone: "", website: "" });
+  const [profileFormDirty, setProfileFormDirty] = useState(false);
+  const [citationNotes, setCitationNotes] = useState<Record<string, string>>({});
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -435,6 +489,16 @@ function SeoPage() {
       setTimeout(() => setCopiedField((f) => (f === fieldId ? null : f)), 1500);
     });
   };
+
+  useEffect(() => {
+    if (citationProfile && !profileFormDirty) {
+      setProfileForm({
+        address: citationProfile.address ?? "",
+        phone: citationProfile.phone ?? "",
+        website: citationProfile.website ?? "",
+      });
+    }
+  }, [citationProfile, profileFormDirty]);
 
   // The OAuth callback (search-console-oauth-callback) redirects back
   // here with ?searchConsole=connected|error — a full page load, not a
@@ -1264,14 +1328,186 @@ function SeoPage() {
 
           {/* CITATIONS */}
           <TabsContent value="citations" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Would check name/address/phone consistency across Yelp, Apple Maps, Tripadvisor,
-                Bing, and other directories — no free API covers this across platforms; would need a
-                paid citation-tracking service (Moz Local, Yext) or manual entry.
-              </p>
-            </Card>
+            {citationProfileLoading ? (
+              <p className="text-center text-sm text-muted-foreground">Loading business info…</p>
+            ) : !citationProfile ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Set up your business profile first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  Citation checks compare each directory against your real name, address, and phone
+                  — set up the business profile on the Reviews page first, then come back here.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <Card className="p-6">
+                  <div className="text-sm font-medium">Your canonical business info</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This is what you're comparing every directory listing against below. No free API
+                    checks consistency across directories — you open each one's real search and
+                    record what you find.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Business name</Label>
+                      <p className="mt-1 text-sm font-medium">{citationProfile.businessName}</p>
+                    </div>
+                    <div>
+                      <Label htmlFor="citation-website" className="text-xs text-muted-foreground">
+                        Website
+                      </Label>
+                      <Input
+                        id="citation-website"
+                        className="mt-1"
+                        placeholder="https://yourrestaurant.com"
+                        value={profileForm.website}
+                        onChange={(e) => {
+                          setProfileFormDirty(true);
+                          setProfileForm((f) => ({ ...f, website: e.target.value }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="citation-address" className="text-xs text-muted-foreground">
+                        Address
+                      </Label>
+                      <Input
+                        id="citation-address"
+                        className="mt-1"
+                        placeholder="123 Main St, City, ST 00000"
+                        value={profileForm.address}
+                        onChange={(e) => {
+                          setProfileFormDirty(true);
+                          setProfileForm((f) => ({ ...f, address: e.target.value }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="citation-phone" className="text-xs text-muted-foreground">
+                        Phone
+                      </Label>
+                      <Input
+                        id="citation-phone"
+                        className="mt-1"
+                        placeholder="(555) 555-5555"
+                        value={profileForm.phone}
+                        onChange={(e) => {
+                          setProfileFormDirty(true);
+                          setProfileForm((f) => ({ ...f, phone: e.target.value }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      disabled={!profileFormDirty || updateCitationProfile.isPending}
+                      onClick={() =>
+                        updateCitationProfile.mutate(profileForm, {
+                          onSuccess: () => setProfileFormDirty(false),
+                        })
+                      }
+                    >
+                      {updateCitationProfile.isPending ? "Saving…" : "Save"}
+                    </Button>
+                    {updateCitationProfile.isError && (
+                      <span className="text-xs text-destructive">
+                        {(updateCitationProfile.error as Error).message}
+                      </span>
+                    )}
+                  </div>
+                </Card>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {CITATION_DIRECTORIES.map((dir) => {
+                    const check = citationChecks?.find((c) => c.directory === dir.id);
+                    const status: CitationCheckStatus = check?.status ?? "not_checked";
+                    const noteValue = citationNotes[dir.id] ?? check?.note ?? "";
+                    const searchQuery = [citationProfile.businessName, citationProfile.address]
+                      .filter(Boolean)
+                      .join(" ");
+
+                    return (
+                      <Card key={dir.id} className="p-5">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium">{dir.label}</div>
+                          <a
+                            href={dir.searchUrl(searchQuery)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            Search on {dir.label} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+
+                        <div className="mt-3 flex gap-1.5">
+                          {(
+                            [
+                              ["not_checked", "Not checked"],
+                              ["matches", "Matches"],
+                              ["needs_fixing", "Needs fixing"],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <Button
+                              key={value}
+                              size="sm"
+                              variant="outline"
+                              className={`h-7 rounded-full text-xs ${
+                                status === value
+                                  ? value === "matches"
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                    : value === "needs_fixing"
+                                      ? "border-amber-300 bg-amber-50 text-amber-800"
+                                      : "border-foreground/30 bg-muted"
+                                  : ""
+                              }`}
+                              disabled={setCitationCheck.isPending}
+                              onClick={() =>
+                                setCitationCheck.mutate({
+                                  directory: dir.id,
+                                  status: value,
+                                  note: noteValue || null,
+                                })
+                              }
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+
+                        <Textarea
+                          className="mt-3 text-xs"
+                          rows={2}
+                          placeholder="What did you find? (optional)"
+                          value={noteValue}
+                          onChange={(e) =>
+                            setCitationNotes((prev) => ({ ...prev, [dir.id]: e.target.value }))
+                          }
+                          onBlur={() => {
+                            if (noteValue !== (check?.note ?? "")) {
+                              setCitationCheck.mutate({
+                                directory: dir.id,
+                                status,
+                                note: noteValue || null,
+                              });
+                            }
+                          }}
+                        />
+
+                        {check?.checkedAt && (
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Checked {timeAgo(check.checkedAt)}
+                          </p>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           {/* COMPETITORS */}

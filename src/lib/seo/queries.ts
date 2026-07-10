@@ -356,3 +356,124 @@ export function useGenerateGbpInsights() {
     },
   });
 }
+
+export type CitationProfile = {
+  businessName: string;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
+};
+
+// The canonical NAP (name/address/phone) tenants compare each real
+// directory listing against. Reuses review_agent_settings — same
+// "real business info, not provider-specific" data the review-reply
+// prompt already draws from. Null means no row yet (review agent
+// never set up for this restaurant), not "fields are empty."
+export function useCitationProfile() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["citation-profile", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<CitationProfile | null> => {
+      const { data, error } = await supabase
+        .from("review_agent_settings")
+        .select("business_name, address, phone, website")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return {
+        businessName: data.business_name,
+        address: data.address,
+        phone: data.phone,
+        website: data.website,
+      };
+    },
+  });
+}
+
+export function useUpdateCitationProfile() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { address: string; phone: string; website: string }) => {
+      const { error } = await supabase
+        .from("review_agent_settings")
+        .update({ address: input.address, phone: input.phone, website: input.website });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["citation-profile", restaurantId] });
+    },
+  });
+}
+
+export type CitationDirectory =
+  | "google"
+  | "yelp"
+  | "apple_maps"
+  | "bing"
+  | "tripadvisor"
+  | "facebook";
+
+export type CitationCheckStatus = "not_checked" | "matches" | "needs_fixing";
+
+export type CitationCheck = {
+  directory: CitationDirectory;
+  status: CitationCheckStatus;
+  note: string | null;
+  checkedAt: string | null;
+};
+
+// Real, zero-automation citation checklist — no free API checks
+// name/address/phone consistency across directories, so this just
+// persists what the owner found after manually opening each real
+// directory search themselves (see the "Search on X" links in the
+// Citations tab).
+export function useCitationChecks() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["citation-checks", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<CitationCheck[]> => {
+      const { data, error } = await supabase
+        .from("citation_checks")
+        .select("directory, status, note, checked_at");
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        directory: r.directory as CitationDirectory,
+        status: r.status as CitationCheckStatus,
+        note: r.note,
+        checkedAt: r.checked_at,
+      }));
+    },
+  });
+}
+
+export function useSetCitationCheck() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      directory: CitationDirectory;
+      status: CitationCheckStatus;
+      note: string | null;
+    }) => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { error } = await supabase.from("citation_checks").upsert(
+        {
+          restaurant_id: restaurantId,
+          directory: input.directory,
+          status: input.status,
+          note: input.note,
+          checked_at: input.status === "not_checked" ? null : new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "restaurant_id,directory" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["citation-checks", restaurantId] });
+    },
+  });
+}
