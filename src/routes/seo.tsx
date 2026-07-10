@@ -22,6 +22,7 @@ import {
   useDeleteTrackedQuery,
   useCompetitorScans,
   useRunCompetitorScan,
+  useGenerateBacklinks,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
@@ -31,6 +32,7 @@ import {
   type CitationDirectory,
   type CitationCheckStatus,
   type CompetitorScan,
+  type BacklinksReport,
 } from "@/lib/seo/queries";
 import { useReviewAgentConnection } from "@/lib/reviews/queries";
 import {
@@ -476,6 +478,7 @@ function SeoPage() {
   const deleteTrackedQuery = useDeleteTrackedQuery();
   const { data: competitorScans } = useCompetitorScans();
   const runCompetitorScan = useRunCompetitorScan();
+  const generateBacklinks = useGenerateBacklinks();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -495,6 +498,7 @@ function SeoPage() {
   const [citationNotes, setCitationNotes] = useState<Record<string, string>>({});
   const [newQueryText, setNewQueryText] = useState("");
   const [scanningQueryId, setScanningQueryId] = useState<string | null>(null);
+  const [backlinksReport, setBacklinksReport] = useState<BacklinksReport | null>(null);
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -2376,13 +2380,175 @@ function SeoPage() {
 
           {/* BACKLINKS */}
           <TabsContent value="backlinks" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Domain authority, referring domains, and backlink tracking all need a paid
-                backlink-index tool (Ahrefs, Semrush, Moz) — no free API exists for this.
-              </p>
-            </Card>
+            {!isConnected ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Search Console first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  This real backlink snapshot comes from Search Console's own Links report — connect
+                  on the Pages tab first.
+                </p>
+                <Button
+                  size="sm"
+                  className="mx-auto mt-4 gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                >
+                  <Link2 className="h-4 w-4" /> Connect Search Console
+                </Button>
+              </Card>
+            ) : reviewAgentConnectionLoading ? (
+              <p className="text-center text-sm text-muted-foreground">Checking connection…</p>
+            ) : !reviewAgentConnection ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Google Business Profile first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  This report is scraped from Search Console's real Links page, which needs the same
+                  Google session already connected for the review-reply agent — connect on the
+                  Reviews page first, then come back here.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Real backlink data from Search Console's own Links report (not exposed by
+                    Google's official API, scraped from the real page). No domain authority or spam
+                    score here — that genuinely needs a paid tool (Ahrefs, Semrush, Moz) with its
+                    own crawl index; this is only what Google's own index reports about your real
+                    site.
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={generateBacklinks.isPending}
+                    onClick={() =>
+                      generateBacklinks.mutate(undefined, {
+                        onSuccess: (data) => setBacklinksReport(data),
+                      })
+                    }
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${generateBacklinks.isPending ? "animate-spin" : ""}`}
+                    />
+                    {generateBacklinks.isPending
+                      ? "Scanning…"
+                      : backlinksReport
+                        ? "Rescan"
+                        : "Scan backlinks"}
+                  </Button>
+                </div>
+
+                {generateBacklinks.isError && (
+                  <p className="text-sm text-destructive">
+                    {(generateBacklinks.error as Error).message}
+                  </p>
+                )}
+
+                {!backlinksReport ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Click "Scan backlinks" for a real snapshot from Search Console.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Card className="p-5">
+                        <div className="font-display text-3xl">
+                          {backlinksReport.externalLinksTotal ?? "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          External links
+                        </div>
+                      </Card>
+                      <Card className="p-5">
+                        <div className="font-display text-3xl">
+                          {backlinksReport.internalLinksTotal ?? "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Internal links
+                        </div>
+                      </Card>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <Card className="p-5">
+                        <div className="text-sm font-medium">Top linking sites</div>
+                        {backlinksReport.topLinkingSites.length === 0 ? (
+                          <p className="mt-2 text-xs text-muted-foreground">None found.</p>
+                        ) : (
+                          <div className="mt-3 space-y-1.5">
+                            {backlinksReport.topLinkingSites.map((s) => (
+                              <div
+                                key={s.label}
+                                className="flex items-center justify-between text-sm"
+                              >
+                                <span className="truncate text-muted-foreground">{s.label}</span>
+                                <span className="shrink-0 font-medium">{s.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+
+                      <Card className="p-5">
+                        <div className="text-sm font-medium">Top linked pages</div>
+                        {backlinksReport.topLinkedPages.length === 0 ? (
+                          <p className="mt-2 text-xs text-muted-foreground">None found.</p>
+                        ) : (
+                          <div className="mt-3 space-y-1.5">
+                            {backlinksReport.topLinkedPages.map((p) => (
+                              <div
+                                key={p.label}
+                                className="flex items-center justify-between gap-2 text-sm"
+                              >
+                                <span className="truncate text-muted-foreground">{p.label}</span>
+                                <span className="shrink-0 font-medium">{p.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+
+                      <Card className="p-5">
+                        <div className="text-sm font-medium">Top linking text</div>
+                        {backlinksReport.topLinkingText.length === 0 ? (
+                          <p className="mt-2 text-xs text-muted-foreground">None found.</p>
+                        ) : (
+                          <div className="mt-3 space-y-1.5">
+                            {backlinksReport.topLinkingText.map((t, i) => (
+                              <div key={i} className="truncate text-sm text-muted-foreground">
+                                {t || <em>(empty)</em>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+
+                      <Card className="p-5">
+                        <div className="text-sm font-medium">Top internal linked pages</div>
+                        {backlinksReport.topInternalLinkedPages.length === 0 ? (
+                          <p className="mt-2 text-xs text-muted-foreground">None found.</p>
+                        ) : (
+                          <div className="mt-3 space-y-1.5">
+                            {backlinksReport.topInternalLinkedPages.map((p) => (
+                              <div
+                                key={p.label}
+                                className="flex items-center justify-between gap-2 text-sm"
+                              >
+                                <span className="truncate text-muted-foreground">{p.label}</span>
+                                <span className="shrink-0 font-medium">{p.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

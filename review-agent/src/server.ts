@@ -25,12 +25,14 @@ import {
   updateDraftReply,
   getTrackedQuery,
   insertCompetitorScan,
+  getSearchConsoleSiteUrl,
   type RestaurantReviewConfig,
 } from "./db.js";
 import { scanUnrepliedReviews, postReplyToReview } from "./browser.js";
 import { generateReply } from "./claude.js";
 import { scanGbpInsights } from "./gbp-insights.js";
 import { scanLocalPack } from "./competitor-scan.js";
+import { scanBacklinks } from "./backlinks.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const SERVICE_TOKEN = process.env.REVIEW_AGENT_SERVICE_TOKEN;
@@ -162,6 +164,14 @@ async function handleCompetitorScan(restaurantId: string, trackedQueryId: string
   return { localPack, ownInPack: !!own, ownPosition: own?.position ?? null };
 }
 
+async function handleBacklinks(restaurantId: string) {
+  const siteUrl = await getSearchConsoleSiteUrl(restaurantId);
+  if (!siteUrl) throw new Error("Search Console isn't connected for this restaurant yet");
+  const config = await getCredentialsForRestaurant(restaurantId);
+  const cookies = await getGoogleCookies(config.vaultSecretName);
+  return scanBacklinks(cookies, siteUrl);
+}
+
 async function handleRegenerate(reviewId: string) {
   const review = await getReviewForRegenerate(reviewId);
   const config = await getCredentialsForRestaurant(review.restaurantId);
@@ -227,6 +237,16 @@ const server = createServer(async (req, res) => {
         return;
       }
       respond(200, { ok: true, ...(await handleCompetitorScan(restaurantId, trackedQueryId)) });
+      return;
+    }
+
+    if (req.url === "/backlinks" && req.method === "POST") {
+      const restaurantId = body.restaurant_id;
+      if (typeof restaurantId !== "string") {
+        respond(400, { ok: false, error: "restaurant_id is required" });
+        return;
+      }
+      respond(200, { ok: true, ...(await handleBacklinks(restaurantId)) });
       return;
     }
 

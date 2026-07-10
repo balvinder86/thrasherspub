@@ -231,6 +231,16 @@ export async function updateDraftReply(reviewId: string, draftReply: string) {
   if (error) throw new Error(`update ai_draft_reply failed: ${error.message}`);
 }
 
+export async function getSearchConsoleSiteUrl(restaurantId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("search_console_credentials")
+    .select("site_url")
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+  if (error) throw new Error(`load search_console_credentials failed: ${error.message}`);
+  return data?.site_url ?? null;
+}
+
 export async function getTrackedQuery(
   restaurantId: string,
   trackedQueryId: string,

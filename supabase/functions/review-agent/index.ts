@@ -11,6 +11,7 @@
 //   { action: "regenerate", review_id }             — re-drafts one reply via Claude
 //   { action: "gbp_insights", restaurant_id }       — read-only, real GBP Insights scrape
 //   { action: "competitor_scan", tracked_query_id } — read-only, real local-pack scan
+//   { action: "backlinks", restaurant_id }          — read-only, real Search Console Links scrape
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -192,6 +193,31 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "backlinks") {
+      if (!restaurant_id) {
+        return json({ ok: false, step: "input", error: "restaurant_id is required" }, 400);
+      }
+      try {
+        await assertMember(userData.user.id, restaurant_id);
+      } catch (e) {
+        return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
+      }
+
+      const railwayRes = await fetch(`${REVIEW_AGENT_SERVICE_URL}/backlinks`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REVIEW_AGENT_SERVICE_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ restaurant_id }),
+      });
+      const railwayBody = await railwayRes.json().catch(() => null);
+      return json(
+        railwayBody ?? { ok: false, error: "empty response from review agent service" },
+        railwayRes.status,
+      );
+    }
+
     if (action === "regenerate") {
       if (!review_id) {
         return json({ ok: false, step: "input", error: "review_id is required" }, 400);
@@ -234,7 +260,8 @@ Deno.serve(async (req) => {
       {
         ok: false,
         step: "input",
-        error: "action must be 'scan', 'post', 'regenerate', 'gbp_insights', or 'competitor_scan'",
+        error:
+          "action must be 'scan', 'post', 'regenerate', 'gbp_insights', 'competitor_scan', or 'backlinks'",
       },
       400,
     );

@@ -608,3 +608,38 @@ export function useRunCompetitorScan() {
     },
   });
 }
+
+export type LinkCountItem = { label: string; count: number };
+
+export type BacklinksReport = {
+  externalLinksTotal: number | null;
+  topLinkedPages: LinkCountItem[];
+  topLinkingSites: LinkCountItem[];
+  topLinkingText: string[];
+  internalLinksTotal: number | null;
+  topInternalLinkedPages: LinkCountItem[];
+};
+
+// Real backlink snapshot from Google Search Console's own "Links"
+// report — not exposed by the official Search Console API, scraped
+// from the real Search Console web UI with the same Google session
+// already connected for the review-reply agent. No domain authority
+// or spam score (that needs a paid tool's own crawl index) — only
+// what Google's own index reports about the real site.
+export function useGenerateBacklinks() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (): Promise<BacklinksReport> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("review-agent", {
+        body: { action: "backlinks", restaurant_id: restaurantId },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "scan failed",
+        );
+      }
+      return data as BacklinksReport;
+    },
+  });
+}
