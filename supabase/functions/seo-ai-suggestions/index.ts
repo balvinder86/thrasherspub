@@ -15,6 +15,7 @@
 //   { restaurant_id, url, clicks?, impressions?, position? }
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { fetchPageMeta } from "../_shared/page-meta.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -38,53 +39,6 @@ function stripJsonFences(text: string): string {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
-}
-
-type PageMeta = {
-  title: string | null;
-  description: string | null;
-  schemaTypes: string[];
-  bodyTextSample: string;
-};
-
-function extractPageMeta(html: string): PageMeta {
-  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  const descMatch =
-    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ??
-    html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
-
-  const schemaTypes: string[] = [];
-  for (const m of html.matchAll(
-    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-  )) {
-    try {
-      const parsed = JSON.parse(m[1]);
-      const items = Array.isArray(parsed) ? parsed : [parsed];
-      for (const item of items) {
-        const t = item?.["@type"];
-        if (t) schemaTypes.push(Array.isArray(t) ? t.join(",") : String(t));
-      }
-    } catch {
-      // Invalid/unparseable JSON-LD on the page — not our concern here,
-      // just doesn't count as a detected schema type.
-    }
-  }
-
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const bodyHtml = bodyMatch?.[1] ?? html;
-  const bodyText = bodyHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return {
-    title: titleMatch?.[1]?.trim() ?? null,
-    description: descMatch?.[1]?.trim() ?? null,
-    schemaTypes: [...new Set(schemaTypes)],
-    bodyTextSample: bodyText.slice(0, 2500),
-  };
 }
 
 Deno.serve(async (req) => {
@@ -119,14 +73,12 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "not a member of this restaurant" }, 403);
     }
 
-    const pageRes = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; ThrashersPubSEOBot/1.0)" },
-    });
-    if (!pageRes.ok) {
-      return json({ ok: false, error: `Could not fetch the page (HTTP ${pageRes.status})` }, 502);
+    let meta;
+    try {
+      meta = await fetchPageMeta(url);
+    } catch (e) {
+      return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 502);
     }
-    const html = await pageRes.text();
-    const meta = extractPageMeta(html);
 
     const { data: settings } = await supabase
       .from("review_agent_settings")

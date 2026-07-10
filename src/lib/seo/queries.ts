@@ -217,3 +217,41 @@ export function useGenerateSeoSuggestions() {
     },
   });
 }
+
+export type SchemaCheckPage = {
+  url: string;
+  schemaTypes: string[];
+  error: string | null;
+};
+
+export type SchemaCheckResult = {
+  pages: SchemaCheckPage[];
+  summary: {
+    typesFoundSitewide: string[];
+    recommendedTypesMissingSitewide: string[];
+    pagesScanned: number;
+    pagesWithNoSchema: number;
+  };
+};
+
+// Real, non-AI structured-data coverage scan — fetches each real
+// page's actual live HTML and reports the JSON-LD @type values
+// genuinely found. Fast/free, so it can cover several pages per call;
+// drafting a fix for a gap is the AI Agent tab's job, not this one's.
+export function useSchemaCheck() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (urls: string[]): Promise<SchemaCheckResult> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const { data, error } = await supabase.functions.invoke("schema-check", {
+        body: { restaurant_id: restaurantId, urls },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "scan failed",
+        );
+      }
+      return data as SchemaCheckResult;
+    },
+  });
+}

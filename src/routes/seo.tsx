@@ -9,8 +9,10 @@ import {
   usePageSpeedAudit,
   useRefetchSearchConsoleConnection,
   useGenerateSeoSuggestions,
+  useSchemaCheck,
   type PageSpeedResult,
   type SeoSuggestions,
+  type SchemaCheckResult,
 } from "@/lib/seo/queries";
 import {
   ArrowDownRight,
@@ -334,6 +336,7 @@ function SeoPage() {
   const pageSpeedAudit = usePageSpeedAudit();
   const refetchConnection = useRefetchSearchConsoleConnection();
   const generateSeoSuggestions = useGenerateSeoSuggestions();
+  const schemaCheck = useSchemaCheck();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -344,6 +347,7 @@ function SeoPage() {
   const [suggestingUrl, setSuggestingUrl] = useState<string | null>(null);
   const [suggestionsByUrl, setSuggestionsByUrl] = useState<Record<string, SeoSuggestions>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [schemaCheckResult, setSchemaCheckResult] = useState<SchemaCheckResult | null>(null);
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -1324,14 +1328,171 @@ function SeoPage() {
 
           {/* SCHEMA */}
           <TabsContent value="schema" className="mt-4">
-            <Card className="border-dashed bg-card/50 p-10 text-center">
-              <p className="font-display text-lg text-muted-foreground">Not built yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                Would check your real pages for structured data (Restaurant, Menu, FAQPage, etc.) by
-                parsing their actual HTML for JSON-LD — genuinely buildable without new API access,
-                just not built this round.
-              </p>
-            </Card>
+            {!isConnected ? (
+              <Card className="border-dashed bg-card/50 p-10 text-center">
+                <p className="font-display text-lg text-muted-foreground">
+                  Connect Search Console first
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  This scans structured data on your real pages, ranked by real Search Console
+                  performance — connect on the Pages tab to pick which pages to scan.
+                </p>
+                <Button
+                  size="sm"
+                  className="mx-auto mt-4 gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                >
+                  <Link2 className="h-4 w-4" /> Connect Search Console
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Fetches each real page's actual live HTML and reports the structured data
+                    (JSON-LD) genuinely found — no AI call, just a real scan. Use the AI Agent tab
+                    to draft a fix for any gap found here.
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={schemaCheck.isPending || !scPages.data?.rows.length}
+                    onClick={() => {
+                      const urls = (scPages.data?.rows ?? []).map((p) => p.page);
+                      schemaCheck.mutate(urls, {
+                        onSuccess: (data) => setSchemaCheckResult(data),
+                      });
+                    }}
+                  >
+                    <Code2 className={`h-4 w-4 ${schemaCheck.isPending ? "animate-pulse" : ""}`} />
+                    {schemaCheck.isPending
+                      ? "Scanning…"
+                      : schemaCheckResult
+                        ? "Rescan pages"
+                        : "Scan pages for structured data"}
+                  </Button>
+                </div>
+
+                {schemaCheck.isError && (
+                  <p className="text-sm text-destructive">{(schemaCheck.error as Error).message}</p>
+                )}
+
+                {!schemaCheckResult ? (
+                  scPages.isLoading ? (
+                    <p className="text-center text-sm text-muted-foreground">
+                      Loading real page data…
+                    </p>
+                  ) : !scPages.data?.rows.length ? (
+                    <p className="text-center text-sm text-muted-foreground">
+                      No pages found for this period yet.
+                    </p>
+                  ) : (
+                    <p className="text-center text-sm text-muted-foreground">
+                      {scPages.data.rows.length} real page
+                      {scPages.data.rows.length === 1 ? "" : "s"} ready to scan.
+                    </p>
+                  )
+                ) : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <Card className="p-5">
+                        <div className="font-display text-3xl">
+                          {schemaCheckResult.summary.pagesScanned}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Pages scanned
+                        </div>
+                      </Card>
+                      <Card className="p-5">
+                        <div className="font-display text-3xl">
+                          {schemaCheckResult.summary.typesFoundSitewide.length}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Schema types found sitewide
+                        </div>
+                      </Card>
+                      <Card
+                        className={`p-5 ${schemaCheckResult.summary.pagesWithNoSchema > 0 ? "border-amber-200" : ""}`}
+                      >
+                        <div
+                          className={`font-display text-3xl ${schemaCheckResult.summary.pagesWithNoSchema > 0 ? "text-amber-700" : ""}`}
+                        >
+                          {schemaCheckResult.summary.pagesWithNoSchema}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Pages with no schema
+                        </div>
+                      </Card>
+                      <Card className="p-5">
+                        <div className="font-display text-3xl">
+                          {schemaCheckResult.summary.recommendedTypesMissingSitewide.length}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Common types missing
+                        </div>
+                      </Card>
+                    </div>
+
+                    {schemaCheckResult.summary.recommendedTypesMissingSitewide.length > 0 && (
+                      <Card className="border-amber-200 bg-amber-50/50 p-4">
+                        <p className="text-sm">
+                          Not found on any scanned page:{" "}
+                          {schemaCheckResult.summary.recommendedTypesMissingSitewide.map((t, i) => (
+                            <span key={t}>
+                              {i > 0 && ", "}
+                              <Badge
+                                variant="outline"
+                                className="rounded-full border-amber-300 text-amber-800"
+                              >
+                                {t}
+                              </Badge>
+                            </span>
+                          ))}
+                        </p>
+                      </Card>
+                    )}
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {schemaCheckResult.pages.map((p) => (
+                        <Card key={p.url} className="p-5">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Globe className="h-3.5 w-3.5" />
+                            <span className="truncate">{p.url}</span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {p.error ? (
+                              <span className="flex items-center gap-1 text-xs text-destructive">
+                                <XCircle className="h-3.5 w-3.5" /> {p.error}
+                              </span>
+                            ) : p.schemaTypes.length === 0 ? (
+                              <span className="text-xs text-amber-700">
+                                No structured data found
+                              </span>
+                            ) : (
+                              p.schemaTypes.map((t) => (
+                                <Badge key={t} variant="outline" className="rounded-full text-xs">
+                                  <CheckCircle2 className="mr-1 h-3 w-3" /> {t}
+                                </Badge>
+                              ))
+                            )}
+                          </div>
+                          <div className="mt-4 flex items-center justify-between">
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Open page <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* CONTENT */}
