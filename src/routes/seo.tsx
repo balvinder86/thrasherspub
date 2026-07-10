@@ -517,6 +517,34 @@ function SeoPage() {
     return map;
   }, [competitorScans]);
 
+  // Real values for the top KPI row — each backed by a real feature
+  // built later this session, replacing what were originally honest
+  // "not built" placeholders.
+  const latestCompetitorScan = competitorScans?.[0] ?? null;
+
+  const avgSearchPosition = useMemo(() => {
+    const rows = overview.data?.rows;
+    if (!rows || rows.length === 0) return null;
+    return rows.reduce((sum, r) => sum + r.position, 0) / rows.length;
+  }, [overview.data]);
+
+  const gbpActionsTotal = useMemo(() => {
+    if (
+      !gbpInsights ||
+      (!gbpInsights.calls && !gbpInsights.directions && !gbpInsights.websiteClicks)
+    ) {
+      return null;
+    }
+    return (
+      (gbpInsights.calls?.total ?? 0) +
+      (gbpInsights.directions?.total ?? 0) +
+      (gbpInsights.websiteClicks?.total ?? 0)
+    );
+  }, [gbpInsights]);
+
+  const aiTasksShippedCount =
+    Object.keys(suggestionsByUrl).length + Object.keys(briefsByQuery).length;
+
   useEffect(() => {
     if (citationProfile && !profileFormDirty) {
       setProfileForm({
@@ -622,26 +650,48 @@ function SeoPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Kpi
             label="Local pack rank"
-            value="—"
-            hint="Needs a paid rank-tracking tool (Semrush, Moz) — not built"
+            value={
+              !latestCompetitorScan
+                ? "—"
+                : latestCompetitorScan.ownInPack
+                  ? `#${latestCompetitorScan.ownPosition}`
+                  : "Not in pack"
+            }
+            hint={
+              latestCompetitorScan
+                ? `Real, for "${latestCompetitorScan.query}" · Competitors tab`
+                : "Track a real search on the Competitors tab"
+            }
             icon={MapPin}
           />
           <Kpi
             label="Search visibility"
-            value="—"
-            hint="'Share of voice' isn't a real Search Console metric — needs a paid tool"
+            value={avgSearchPosition != null ? `Avg. #${avgSearchPosition.toFixed(1)}` : "—"}
+            hint={
+              avgSearchPosition != null
+                ? "Real avg. position, last 8 weeks (Search Console)"
+                : "Connect Search Console on the Pages tab"
+            }
             icon={Eye}
           />
           <Kpi
             label="GBP actions"
-            value="—"
-            hint="Calls, directions, website clicks — would need a separate Business Profile Insights integration, not built"
+            value={gbpActionsTotal != null ? gbpActionsTotal.toLocaleString() : "—"}
+            hint={
+              gbpActionsTotal != null
+                ? "Real calls + directions + website clicks, last scan"
+                : "Scan on the Google Business tab"
+            }
             icon={MousePointerClick}
           />
           <Kpi
             label="AI tasks shipped"
-            value="—"
-            hint="No auto-apply agent exists yet — see the AI agent tab"
+            value={aiTasksShippedCount > 0 ? String(aiTasksShippedCount) : "—"}
+            hint={
+              aiTasksShippedCount > 0
+                ? "Real suggestions + content briefs generated this session"
+                : "Generate suggestions on the AI Agent tab"
+            }
             icon={Sparkles}
           />
         </div>
