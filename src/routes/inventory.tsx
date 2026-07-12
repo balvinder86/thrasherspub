@@ -124,9 +124,9 @@ type Category = string;
 type Item = InventoryItem;
 
 const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Miscellaneous"];
-const ORDERS_PAGE_SIZE = 25;
+const ORDERS_PAGE_SIZE = 50;
 const ITEMS_PAGE_SIZE = 50;
-const VENDORS_PAGE_SIZE = 25;
+const VENDORS_PAGE_SIZE = 50;
 
 // Editable review row for the bulk-import dialog — one per real item
 // Claude extracted from the uploaded photo/document, mapped toward
