@@ -125,7 +125,7 @@ type Item = InventoryItem;
 
 const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Miscellaneous"];
 const ORDERS_PAGE_SIZE = 25;
-const ITEMS_PAGE_SIZE = 25;
+const ITEMS_PAGE_SIZE = 50;
 const VENDORS_PAGE_SIZE = 25;
 
 // Editable review row for the bulk-import dialog — one per real item
