@@ -18,8 +18,12 @@ import {
   useCreatePurchaseOrders,
   usePurchaseOrders,
   useSendPurchaseOrderEmail,
+  useExtractInventoryItems,
+  useBulkCreateInventoryItems,
   type Vendor,
   type InventoryItem,
+  type ExtractedInventoryItem,
+  type BulkCreateResult,
 } from "@/lib/boh/queries";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -48,6 +52,7 @@ import {
   TrendingDown,
   TrendingUp,
   Truck,
+  Upload,
   UserPlus,
   Wand2,
   X,
@@ -122,6 +127,40 @@ const CATEGORIES: Category[] = ["Beverages", "Alcohol", "Food", "Dry Goods", "Mi
 const ORDERS_PAGE_SIZE = 25;
 const ITEMS_PAGE_SIZE = 25;
 const VENDORS_PAGE_SIZE = 25;
+
+// Editable review row for the bulk-import dialog — one per real item
+// Claude extracted from the uploaded photo/document, mapped toward
+// the same shape useBulkCreateInventoryItems expects. `include` lets
+// the owner drop a row (a misread line, a duplicate) before
+// committing; nothing is written until they do.
+type BulkImportRow = {
+  name: string;
+  category: Category;
+  unit: string;
+  onHand: number;
+  par: number;
+  vendorId: string | null;
+  cost: number;
+  include: boolean;
+};
+
+function toBulkImportRow(vendors: Vendor[]) {
+  return (item: ExtractedInventoryItem): BulkImportRow => {
+    const matchedVendor = item.vendorGuess
+      ? vendors.find((v) => v.name.toLowerCase() === item.vendorGuess!.toLowerCase())
+      : undefined;
+    return {
+      name: item.name,
+      category: item.category && CATEGORIES.includes(item.category) ? item.category : "Food",
+      unit: item.unit ?? "",
+      onHand: item.quantity ?? 0,
+      par: 1,
+      vendorId: matchedVendor?.id ?? null,
+      cost: item.unitCost ?? 0,
+      include: true,
+    };
+  };
+}
 
 function suggestedQty(item: Item) {
   // suggested = par - onHand, padded by ~10% safety stock, min 0
@@ -214,6 +253,56 @@ function InventoryPage() {
     weeklyUsage: 0,
   });
   const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+
+  // Bulk import — extract from an uploaded photo/document, then let
+  // the owner review/edit every row before anything is written; no
+  // auto-import path exists.
+  const extractInventoryItems = useExtractInventoryItems();
+  const bulkCreateInventoryItems = useBulkCreateInventoryItems();
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkImportRows, setBulkImportRows] = useState<BulkImportRow[]>([]);
+  const [bulkImportResult, setBulkImportResult] = useState<BulkCreateResult | null>(null);
+
+  const openBulkImport = () => {
+    setBulkImportRows([]);
+    setBulkImportResult(null);
+    extractInventoryItems.reset();
+    setBulkImportOpen(true);
+  };
+
+  const handleBulkImportFile = (file: File) => {
+    setBulkImportResult(null);
+    extractInventoryItems.mutate(
+      { file, vendorNames },
+      {
+        onSuccess: (items) => setBulkImportRows(items.map(toBulkImportRow(vendors))),
+      },
+    );
+  };
+
+  const updateBulkImportRow = (index: number, patch: Partial<BulkImportRow>) => {
+    setBulkImportRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const removeBulkImportRow = (index: number) => {
+    setBulkImportRows((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  const commitBulkImport = () => {
+    const included = bulkImportRows.filter((r) => r.include && r.name.trim());
+    bulkCreateInventoryItems.mutate(
+      included.map((r) => ({
+        name: r.name.trim(),
+        category: r.category,
+        unit: r.unit || "unit",
+        onHand: r.onHand,
+        par: r.par,
+        vendorId: r.vendorId,
+        costCents: r.cost > 0 ? Math.round(r.cost * 100) : null,
+      })),
+      { onSuccess: (result) => setBulkImportResult(result) },
+    );
+  };
 
   // Vendor dialog
   const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
@@ -774,6 +863,9 @@ function InventoryPage() {
                 </Button>
                 <Button variant="outline" onClick={openAddItem}>
                   <Plus className="h-4 w-4" /> Add item
+                </Button>
+                <Button variant="outline" onClick={openBulkImport}>
+                  <Upload className="h-4 w-4" /> Bulk import
                 </Button>
                 <Button variant="outline" onClick={() => setAgentOpen(true)}>
                   <Settings2 className="h-4 w-4" /> AI agent
@@ -1574,6 +1666,222 @@ function InventoryPage() {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk import dialog */}
+      <Dialog open={bulkImportOpen} onOpenChange={setBulkImportOpen}>
+        <DialogContent className="sm:max-w-[900px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Bulk import inventory items</DialogTitle>
+            <DialogDescription>
+              Upload a photo or PDF of a supplier price list, order guide, or stock count sheet —
+              Claude reads it and lists what it finds below. Nothing is added until you review and
+              confirm.
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkImportResult ? (
+            <div className="space-y-3 py-4">
+              <p className="text-sm">
+                Added <strong>{bulkImportResult.created}</strong> item
+                {bulkImportResult.created === 1 ? "" : "s"}.
+              </p>
+              {bulkImportResult.failed.length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <p className="font-medium text-amber-900">
+                    {bulkImportResult.failed.length} row
+                    {bulkImportResult.failed.length === 1 ? "" : "s"} skipped:
+                  </p>
+                  <ul className="mt-1 list-disc pl-5 text-amber-900">
+                    {bulkImportResult.failed.map((f, i) => (
+                      <li key={i}>
+                        {f.name} — {f.error}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : bulkImportRows.length > 0 ? (
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto py-2">
+              <p className="text-xs text-stone-500">
+                {bulkImportRows.length} item{bulkImportRows.length === 1 ? "" : "s"} found. Edit
+                anything Claude got wrong, uncheck rows to skip, then confirm.
+              </p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>On hand</TableHead>
+                    <TableHead>Par</TableHead>
+                    <TableHead>Cost/unit ($)</TableHead>
+                    <TableHead className="w-8"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bulkImportRows.map((row, i) => (
+                    <TableRow key={i} className={row.include ? "" : "opacity-40"}>
+                      <TableCell>
+                        <Checkbox
+                          checked={row.include}
+                          onCheckedChange={(v) => updateBulkImportRow(i, { include: !!v })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 min-w-[160px]"
+                          value={row.name}
+                          onChange={(e) => updateBulkImportRow(i, { name: e.target.value })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          value={row.category}
+                          onChange={(e) => updateBulkImportRow(i, { category: e.target.value })}
+                          className="h-8 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                        >
+                          {CATEGORIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          value={row.vendorId ?? ""}
+                          onChange={(e) =>
+                            updateBulkImportRow(i, { vendorId: e.target.value || null })
+                          }
+                          className="h-8 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                        >
+                          <option value="">No vendor</option>
+                          {vendors.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-20"
+                          value={row.unit}
+                          placeholder="case, lb…"
+                          onChange={(e) => updateBulkImportRow(i, { unit: e.target.value })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-16"
+                          type="number"
+                          value={row.onHand}
+                          onChange={(e) =>
+                            updateBulkImportRow(i, { onHand: parseInt(e.target.value) || 0 })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-16"
+                          type="number"
+                          value={row.par}
+                          onChange={(e) =>
+                            updateBulkImportRow(i, { par: parseInt(e.target.value) || 0 })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-20"
+                          type="number"
+                          step="0.01"
+                          value={row.cost}
+                          onChange={(e) =>
+                            updateBulkImportRow(i, { cost: parseFloat(e.target.value) || 0 })
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => removeBulkImportRow(i)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="py-6">
+              <label
+                htmlFor="bulk-import-file"
+                className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-10 text-center ${
+                  extractInventoryItems.isPending
+                    ? "border-stone-200 opacity-60"
+                    : "cursor-pointer border-stone-300 hover:border-stone-400"
+                }`}
+              >
+                <Upload
+                  className={`h-6 w-6 text-stone-400 ${extractInventoryItems.isPending ? "animate-pulse" : ""}`}
+                />
+                <p className="text-sm font-medium">
+                  {extractInventoryItems.isPending
+                    ? "Reading document…"
+                    : "Click to upload a photo or PDF"}
+                </p>
+                <p className="text-xs text-stone-500">
+                  Supplier price lists, order guides, stock count sheets — up to 15MB
+                </p>
+                <input
+                  id="bulk-import-file"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                  className="hidden"
+                  disabled={extractInventoryItems.isPending}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleBulkImportFile(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {extractInventoryItems.isError && (
+                <p className="mt-3 text-center text-sm text-destructive">
+                  {(extractInventoryItems.error as Error).message}
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkImportOpen(false)}>
+              {bulkImportResult ? "Close" : "Cancel"}
+            </Button>
+            {bulkImportRows.length > 0 && !bulkImportResult && (
+              <Button
+                onClick={commitBulkImport}
+                disabled={
+                  bulkCreateInventoryItems.isPending ||
+                  bulkImportRows.filter((r) => r.include && r.name.trim()).length === 0
+                }
+              >
+                {bulkCreateInventoryItems.isPending
+                  ? "Adding…"
+                  : `Add ${bulkImportRows.filter((r) => r.include).length} item${bulkImportRows.filter((r) => r.include).length === 1 ? "" : "s"}`}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

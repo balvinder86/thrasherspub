@@ -414,6 +414,130 @@ export function useCreateInventoryItem() {
   });
 }
 
+export type ExtractedInventoryItem = {
+  name: string;
+  category: string | null;
+  unit: string | null;
+  quantity: number | null;
+  unitCost: number | null;
+  vendorGuess: string | null;
+};
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // dataURL looks like "data:image/png;base64,AAAA..." — Claude's
+      // API wants just the base64 payload, not the data: prefix.
+      const result = reader.result as string;
+      const commaIdx = result.indexOf(",");
+      resolve(commaIdx === -1 ? result : result.slice(commaIdx + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Real Claude-drafted extraction from an uploaded photo or document
+// (supplier price list, order guide, handwritten count sheet) — reads
+// the image/PDF directly, no separate OCR step. Extraction only:
+// nothing is written to the database until the owner reviews and
+// commits via useBulkCreateInventoryItems below.
+export function useExtractInventoryItems() {
+  const restaurantId = useCurrentRestaurantId();
+  return useMutation({
+    mutationFn: async (input: {
+      file: File;
+      vendorNames: string[];
+    }): Promise<ExtractedInventoryItem[]> => {
+      if (!restaurantId) throw new Error("no current restaurant");
+      const base64 = await fileToBase64(input.file);
+      const { data, error } = await supabase.functions.invoke("inventory-bulk-import", {
+        body: {
+          restaurant_id: restaurantId,
+          file_base64: base64,
+          media_type: input.file.type,
+          vendor_names: input.vendorNames,
+        },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ?? error?.message ?? "extraction failed",
+        );
+      }
+      return (data as { items: ExtractedInventoryItem[] }).items;
+    },
+  });
+}
+
+export type BulkCreateResult = {
+  created: number;
+  failed: { name: string; error: string }[];
+};
+
+// Reuses the exact same three-table insert shape as
+// useCreateInventoryItem (ingredients + ingredient_stock + par_levels)
+// per row, run concurrently with independent error handling — one bad
+// or duplicate-name row (the `ingredients` unique(restaurant_id, name)
+// constraint) is reported and skipped rather than failing the whole
+// batch, since a bulk import is exactly the case where a few rows
+// colliding with existing items is the expected common case.
+export function useBulkCreateInventoryItems() {
+  const restaurantId = useCurrentRestaurantId();
+  const locationId = useCurrentLocationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: InventoryItemInput[]): Promise<BulkCreateResult> => {
+      if (!restaurantId || !locationId) throw new Error("no current restaurant/location");
+
+      const results = await Promise.allSettled(
+        rows.map(async (row) => {
+          const { data: ingredient, error: ingErr } = await supabase
+            .from("ingredients")
+            .insert({
+              restaurant_id: restaurantId,
+              name: row.name,
+              category: row.category,
+              unit: row.unit,
+              unit_cost_cents: row.costCents,
+              vendor_id: row.vendorId,
+            })
+            .select("id")
+            .single();
+          if (ingErr) throw new Error(ingErr.message);
+
+          const [stockRes, parRes] = await Promise.all([
+            supabase.from("ingredient_stock").insert({
+              restaurant_id: restaurantId,
+              location_id: locationId,
+              ingredient_id: ingredient.id,
+              on_hand_quantity: row.onHand,
+            }),
+            supabase.from("par_levels").insert({
+              restaurant_id: restaurantId,
+              location_id: locationId,
+              ingredient_id: ingredient.id,
+              par_quantity: row.par,
+            }),
+          ]);
+          if (stockRes.error) throw new Error(stockRes.error.message);
+          if (parRes.error) throw new Error(parRes.error.message);
+        }),
+      );
+
+      const failed: { name: string; error: string }[] = [];
+      let created = 0;
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") created++;
+        else failed.push({ name: rows[i].name, error: r.reason?.message ?? String(r.reason) });
+      });
+
+      return { created, failed };
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory-items"] }),
+  });
+}
+
 // Edits an existing item's ingredient-level fields (name, category, unit,
 // cost, vendor). On-hand and par already have their own real mutations
 // (useUpdateOnHand/useUpdatePar, used by the inline steppers) — the Edit
