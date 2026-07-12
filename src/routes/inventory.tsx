@@ -262,10 +262,12 @@ function InventoryPage() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [bulkImportRows, setBulkImportRows] = useState<BulkImportRow[]>([]);
   const [bulkImportResult, setBulkImportResult] = useState<BulkCreateResult | null>(null);
+  const [bulkImportVendorId, setBulkImportVendorId] = useState("");
 
   const openBulkImport = () => {
     setBulkImportRows([]);
     setBulkImportResult(null);
+    setBulkImportVendorId("");
     extractInventoryItems.reset();
     setBulkImportOpen(true);
   };
@@ -286,6 +288,19 @@ function InventoryPage() {
 
   const removeBulkImportRow = (index: number) => {
     setBulkImportRows((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  // Applies one vendor to every currently-checked row at once — the
+  // common case for a bulk import, since most of a single supplier's
+  // price list/order guide shares one vendor. Reuses each row's
+  // "include" checkbox as the selection, rather than a second
+  // checkbox column, since the rows you'd bulk-assign a vendor to are
+  // exactly the rows you're planning to import anyway.
+  const applyBulkImportVendor = () => {
+    if (!bulkImportVendorId) return;
+    setBulkImportRows((rows) =>
+      rows.map((r) => (r.include ? { ...r, vendorId: bulkImportVendorId } : r)),
+    );
   };
 
   const commitBulkImport = () => {
@@ -1710,6 +1725,31 @@ function InventoryPage() {
                 {bulkImportRows.length} item{bulkImportRows.length === 1 ? "" : "s"} found. Edit
                 anything Claude got wrong, uncheck rows to skip, then confirm.
               </p>
+
+              <Card className="border-stone-200 bg-[hsl(var(--cream))] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-[hsl(var(--ink))]">
+                    {bulkImportRows.filter((r) => r.include).length} row
+                    {bulkImportRows.filter((r) => r.include).length === 1 ? "" : "s"} checked
+                  </span>
+                  <select
+                    value={bulkImportVendorId}
+                    onChange={(e) => setBulkImportVendorId(e.target.value)}
+                    className="h-9 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                  >
+                    <option value="">Assign vendor to checked rows…</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button size="sm" disabled={!bulkImportVendorId} onClick={applyBulkImportVendor}>
+                    Assign
+                  </Button>
+                </div>
+              </Card>
+
               <Table>
                 <TableHeader>
                   <TableRow>
