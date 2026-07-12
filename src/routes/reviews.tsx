@@ -439,6 +439,22 @@ function ReviewsPage() {
     <>
       <Topbar eyebrow="Guest sentiment" title="Reviews" />
       <main className="space-y-8 px-6 py-8">
+        {connection?.lastScanPanelHealthy === false && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Google's reviews panel isn't showing its own reviews</p>
+              <p className="mt-1 text-amber-800">
+                Google reports {connection.lastScanGoogleReviewCount?.toLocaleString()} real reviews
+                for this business, but its own reviews panel is rendering none — a bug on Google's
+                side, confirmed by direct inspection, not something wrong with your connection. New
+                reviews may not get drafted and approved replies may fail to post until this clears.
+                Nothing to do here; this banner will disappear once Google's panel recovers.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* KPI row */}
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <KpiCard

@@ -81,6 +81,13 @@ export type ReviewAgentConnection = {
   cookiesValidAt: string | null;
   lastSyncedAt: string | null;
   autoSend5Star: boolean;
+  // Set by the most recent scan — null until the first scan runs.
+  // false means Google's own reviews panel is self-contradicting
+  // (real nonzero review count, but no reviews render on the "All"
+  // tab), a real Google-side bug, not something wrong with the
+  // connection itself.
+  lastScanGoogleReviewCount: number | null;
+  lastScanPanelHealthy: boolean | null;
 };
 
 // null means "not connected yet" — no fake default state, the Agent
@@ -95,7 +102,7 @@ export function useReviewAgentConnection() {
       const { data: cred, error: credErr } = await supabase
         .from("review_agent_credentials")
         .select(
-          "business_profile_id, search_query, cookies_captured_at, cookies_valid_at, last_synced_at",
+          "business_profile_id, search_query, cookies_captured_at, cookies_valid_at, last_synced_at, last_scan_google_review_count, last_scan_panel_healthy",
         )
         .eq("provider", "google")
         .maybeSingle();
@@ -118,6 +125,8 @@ export function useReviewAgentConnection() {
         cookiesValidAt: cred.cookies_valid_at,
         lastSyncedAt: cred.last_synced_at,
         autoSend5Star: settings?.auto_send_5_star ?? false,
+        lastScanGoogleReviewCount: cred.last_scan_google_review_count,
+        lastScanPanelHealthy: cred.last_scan_panel_healthy,
       };
     },
   });

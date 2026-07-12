@@ -95,6 +95,26 @@ export async function markCookiesValid(credentialId: string, at: Date) {
   if (error) throw new Error(`update cookies_valid_at failed: ${error.message}`);
 }
 
+// Records what the most recent scan actually saw in Google's reviews
+// panel — lets the Reviews page show an honest banner when Google's
+// own UI is contradicting itself (real nonzero review count, but the
+// panel renders no reviews at all) instead of silently drafting
+// nothing and leaving the owner to wonder why.
+export async function recordPanelHealth(
+  credentialId: string,
+  googleReviewCount: number | null,
+  panelHealthy: boolean,
+) {
+  const { error } = await supabase
+    .from("review_agent_credentials")
+    .update({
+      last_scan_google_review_count: googleReviewCount,
+      last_scan_panel_healthy: panelHealthy,
+    })
+    .eq("id", credentialId);
+  if (error) throw new Error(`update panel health failed: ${error.message}`);
+}
+
 export async function findExistingReview(
   restaurantId: string,
   reviewerName: string,

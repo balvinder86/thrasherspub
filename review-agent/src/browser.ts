@@ -54,7 +54,10 @@ async function withGoogleReviewsPanel<T>(
     await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
     await SLEEP(3000);
 
-    await page.locator('a:has-text("Read reviews"), button:has-text("Read reviews")').first().click();
+    await page
+      .locator('a:has-text("Read reviews"), button:has-text("Read reviews")')
+      .first()
+      .click();
     await page.waitForSelector(`iframe[src*="${businessProfileId}"]`, { timeout: 15000 });
     await SLEEP(2000);
 
@@ -145,6 +148,44 @@ export type ScannedReview = ExtractedReview & {
   autoPostError?: string;
 };
 
+// Detects a real, confirmed Google-side bug: the reviews panel
+// sometimes stops rendering its review list entirely (both
+// "Unreplied" and "All" tabs show "You have no reviews yet") while
+// the header star-rating stat right above it still shows the real,
+// correct, nonzero review count — a direct contradiction within
+// Google's own UI. This is NOT "zero unreplied reviews" (a normal,
+// healthy, all-caught-up state) — only the "All" tab also coming up
+// empty despite a nonzero total count means the panel itself is
+// broken, so that's the tab this checks, not Unreplied.
+async function checkPanelHealth(
+  frame: () => FrameLocator,
+): Promise<{ googleReviewCount: number | null; panelHealthy: boolean }> {
+  const overviewText = await frame().locator("body").innerText();
+  // Google renders the parenthesis, number, and the word "reviews" as
+  // separate lines in innerText (confirmed by direct inspection:
+  // "(\n818 reviews\n)") — \s tolerates that instead of assuming
+  // everything sits on one line.
+  const countMatch = overviewText.match(/\(\s*([\d,]+)\s*reviews?\s*\)/);
+  const googleReviewCount = countMatch ? parseInt(countMatch[1].replace(/,/g, ""), 10) : null;
+
+  if (googleReviewCount === null || googleReviewCount === 0) {
+    return { googleReviewCount, panelHealthy: true };
+  }
+
+  await frame()
+    .getByText("All", { exact: true })
+    .first()
+    .click()
+    .catch(() => {});
+  await SLEEP(2500);
+  const allTabText = await frame()
+    .locator("body")
+    .innerText()
+    .catch(() => "");
+
+  return { googleReviewCount, panelHealthy: !allTabText.includes("You have no reviews yet") };
+}
+
 // Reads the currently-unreplied reviews, up to `cap`, and generates a
 // Claude draft for each. Read-only by default — the on-demand "Check
 // now" button and the periodic background sweep both call this. When
@@ -159,7 +200,12 @@ export async function scanUnrepliedReviews(
   generateReply: GenerateReplyFn,
   cap: number,
   autoSend5Star: boolean,
-): Promise<{ found: number; extracted: ScannedReview[] }> {
+): Promise<{
+  found: number;
+  extracted: ScannedReview[];
+  googleReviewCount: number | null;
+  panelHealthy: boolean;
+}> {
   return withGoogleReviewsPanel(cookies, businessProfileId, searchQuery, async (_page, frame) => {
     const found = await loadAllUnrepliedReviews(frame);
     const total = Math.min(found, cap);
@@ -189,7 +235,9 @@ export async function scanUnrepliedReviews(
       }
     }
 
-    return { found, extracted };
+    const { googleReviewCount, panelHealthy } = await checkPanelHealth(frame);
+
+    return { found, extracted, googleReviewCount, panelHealthy };
   });
 }
 

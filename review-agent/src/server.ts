@@ -16,6 +16,7 @@ import {
   getCredentialsForRestaurant,
   getGoogleCookies,
   markCookiesValid,
+  recordPanelHealth,
   findExistingReview,
   insertDraftReview,
   getReviewForPosting,
@@ -50,7 +51,7 @@ async function readJsonBody(
 async function scanConfig(config: RestaurantReviewConfig) {
   const cookies = await getGoogleCookies(config.vaultSecretName);
 
-  const { found, extracted } = await scanUnrepliedReviews(
+  const { found, extracted, googleReviewCount, panelHealthy } = await scanUnrepliedReviews(
     cookies,
     config.businessProfileId,
     config.searchQuery,
@@ -61,6 +62,7 @@ async function scanConfig(config: RestaurantReviewConfig) {
   );
 
   await markCookiesValid(config.credentialId, new Date());
+  await recordPanelHealth(config.credentialId, googleReviewCount, panelHealthy);
 
   let drafted = 0;
   let autoPosted = 0;
