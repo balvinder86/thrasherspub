@@ -350,44 +350,98 @@ function ProductMixPage() {
                 Week-over-week
               </p>
               <h3 className="font-serif text-2xl">Top movers</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                This week vs. the prior week, ranked by real revenue swing
+              </p>
             </div>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {topMovers.map((m) => {
-              const up = m.revenueDelta >= 0;
-              return (
-                <Card
-                  key={m.id}
-                  className="p-4 cursor-pointer hover:border-[#c4654a]/40 transition"
-                  onClick={() => setSelected(m)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{m.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {m.category} · {m.soldWk} sold · {m.unitDelta >= 0 ? "+" : ""}
-                        {m.unitDelta.toFixed(0)}% units
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={`gap-1 ${up ? "border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10" : "border-[#c17c74]/40 text-[#a8453a] bg-[#c17c74]/10"}`}
-                    >
-                      {up ? (
-                        <ArrowUpRight className="h-3 w-3" />
-                      ) : (
-                        <ArrowDownRight className="h-3 w-3" />
-                      )}
-                      {up ? "+" : "-"}$
-                      {Math.abs(m.revenueDelta).toLocaleString("en-US", {
-                        maximumFractionDigits: 0,
-                      })}
-                    </Badge>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          <Card className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
+                  <th rowSpan={2} className="text-left py-2 px-3 font-medium align-bottom">
+                    Item
+                  </th>
+                  <th rowSpan={2} className="text-left py-2 px-3 font-medium align-bottom">
+                    Category
+                  </th>
+                  <th colSpan={2} className="text-center py-2 px-3 font-medium border-l">
+                    Units sold
+                  </th>
+                  <th colSpan={2} className="text-center py-2 px-3 font-medium border-l">
+                    Revenue
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="text-right py-2 px-3 font-medium align-bottom border-l"
+                  >
+                    Change
+                  </th>
+                </tr>
+                <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
+                  <th className="text-right py-1.5 px-3 font-normal border-l">Prev wk</th>
+                  <th className="text-right py-1.5 px-3 font-normal">This wk</th>
+                  <th className="text-right py-1.5 px-3 font-normal border-l">Prev wk</th>
+                  <th className="text-right py-1.5 px-3 font-normal">This wk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topMovers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
+                      No week-over-week sales movement yet.
+                    </td>
+                  </tr>
+                ) : (
+                  topMovers.map((m) => {
+                    const up = m.revenueDelta >= 0;
+                    return (
+                      <tr
+                        key={m.id}
+                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
+                        onClick={() => setSelected(m)}
+                      >
+                        <td className="py-3 px-3 font-medium">{m.name}</td>
+                        <td className="py-3 px-3">
+                          <Badge variant="outline" className="font-normal">
+                            {m.category}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-muted-foreground border-l">
+                          {m.soldPrevWk}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">{m.soldWk}</td>
+                        <td className="py-3 px-3 text-right font-mono text-muted-foreground border-l">
+                          {usd(m.revenuePrevWk)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">{usd(m.revenueWk)}</td>
+                        <td className="py-3 px-3 text-right border-l">
+                          <Badge
+                            variant="outline"
+                            className={`gap-1 ${up ? "border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10" : "border-[#c17c74]/40 text-[#a8453a] bg-[#c17c74]/10"}`}
+                          >
+                            {up ? (
+                              <ArrowUpRight className="h-3 w-3" />
+                            ) : (
+                              <ArrowDownRight className="h-3 w-3" />
+                            )}
+                            {up ? "+" : "-"}$
+                            {Math.abs(m.revenueDelta).toLocaleString("en-US", {
+                              maximumFractionDigits: 0,
+                            })}
+                          </Badge>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {m.unitDelta >= 0 ? "+" : ""}
+                            {m.unitDelta.toFixed(0)}% units
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </Card>
         </section>
 
         {/* Tabs: detailed views */}
