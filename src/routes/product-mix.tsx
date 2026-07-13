@@ -181,8 +181,8 @@ function ProductMixPage() {
   }, [items]);
 
   const totals = useMemo(() => {
-    const revenue = items.reduce((s, i) => s + i.price * i.soldWk, 0);
-    const prevRevenue = items.reduce((s, i) => s + i.price * i.soldPrevWk, 0);
+    const revenue = items.reduce((s, i) => s + i.revenueWk, 0);
+    const prevRevenue = items.reduce((s, i) => s + i.revenuePrevWk, 0);
     const cogs = items.reduce((s, i) => s + (i.cost ?? 0) * i.soldWk, 0);
     const units = items.reduce((s, i) => s + i.soldWk, 0);
     const prevUnits = items.reduce((s, i) => s + i.soldPrevWk, 0);
@@ -490,7 +490,7 @@ function ProductMixPage() {
                             </span>
                           </td>
                           <td className="py-3 px-3 text-right font-mono">
-                            ${(i.soldWk * i.price).toLocaleString()}
+                            ${i.revenueWk.toLocaleString()}
                           </td>
                           <td className="py-3 px-3">
                             <Badge
@@ -523,14 +523,12 @@ function ProductMixPage() {
             <div className="grid md:grid-cols-2 gap-4">
               {categories.map((c) => {
                 const list = items.filter((i) => i.category === c);
-                const rev = list.reduce((s, i) => s + i.price * i.soldWk, 0);
+                const rev = list.reduce((s, i) => s + i.revenueWk, 0);
                 const cogs = list.reduce((s, i) => s + (i.cost ?? 0) * i.soldWk, 0);
                 const units = list.reduce((s, i) => s + i.soldWk, 0);
                 const share = totals.revenue > 0 ? (rev / totals.revenue) * 100 : 0;
                 const priced = list.filter((i) => i.cost != null).length;
-                const top = [...list]
-                  .sort((a, b) => b.soldWk * b.price - a.soldWk * a.price)
-                  .slice(0, 3);
+                const top = [...list].sort((a, b) => b.revenueWk - a.revenueWk).slice(0, 3);
                 return (
                   <Card key={c} className="p-5">
                     <div className="flex items-start justify-between mb-4">
@@ -858,7 +856,7 @@ function ProductMixPage() {
                         : "—"
                     }
                   />
-                  <Stat label="Revenue / wk" value={usd(selected.soldWk * selected.price)} />
+                  <Stat label="Revenue / wk" value={usd(selected.revenueWk)} />
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">

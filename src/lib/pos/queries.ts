@@ -54,6 +54,11 @@ export type RealMenuItem = {
   cost?: number;
   soldWk: number;
   soldPrevWk: number;
+  // Real dollars Toast recorded for this item's sales (pmix_sales.net_sales_cents),
+  // not price x quantity — diverges from that whenever price changed, or a sale
+  // had a discount/comp/modifier surcharge. Use this for revenue, never price*qty.
+  revenueWk: number;
+  revenuePrevWk: number;
 };
 
 // Popularity for `days` (default a week) vs. the prior equal-length period,
@@ -81,13 +86,13 @@ export function useProductMix(days = 7) {
           .eq("active", true),
         supabase
           .from("pmix_sales")
-          .select("menu_item_pos_id, quantity_sold")
+          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
           .in("location_id", locationIds!)
           .gte("business_date", isoDate(periodStart))
           .lte("business_date", isoDate(today)),
         supabase
           .from("pmix_sales")
-          .select("menu_item_pos_id, quantity_sold")
+          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
           .in("location_id", locationIds!)
           .gte("business_date", isoDate(prevStart))
           .lt("business_date", isoDate(periodStart)),
@@ -101,13 +106,25 @@ export function useProductMix(days = 7) {
       if (prevRes.error) throw prevRes.error;
       if (recipeRes.error) throw recipeRes.error;
 
-      const sumBy = (rows: { menu_item_pos_id: string; quantity_sold: number }[]) => {
+      const sumQtyBy = (rows: { menu_item_pos_id: string; quantity_sold: number }[]) => {
         const map = new Map<string, number>();
-        for (const r of rows) map.set(r.menu_item_pos_id, (map.get(r.menu_item_pos_id) ?? 0) + Number(r.quantity_sold));
+        for (const r of rows)
+          map.set(r.menu_item_pos_id, (map.get(r.menu_item_pos_id) ?? 0) + Number(r.quantity_sold));
         return map;
       };
-      const current = sumBy(currentRes.data ?? []);
-      const prev = sumBy(prevRes.data ?? []);
+      const sumRevenueBy = (rows: { menu_item_pos_id: string; net_sales_cents: number }[]) => {
+        const map = new Map<string, number>();
+        for (const r of rows)
+          map.set(
+            r.menu_item_pos_id,
+            (map.get(r.menu_item_pos_id) ?? 0) + Number(r.net_sales_cents),
+          );
+        return map;
+      };
+      const current = sumQtyBy(currentRes.data ?? []);
+      const prev = sumQtyBy(prevRes.data ?? []);
+      const currentRevenueCents = sumRevenueBy(currentRes.data ?? []);
+      const prevRevenueCents = sumRevenueBy(prevRes.data ?? []);
 
       const recipeCostCents = new Map<string, number>();
       for (const row of (recipeRes.data ?? []) as any[]) {
@@ -129,6 +146,8 @@ export function useProductMix(days = 7) {
           cost: costCents != null ? costCents / 100 : undefined,
           soldWk: current.get(m.pos_id) ?? 0,
           soldPrevWk: prev.get(m.pos_id) ?? 0,
+          revenueWk: (currentRevenueCents.get(m.pos_id) ?? 0) / 100,
+          revenuePrevWk: (prevRevenueCents.get(m.pos_id) ?? 0) / 100,
         };
       });
     },
@@ -138,7 +157,15 @@ export function useProductMix(days = 7) {
 export function useUpdateItemCost() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ locationId, posId, costCents }: { locationId: string; posId: string; costCents: number | null }) => {
+    mutationFn: async ({
+      locationId,
+      posId,
+      costCents,
+    }: {
+      locationId: string;
+      posId: string;
+      costCents: number | null;
+    }) => {
       const { error } = await supabase
         .from("menu_items")
         .update({ cost_cents: costCents })
@@ -285,7 +312,8 @@ export function useSalesTrend(days = 7) {
       if (error) throw error;
 
       const byDate = new Map<string, number>();
-      for (const r of data ?? []) byDate.set(r.business_date, (byDate.get(r.business_date) ?? 0) + Number(r.net_sales_cents));
+      for (const r of data ?? [])
+        byDate.set(r.business_date, (byDate.get(r.business_date) ?? 0) + Number(r.net_sales_cents));
 
       const out: DailyRevenue[] = [];
       for (let i = days - 1; i >= 0; i--) {
