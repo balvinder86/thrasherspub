@@ -199,18 +199,25 @@ function ProductMixPage() {
     };
   }, [items, popMedian, marginMedian, orderCount]);
 
+  // Ranked by real dollar swing (revenueWk - revenuePrevWk), not raw
+  // unit-count % change — a %-based ranking lets a 1->2-unit item
+  // ("+100%") bury a real, meaningful move like 500->550 units ("+10%"
+  // but a far bigger actual sales impact). Items with zero sales in
+  // both periods are excluded — no real movement to report.
   const topMovers = useMemo(() => {
     return [...items]
+      .filter((i) => i.soldWk > 0 || i.soldPrevWk > 0)
       .map((i) => ({
         ...i,
-        delta:
+        revenueDelta: i.revenueWk - i.revenuePrevWk,
+        unitDelta:
           i.soldPrevWk > 0
             ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100
             : i.soldWk > 0
               ? 100
               : 0,
       }))
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      .sort((a, b) => Math.abs(b.revenueDelta) - Math.abs(a.revenueDelta))
       .slice(0, 6);
   }, [items]);
 
@@ -347,7 +354,7 @@ function ProductMixPage() {
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {topMovers.map((m) => {
-              const up = m.delta >= 0;
+              const up = m.revenueDelta >= 0;
               return (
                 <Card
                   key={m.id}
@@ -358,7 +365,8 @@ function ProductMixPage() {
                     <div>
                       <div className="font-medium">{m.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {m.category} · {m.soldWk} sold
+                        {m.category} · {m.soldWk} sold · {m.unitDelta >= 0 ? "+" : ""}
+                        {m.unitDelta.toFixed(0)}% units
                       </div>
                     </div>
                     <Badge
@@ -370,8 +378,10 @@ function ProductMixPage() {
                       ) : (
                         <ArrowDownRight className="h-3 w-3" />
                       )}
-                      {up ? "+" : ""}
-                      {m.delta.toFixed(1)}%
+                      {up ? "+" : "-"}$
+                      {Math.abs(m.revenueDelta).toLocaleString("en-US", {
+                        maximumFractionDigits: 0,
+                      })}
                     </Badge>
                   </div>
                 </Card>
