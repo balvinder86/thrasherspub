@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useProductMix,
   useUpdateItemCost,
-  useSalesTrend,
   useOrderCount,
   useLastSyncTime,
   type RealMenuItem,
@@ -35,8 +34,6 @@ import {
   Pencil,
 } from "lucide-react";
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
   Cell,
   Legend,
@@ -150,7 +147,6 @@ function ProductMixPage() {
 
   const days = rangeToDays(range);
   const { data: items = [], isLoading, error } = useProductMix(days);
-  const { data: dailyRevenue = [] } = useSalesTrend(days);
   const { data: orderCount = 0 } = useOrderCount(days);
   const updateCost = useUpdateItemCost();
 
@@ -283,51 +279,6 @@ function ProductMixPage() {
           />
           <Kpi label="Avg check" value={`$${totals.avgCheck.toFixed(2)}`} icon={Tag} />
           <Kpi label="Star items" value={`${totals.stars}`} icon={Award} />
-        </section>
-
-        {/* Daily revenue */}
-        <section className="grid lg:grid-cols-3 gap-6">
-          <Card className="p-6 lg:col-span-3">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-              Daily revenue
-            </p>
-            <h3 className="font-serif text-2xl mb-4">Net sales by day</h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyRevenue}>
-                  <CartesianGrid
-                    stroke="hsl(var(--border))"
-                    strokeDasharray="2 4"
-                    vertical={false}
-                  />
-                  <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                    contentStyle={{
-                      background: "hsl(var(--background))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar
-                    dataKey="revenue"
-                    name="This period"
-                    fill={PALETTE.terracotta}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="lastWeek"
-                    name="Same day, prior week"
-                    fill={PALETTE.amber}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
         </section>
 
         {/* Top movers */}
