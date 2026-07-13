@@ -199,25 +199,13 @@ function ProductMixPage() {
     };
   }, [items, popMedian, marginMedian, orderCount]);
 
-  // Ranked by real dollar swing (revenueWk - revenuePrevWk), not raw
-  // unit-count % change — a %-based ranking lets a 1->2-unit item
-  // ("+100%") bury a real, meaningful move like 500->550 units ("+10%"
-  // but a far bigger actual sales impact). Items with zero sales in
-  // both periods are excluded — no real movement to report.
+  // Top real sellers for whichever period is currently selected
+  // (Today / Last 7 days / Last 28 days / Quarter) — no prior-period
+  // comparison, just real revenue and units for the selection itself.
   const topMovers = useMemo(() => {
     return [...items]
-      .filter((i) => i.soldWk > 0 || i.soldPrevWk > 0)
-      .map((i) => ({
-        ...i,
-        revenueDelta: i.revenueWk - i.revenuePrevWk,
-        unitDelta:
-          i.soldPrevWk > 0
-            ? ((i.soldWk - i.soldPrevWk) / i.soldPrevWk) * 100
-            : i.soldWk > 0
-              ? 100
-              : 0,
-      }))
-      .sort((a, b) => Math.abs(b.revenueDelta) - Math.abs(a.revenueDelta))
+      .filter((i) => i.soldWk > 0)
+      .sort((a, b) => b.revenueWk - a.revenueWk)
       .slice(0, 6);
   }, [items]);
 
@@ -347,101 +335,44 @@ function ProductMixPage() {
           <div className="flex items-end justify-between mb-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                Week-over-week
+                {range}
               </p>
               <h3 className="font-serif text-2xl">Top movers</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                This week vs. the prior week, ranked by real revenue swing
+                Best real sellers for the selected period, by revenue
               </p>
             </div>
           </div>
-          <Card className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
-                  <th rowSpan={2} className="text-left py-2 px-3 font-medium align-bottom">
-                    Item
-                  </th>
-                  <th rowSpan={2} className="text-left py-2 px-3 font-medium align-bottom">
-                    Category
-                  </th>
-                  <th colSpan={2} className="text-center py-2 px-3 font-medium border-l">
-                    Units sold
-                  </th>
-                  <th colSpan={2} className="text-center py-2 px-3 font-medium border-l">
-                    Revenue
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="text-right py-2 px-3 font-medium align-bottom border-l"
-                  >
-                    Change
-                  </th>
-                </tr>
-                <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b">
-                  <th className="text-right py-1.5 px-3 font-normal border-l">Prev wk</th>
-                  <th className="text-right py-1.5 px-3 font-normal">This wk</th>
-                  <th className="text-right py-1.5 px-3 font-normal border-l">Prev wk</th>
-                  <th className="text-right py-1.5 px-3 font-normal">This wk</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topMovers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
-                      No week-over-week sales movement yet.
-                    </td>
-                  </tr>
-                ) : (
-                  topMovers.map((m) => {
-                    const up = m.revenueDelta >= 0;
-                    return (
-                      <tr
-                        key={m.id}
-                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
-                        onClick={() => setSelected(m)}
-                      >
-                        <td className="py-3 px-3 font-medium">{m.name}</td>
-                        <td className="py-3 px-3">
-                          <Badge variant="outline" className="font-normal">
-                            {m.category}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-muted-foreground border-l">
-                          {m.soldPrevWk}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">{m.soldWk}</td>
-                        <td className="py-3 px-3 text-right font-mono text-muted-foreground border-l">
-                          {usd(m.revenuePrevWk)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">{usd(m.revenueWk)}</td>
-                        <td className="py-3 px-3 text-right border-l">
-                          <Badge
-                            variant="outline"
-                            className={`gap-1 ${up ? "border-[#87a878]/40 text-[#5a7d4a] bg-[#87a878]/10" : "border-[#c17c74]/40 text-[#a8453a] bg-[#c17c74]/10"}`}
-                          >
-                            {up ? (
-                              <ArrowUpRight className="h-3 w-3" />
-                            ) : (
-                              <ArrowDownRight className="h-3 w-3" />
-                            )}
-                            {up ? "+" : "-"}$
-                            {Math.abs(m.revenueDelta).toLocaleString("en-US", {
-                              maximumFractionDigits: 0,
-                            })}
-                          </Badge>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {m.unitDelta >= 0 ? "+" : ""}
-                            {m.unitDelta.toFixed(0)}% units
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </Card>
+          {topMovers.length === 0 ? (
+            <Card className="p-6 text-center text-sm text-muted-foreground">
+              No sales in this period yet.
+            </Card>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {topMovers.map((m, idx) => (
+                <Card
+                  key={m.id}
+                  className="p-4 cursor-pointer hover:border-[#c4654a]/40 transition"
+                  onClick={() => setSelected(m)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-muted-foreground">#{idx + 1}</span>
+                        <div className="font-medium truncate">{m.name}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {m.category} · {m.soldWk} sold
+                      </div>
+                    </div>
+                    <div className="font-mono font-medium whitespace-nowrap">
+                      {usd(m.revenueWk)}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Tabs: detailed views */}
