@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useProductMix,
@@ -18,6 +18,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Award,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   Filter,
@@ -104,6 +106,8 @@ function rangeToDays(range: string): number {
   }
 }
 
+const ITEMS_PAGE_SIZE = 50;
+
 const PALETTE = {
   ink: "hsl(var(--foreground))",
   terracotta: "#c4654a",
@@ -162,6 +166,20 @@ function ProductMixPage() {
         (q === "" || i.name.toLowerCase().includes(q.toLowerCase())),
     );
   }, [items, cat, q]);
+
+  const [itemsPage, setItemsPage] = useState(1);
+
+  // Any change to what's being filtered should land back on page 1 —
+  // otherwise a narrower filter can strand you on a now-empty page.
+  useEffect(() => {
+    setItemsPage(1);
+  }, [cat, q]);
+
+  const itemsTotalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PAGE_SIZE));
+  const pagedFiltered = useMemo(
+    () => filtered.slice((itemsPage - 1) * ITEMS_PAGE_SIZE, itemsPage * ITEMS_PAGE_SIZE),
+    [filtered, itemsPage],
+  );
 
   const popMedian = useMemo(() => {
     if (items.length === 0) return 0;
@@ -386,7 +404,7 @@ function ProductMixPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((i) => {
+                    {pagedFiltered.map((i) => {
                       const margin = i.cost != null ? i.price - i.cost : null;
                       const marginPct = margin != null ? (margin / i.price) * 100 : null;
                       const wow =
@@ -460,6 +478,38 @@ function ProductMixPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm">
+                <span className="text-muted-foreground">
+                  {filtered.length === 0
+                    ? "0 items"
+                    : `Showing ${(itemsPage - 1) * ITEMS_PAGE_SIZE + 1}–${Math.min(itemsPage * ITEMS_PAGE_SIZE, filtered.length)} of ${filtered.length} item${filtered.length === 1 ? "" : "s"}`}
+                </span>
+                {itemsTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={itemsPage <= 1}
+                      onClick={() => setItemsPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Page {itemsPage} of {itemsTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={itemsPage >= itemsTotalPages}
+                      onClick={() => setItemsPage((p) => Math.min(itemsTotalPages, p + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card>
           </TabsContent>
