@@ -4,7 +4,7 @@
 // sections. No persistence: Search Console's own API already serves
 // historical date-range queries, so there's nothing to snapshot here.
 //
-//   { restaurant_id, view: "overview" | "keywords" | "pages" | "content-gaps" }
+//   { restaurant_id, view: "overview" | "keywords" | "pages" | "content-gaps" | "keyword-detail", query? }
 //
 // Verifies the caller's session JWT, then verifies restaurant
 // membership before touching anything (the service-role client below
@@ -72,7 +72,14 @@ async function queryDimensions(
   startDate: string,
   endDate: string,
   rowLimit: number,
+  exactQueryFilter?: string,
 ): Promise<SearchAnalyticsRow[]> {
+  const body: Record<string, unknown> = { startDate, endDate, dimensions, rowLimit };
+  if (exactQueryFilter) {
+    body.dimensionFilterGroups = [
+      { filters: [{ dimension: "query", operator: "equals", expression: exactQueryFilter }] },
+    ];
+  }
   const res = await fetch(
     `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
     {
@@ -81,14 +88,14 @@ async function queryDimensions(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ startDate, endDate, dimensions, rowLimit }),
+      body: JSON.stringify(body),
     },
   );
-  const body = await res.json();
+  const parsed = await res.json();
   if (!res.ok) {
-    throw new Error(`Search Console API error (${res.status}): ${JSON.stringify(body)}`);
+    throw new Error(`Search Console API error (${res.status}): ${JSON.stringify(parsed)}`);
   }
-  return body.rows ?? [];
+  return parsed.rows ?? [];
 }
 
 function queryOneDimension(
@@ -179,15 +186,22 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "invalid session" }, 401);
     }
 
-    const { restaurant_id, view } = await req.json();
+    const { restaurant_id, view, query: queryFilter } = await req.json();
     if (!restaurant_id) {
       return json({ ok: false, error: "restaurant_id is required" }, 400);
     }
-    if (!["overview", "keywords", "pages", "content-gaps"].includes(view)) {
+    if (!["overview", "keywords", "pages", "content-gaps", "keyword-detail"].includes(view)) {
       return json(
-        { ok: false, error: "view must be 'overview', 'keywords', 'pages', or 'content-gaps'" },
+        {
+          ok: false,
+          error:
+            "view must be 'overview', 'keywords', 'pages', 'content-gaps', or 'keyword-detail'",
+        },
         400,
       );
+    }
+    if (view === "keyword-detail" && !queryFilter) {
+      return json({ ok: false, error: "query is required for view 'keyword-detail'" }, 400);
     }
 
     const { data: membership } = await supabase
@@ -298,6 +312,57 @@ Deno.serve(async (req) => {
         500,
       );
       return json({ ok: true, connected: true, rows: computeContentGaps(rows) }, 200);
+    }
+
+    if (view === "keyword-detail") {
+      const trendStart = new Date(end);
+      trendStart.setDate(trendStart.getDate() - 56); // 8 weeks, matches the Overview chart
+      const pageStart = new Date(end);
+      pageStart.setDate(pageStart.getDate() - 28);
+
+      const [trendRows, pageRows] = await Promise.all([
+        queryDimensions(
+          googleAccessToken,
+          cred.site_url,
+          ["date"],
+          isoDate(trendStart),
+          isoDate(end),
+          56,
+          queryFilter,
+        ),
+        queryDimensions(
+          googleAccessToken,
+          cred.site_url,
+          ["page"],
+          isoDate(pageStart),
+          isoDate(end),
+          10,
+          queryFilter,
+        ),
+      ]);
+
+      const bestPage = [...pageRows].sort((a, b) => b.clicks - a.clicks)[0] ?? null;
+      const totalClicks = trendRows.reduce((s, r) => s + r.clicks, 0);
+      const totalImpressions = trendRows.reduce((s, r) => s + r.impressions, 0);
+      const positionSum = trendRows.reduce((s, r) => s + r.position * r.impressions, 0);
+
+      return json(
+        {
+          ok: true,
+          connected: true,
+          trend: trendRows.map((r) => ({
+            date: r.keys[0],
+            clicks: r.clicks,
+            impressions: r.impressions,
+            position: r.position,
+          })),
+          currentBestPage: bestPage ? bestPage.keys[0] : null,
+          totalClicks,
+          totalImpressions,
+          avgPosition: totalImpressions > 0 ? positionSum / totalImpressions : null,
+        },
+        200,
+      );
     }
 
     // view === "pages"

@@ -154,6 +154,52 @@ export function useSearchConsoleContentGaps(enabled: boolean) {
   });
 }
 
+export type KeywordTrendPoint = {
+  date: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+};
+
+export type KeywordDetail = {
+  trend: KeywordTrendPoint[];
+  currentBestPage: string | null;
+  totalClicks: number;
+  totalImpressions: number;
+  avgPosition: number | null;
+};
+
+// Real 8-week trend + current best-ranking page for one specific real
+// search query — same Search Console data as the Keywords tab list,
+// filtered server-side to a single query via dimensionFilterGroups.
+export function useSearchConsoleKeywordDetail(query: string | null) {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["search-console-keyword-detail", restaurantId, query],
+    enabled: !!restaurantId && !!query,
+    queryFn: async (): Promise<KeywordDetail> => {
+      const { data, error } = await supabase.functions.invoke("search-console-data", {
+        body: { restaurant_id: restaurantId, view: "keyword-detail", query },
+      });
+      if (error || !(data as { ok?: boolean } | null)?.ok) {
+        throw new Error(
+          (data as { error?: string } | null)?.error ??
+            error?.message ??
+            "could not load keyword detail",
+        );
+      }
+      const body = data as {
+        trend: KeywordTrendPoint[];
+        currentBestPage: string | null;
+        totalClicks: number;
+        totalImpressions: number;
+        avgPosition: number | null;
+      };
+      return body;
+    },
+  });
+}
+
 export type PageSpeedResult = {
   url: string;
   scores: {

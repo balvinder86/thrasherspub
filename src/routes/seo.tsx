@@ -23,6 +23,7 @@ import {
   useCompetitorScans,
   useRunCompetitorScan,
   useGenerateBacklinks,
+  useSearchConsoleKeywordDetail,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
@@ -54,7 +55,6 @@ import {
   MapPin,
   MousePointerClick,
   PenSquare,
-  Pencil,
   Phone,
   RefreshCw,
   Search,
@@ -452,7 +452,12 @@ function GbpMiniTrend({ label, metric }: { label: string; metric?: MetricSeries 
 // ---------- page ----------
 
 function SeoPage() {
-  const [selected, setSelected] = useState<Keyword | null>(null);
+  // Real query text for the keyword drawer — null when closed. Not
+  // the fake Keyword type; the drawer now fetches real Search Console
+  // detail for whatever query string is selected.
+  const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
+  const keywordDetail = useSearchConsoleKeywordDetail(selectedQuery);
+  const [drawerBrief, setDrawerBrief] = useState<ContentBrief | null>(null);
 
   const { data: scConnection, isLoading: scConnectionLoading } = useSearchConsoleConnection();
   const connectSearchConsole = useConnectSearchConsole();
@@ -544,6 +549,12 @@ function SeoPage() {
 
   const aiTasksShippedCount =
     Object.keys(suggestionsByUrl).length + Object.keys(briefsByQuery).length;
+
+  useEffect(() => {
+    setDrawerBrief(null);
+    generateContentBrief.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedQuery]);
 
   useEffect(() => {
     if (citationProfile && !profileFormDirty) {
@@ -897,11 +908,12 @@ function SeoPage() {
                   <div>Opportunity</div>
                 </div>
                 <div>
+                  {/* Example preview only — connect Search Console for
+                      real, clickable rows with a real detail drawer. */}
                   {keywords.map((k) => (
-                    <button
+                    <div
                       key={k.id}
-                      onClick={() => setSelected(k)}
-                      className="grid w-full grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-left text-sm transition hover:bg-accent/30 last:border-0"
+                      className="grid w-full grid-cols-[1.6fr_0.7fr_0.5fr_0.5fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-left text-sm last:border-0"
                     >
                       <div className="min-w-0">
                         <div className="truncate font-medium">{k.term}</div>
@@ -932,7 +944,7 @@ function SeoPage() {
                           {k.opportunity}
                         </Badge>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </Card>
@@ -978,16 +990,17 @@ function SeoPage() {
                 ) : (
                   <div>
                     {scKeywords.data.rows.map((k) => (
-                      <div
+                      <button
                         key={k.query}
-                        className="grid grid-cols-[2fr_0.8fr_0.8fr_0.7fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-sm last:border-0"
+                        onClick={() => setSelectedQuery(k.query)}
+                        className="grid w-full grid-cols-[2fr_0.8fr_0.8fr_0.7fr_0.7fr] items-center gap-3 border-b border-border/50 px-4 py-3 text-left text-sm transition hover:bg-accent/30 last:border-0"
                       >
                         <div className="truncate font-medium">{k.query}</div>
                         <div className="tabular-nums">{k.clicks.toLocaleString()}</div>
                         <div className="tabular-nums">{k.impressions.toLocaleString()}</div>
                         <div className="tabular-nums">{(k.ctr * 100).toFixed(1)}%</div>
                         <div className="tabular-nums">{k.position.toFixed(1)}</div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -2603,97 +2616,156 @@ function SeoPage() {
         </Tabs>
       </div>
 
-      {/* Keyword drawer */}
-      <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <SheetContent className="w-full sm:max-w-xl">
-          {selected && (
+      {/* Keyword drawer — real Search Console detail for one real query */}
+      <Sheet open={!!selectedQuery} onOpenChange={(o) => !o && setSelectedQuery(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          {selectedQuery && (
             <>
               <SheetHeader>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="rounded-full">
-                    {selected.intent}
-                  </Badge>
-                  {rankDelta(selected.rank, selected.prev)}
-                </div>
-                <SheetTitle className="font-display text-2xl">{selected.term}</SheetTitle>
+                <SheetTitle className="font-display text-2xl">{selectedQuery}</SheetTitle>
                 <SheetDescription>
-                  Ranking #{selected.rank} for{" "}
-                  <span className="font-medium text-foreground">{selected.url}</span> ·{" "}
-                  {selected.volume.toLocaleString()} searches/mo · difficulty {selected.difficulty}
+                  {keywordDetail.isLoading
+                    ? "Loading real Search Console data…"
+                    : keywordDetail.isError
+                      ? (keywordDetail.error as Error).message
+                      : keywordDetail.data
+                        ? `Avg. position ${keywordDetail.data.avgPosition?.toFixed(1) ?? "—"} · ${keywordDetail.data.totalClicks.toLocaleString()} clicks · ${keywordDetail.data.totalImpressions.toLocaleString()} impressions, last 8 weeks`
+                        : null}
                 </SheetDescription>
               </SheetHeader>
 
-              <div className="mt-6 h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={visibilitySeries}>
-                    <CartesianGrid
-                      stroke="hsl(var(--border))"
-                      strokeDasharray="3 3"
-                      vertical={false}
-                    />
-                    <XAxis dataKey="d" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={11}
-                      reversed
-                      domain={[1, 20]}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 12,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="visibility"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      dot
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {keywordDetail.data?.currentBestPage && (
+                <a
+                  href={keywordDetail.data.currentBestPage}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Globe className="h-3 w-3" /> {keywordDetail.data.currentBestPage}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
 
-              <div className="mt-4 space-y-3">
-                <div className="rounded-xl border border-border/70 p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Sparkles className="h-3.5 w-3.5" /> AI recommendation
+              {keywordDetail.data && keywordDetail.data.trend.length > 0 && (
+                <div className="mt-6 h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={keywordDetail.data.trend}>
+                      <CartesianGrid
+                        stroke="var(--border)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        stroke="var(--muted-foreground)"
+                        fontSize={11}
+                        tickFormatter={(d) =>
+                          new Date(d).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        }
+                      />
+                      <YAxis
+                        stroke="var(--muted-foreground)"
+                        fontSize={11}
+                        reversed
+                        allowDecimals={false}
+                      />
+                      <Tooltip
+                        labelFormatter={(d) => new Date(d).toLocaleDateString()}
+                        formatter={(value: number) => [value.toFixed(1), "Position"]}
+                        contentStyle={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="position"
+                        stroke="var(--primary)"
+                        strokeWidth={2}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              <div className="mt-6 space-y-3">
+                {!drawerBrief ? (
+                  <Button
+                    className="w-full gap-2"
+                    disabled={generateContentBrief.isPending || !keywordDetail.data}
+                    onClick={() => {
+                      const d = keywordDetail.data!;
+                      generateContentBrief.mutate(
+                        {
+                          keyword: selectedQuery,
+                          clicks: d.totalClicks,
+                          impressions: d.totalImpressions,
+                          position: d.avgPosition ?? undefined,
+                          currentBestPage: d.currentBestPage ?? undefined,
+                        },
+                        { onSuccess: (data) => setDrawerBrief(data) },
+                      );
+                    }}
+                  >
+                    <Sparkles
+                      className={`h-4 w-4 ${generateContentBrief.isPending ? "animate-pulse" : ""}`}
+                    />
+                    {generateContentBrief.isPending
+                      ? "Drafting with AI…"
+                      : "Draft AI recommendation"}
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-border/70 p-4">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Sparkles className="h-3.5 w-3.5" /> AI recommendation
+                      </div>
+                      <p className="mt-2 text-sm font-medium">{drawerBrief.suggestedTitle}</p>
+                      <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                        {drawerBrief.suggestedUrlSlug}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        H1: {drawerBrief.suggestedH1}
+                      </p>
+                      <ol className="mt-3 list-decimal space-y-0.5 pl-4 text-sm">
+                        {drawerBrief.outline.map((o, i) => (
+                          <li key={i}>{o}</li>
+                        ))}
+                      </ol>
+                      <p className="mt-3 text-xs text-muted-foreground">{drawerBrief.reasoning}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2 text-xs"
+                      onClick={() =>
+                        copyToClipboard(
+                          `${drawerBrief.suggestedTitle}\n${drawerBrief.suggestedUrlSlug}\nH1: ${drawerBrief.suggestedH1}\n\n${drawerBrief.outline.map((o, i) => `${i + 1}. ${o}`).join("\n")}`,
+                          `drawer-${selectedQuery}`,
+                        )
+                      }
+                    >
+                      {copiedField === `drawer-${selectedQuery}` ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      Copy brief
+                    </Button>
                   </div>
-                  <p className="mt-1 text-sm">
-                    Add an H2 covering "{selected.term}" with a 60-word intro and three internal
-                    links to dish pages. Expected lift: 2–4 positions in 3 weeks.
+                )}
+                {generateContentBrief.isError && (
+                  <p className="text-xs text-destructive">
+                    {(generateContentBrief.error as Error).message}
                   </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button className="gap-2">
-                    <Wand2 className="h-4 w-4" /> Draft on-page fix
-                  </Button>
-                  <Button variant="outline" className="gap-2">
-                    <Pencil className="h-4 w-4" /> Edit landing page
-                  </Button>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    Related terms
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "best italian sf",
-                      "pasta hayes valley",
-                      "truffle dinner sf",
-                      "date night restaurant sf",
-                    ].map((r) => (
-                      <Badge key={r} variant="outline" className="rounded-full">
-                        {r}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
             </>
           )}
