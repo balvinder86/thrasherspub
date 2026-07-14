@@ -586,6 +586,14 @@ export type LocalPackEntry = {
   isOwn: boolean;
 };
 
+export type OrganicResult = {
+  position: number;
+  title: string;
+  url: string;
+  domain: string;
+  isOwn: boolean;
+};
+
 export type CompetitorScan = {
   id: string;
   trackedQueryId: string | null;
@@ -594,6 +602,7 @@ export type CompetitorScan = {
   localPack: LocalPackEntry[];
   ownInPack: boolean;
   ownPosition: number | null;
+  organicResults: OrganicResult[];
 };
 
 // Real scan history — one row per real scan (append-only, like
@@ -608,7 +617,9 @@ export function useCompetitorScans() {
     queryFn: async (): Promise<CompetitorScan[]> => {
       const { data, error } = await supabase
         .from("competitor_scans")
-        .select("id, tracked_query_id, query, scanned_at, local_pack, own_in_pack, own_position")
+        .select(
+          "id, tracked_query_id, query, scanned_at, local_pack, own_in_pack, own_position, organic_results",
+        )
         .order("scanned_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -620,21 +631,27 @@ export function useCompetitorScans() {
         localPack: r.local_pack as LocalPackEntry[],
         ownInPack: r.own_in_pack,
         ownPosition: r.own_position,
+        organicResults: (r.organic_results as OrganicResult[] | null) ?? [],
       }));
     },
   });
 }
 
-// Real local-pack scan for one tracked query — same Google session
-// already connected for the review-reply agent and GBP Insights, no
-// new credential flow. Takes a few seconds per scan.
+// Real local-pack + organic scan for one tracked query — same Google
+// session already connected for the review-reply agent and GBP
+// Insights, no new credential flow. Takes a few seconds per scan.
 export function useRunCompetitorScan() {
   const restaurantId = useCurrentRestaurantId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (
       trackedQueryId: string,
-    ): Promise<{ localPack: LocalPackEntry[]; ownInPack: boolean; ownPosition: number | null }> => {
+    ): Promise<{
+      localPack: LocalPackEntry[];
+      ownInPack: boolean;
+      ownPosition: number | null;
+      organicResults: OrganicResult[];
+    }> => {
       const { data, error } = await supabase.functions.invoke("review-agent", {
         body: { action: "competitor_scan", tracked_query_id: trackedQueryId },
       });
@@ -647,10 +664,133 @@ export function useRunCompetitorScan() {
         localPack: LocalPackEntry[];
         ownInPack: boolean;
         ownPosition: number | null;
+        organicResults: OrganicResult[];
       };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["competitor-scans", restaurantId] });
+    },
+  });
+}
+
+export type ReviewComparisonTheme = { theme: string; count: number };
+
+export type CompetitorReviewComparison = {
+  competitorName: string;
+  competitorRating: number | null;
+  competitorReviewCount: number | null;
+  ourStrengths: ReviewComparisonTheme[];
+  competitorStrengths: ReviewComparisonTheme[];
+  opportunities: string[];
+  sampleSize: { ours: number; competitor: number };
+  scannedAt: string;
+};
+
+// Persisted comparisons (one per competitor, overwritten on re-scan) —
+// lets an already-generated comparison show up without re-scraping.
+export function useCompetitorReviewComparisons() {
+  const restaurantId = useCurrentRestaurantId();
+  return useQuery({
+    queryKey: ["competitor-review-comparisons", restaurantId],
+    enabled: !!restaurantId,
+    queryFn: async (): Promise<CompetitorReviewComparison[]> => {
+      const { data, error } = await supabase
+        .from("competitor_review_comparisons")
+        .select(
+          "competitor_name, competitor_rating, competitor_review_count, our_strengths, competitor_strengths, opportunities, sample_size, scanned_at",
+        )
+        .order("scanned_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        competitorName: r.competitor_name,
+        competitorRating: r.competitor_rating,
+        competitorReviewCount: r.competitor_review_count,
+        ourStrengths: r.our_strengths as ReviewComparisonTheme[],
+        competitorStrengths: r.competitor_strengths as ReviewComparisonTheme[],
+        opportunities: r.opportunities as string[],
+        sampleSize: r.sample_size as { ours: number; competitor: number },
+        scannedAt: r.scanned_at,
+      }));
+    },
+  });
+}
+
+// Chains the two real backend steps: scrape a competitor's real
+// Google reviews, then have Claude compare them against the tenant's
+// own real reviews. Two separate Edge Functions (see
+// review-agent/index.ts and analyze-competitor-comparison/index.ts)
+// because the comparison step needs the tenant's own `reviews` table,
+// which only the Supabase-side function can cleanly read.
+export function useGenerateCompetitorReviewComparison() {
+  const restaurantId = useCurrentRestaurantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      competitorName: string,
+    ): Promise<
+      | CompetitorReviewComparison
+      | { insufficientData: true; sampleSize: { ours: number; competitor: number } }
+    > => {
+      if (!restaurantId) throw new Error("no current restaurant");
+
+      const { data: scanData, error: scanError } = await supabase.functions.invoke("review-agent", {
+        body: {
+          action: "competitor_reviews",
+          restaurant_id: restaurantId,
+          competitor_name: competitorName,
+        },
+      });
+      const scan = scanData as {
+        ok?: boolean;
+        rating?: number | null;
+        reviewCount?: number | null;
+        reviews?: { stars: number; text: string }[];
+        error?: string;
+      } | null;
+      if (scanError || !scan?.ok) {
+        throw new Error(scan?.error ?? scanError?.message ?? "review scan failed");
+      }
+
+      const { data: compareData, error: compareError } = await supabase.functions.invoke(
+        "analyze-competitor-comparison",
+        {
+          body: {
+            restaurant_id: restaurantId,
+            competitor_name: competitorName,
+            competitor_rating: scan.rating,
+            competitor_review_count: scan.reviewCount,
+            competitor_reviews: scan.reviews,
+          },
+        },
+      );
+      const compare = compareData as {
+        ok?: boolean;
+        insufficientData?: boolean;
+        ourStrengths?: ReviewComparisonTheme[];
+        competitorStrengths?: ReviewComparisonTheme[];
+        opportunities?: string[];
+        sampleSize?: { ours: number; competitor: number };
+        error?: string;
+      } | null;
+      if (compareError || !compare?.ok) {
+        throw new Error(compare?.error ?? compareError?.message ?? "comparison failed");
+      }
+      if (compare.insufficientData) {
+        return { insufficientData: true, sampleSize: compare.sampleSize! };
+      }
+      return {
+        competitorName,
+        competitorRating: scan.rating ?? null,
+        competitorReviewCount: scan.reviewCount ?? null,
+        ourStrengths: compare.ourStrengths ?? [],
+        competitorStrengths: compare.competitorStrengths ?? [],
+        opportunities: compare.opportunities ?? [],
+        sampleSize: compare.sampleSize ?? { ours: 0, competitor: 0 },
+        scannedAt: new Date().toISOString(),
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["competitor-review-comparisons", restaurantId] });
     },
   });
 }

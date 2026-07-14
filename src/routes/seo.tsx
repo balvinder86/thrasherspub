@@ -24,6 +24,8 @@ import {
   useRunCompetitorScan,
   useGenerateBacklinks,
   useSearchConsoleKeywordDetail,
+  useCompetitorReviewComparisons,
+  useGenerateCompetitorReviewComparison,
   type PageSpeedResult,
   type SeoSuggestions,
   type SchemaCheckResult,
@@ -34,6 +36,7 @@ import {
   type CitationCheckStatus,
   type CompetitorScan,
   type BacklinksReport,
+  type CompetitorReviewComparison,
 } from "@/lib/seo/queries";
 import { useReviewAgentConnection } from "@/lib/reviews/queries";
 import {
@@ -51,6 +54,7 @@ import {
   FileText,
   Gauge,
   Globe,
+  Lightbulb,
   Link2,
   MapPin,
   MousePointerClick,
@@ -484,6 +488,8 @@ function SeoPage() {
   const { data: competitorScans } = useCompetitorScans();
   const runCompetitorScan = useRunCompetitorScan();
   const generateBacklinks = useGenerateBacklinks();
+  const { data: reviewComparisons } = useCompetitorReviewComparisons();
+  const generateReviewComparison = useGenerateCompetitorReviewComparison();
 
   const [callbackBanner, setCallbackBanner] = useState<{
     status: "connected" | "error";
@@ -504,6 +510,18 @@ function SeoPage() {
   const [newQueryText, setNewQueryText] = useState("");
   const [scanningQueryId, setScanningQueryId] = useState<string | null>(null);
   const [backlinksReport, setBacklinksReport] = useState<BacklinksReport | null>(null);
+  const [comparingCompetitor, setComparingCompetitor] = useState<string | null>(null);
+  const [freshComparison, setFreshComparison] = useState<
+    | CompetitorReviewComparison
+    | { insufficientData: true; sampleSize: { ours: number; competitor: number } }
+    | null
+  >(null);
+
+  useEffect(() => {
+    setFreshComparison(null);
+    generateReviewComparison.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparingCompetitor]);
 
   const copyToClipboard = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -521,6 +539,12 @@ function SeoPage() {
     }
     return map;
   }, [competitorScans]);
+
+  const reviewComparisonByName = useMemo(() => {
+    const map = new Map<string, CompetitorReviewComparison>();
+    for (const c of reviewComparisons ?? []) map.set(c.competitorName, c);
+    return map;
+  }, [reviewComparisons]);
 
   // Real values for the top KPI row — each backed by a real feature
   // built later this session, replacing what were originally honest
@@ -1742,8 +1766,67 @@ function SeoPage() {
                                     {[entry.category, entry.address].filter(Boolean).join(" · ")}
                                   </p>
                                 )}
+                                {!entry.isOwn && (
+                                  <div className="mt-2 flex items-center justify-between gap-2">
+                                    {reviewComparisonByName.get(entry.name) ? (
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Compared{" "}
+                                        {timeAgo(reviewComparisonByName.get(entry.name)!.scannedAt)}
+                                      </p>
+                                    ) : (
+                                      <span />
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 gap-1.5 px-2 text-[11px]"
+                                      onClick={() => setComparingCompetitor(entry.name)}
+                                    >
+                                      <Sparkles className="h-3 w-3" />
+                                      {reviewComparisonByName.get(entry.name)
+                                        ? "View comparison"
+                                        : "Compare reviews"}
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {scan && scan.organicResults.length > 0 && (
+                          <div className="mt-4">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                              <Search className="h-3 w-3" /> Organic results
+                            </div>
+                            <div className="mt-2 space-y-1.5">
+                              {scan.organicResults.map((entry) => (
+                                <div
+                                  key={entry.position}
+                                  className={`flex items-center gap-2 rounded-md border p-2 text-xs ${
+                                    entry.isOwn
+                                      ? "border-primary/40 bg-primary/5"
+                                      : "border-border bg-muted/20"
+                                  }`}
+                                >
+                                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-medium">
+                                    {entry.position}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                                  <span className="shrink-0 text-muted-foreground">
+                                    {entry.domain}
+                                  </span>
+                                  {entry.isOwn && (
+                                    <Badge
+                                      variant="outline"
+                                      className="shrink-0 rounded-full text-[9px]"
+                                    >
+                                      You
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </Card>
@@ -2769,6 +2852,147 @@ function SeoPage() {
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!comparingCompetitor} onOpenChange={(o) => !o && setComparingCompetitor(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          {comparingCompetitor &&
+            (() => {
+              const active =
+                freshComparison ?? reviewComparisonByName.get(comparingCompetitor) ?? null;
+              const activeReal =
+                active && !("insufficientData" in active)
+                  ? (active as CompetitorReviewComparison)
+                  : null;
+              const insufficientData = active && "insufficientData" in active ? active : null;
+
+              return (
+                <>
+                  <SheetHeader>
+                    <SheetTitle className="font-display text-2xl">{comparingCompetitor}</SheetTitle>
+                    <SheetDescription>
+                      {activeReal
+                        ? `${activeReal.competitorRating ?? "—"}★ (${activeReal.competitorReviewCount?.toLocaleString() ?? "—"} reviews) · compared ${timeAgo(activeReal.scannedAt)}`
+                        : "Real reviews from this competitor, compared against your own real reviews by Claude."}
+                    </SheetDescription>
+                  </SheetHeader>
+
+                  <div className="mt-6 space-y-4">
+                    {generateReviewComparison.isPending && (
+                      <p className="text-center text-sm text-muted-foreground">
+                        Scraping real reviews from Google and comparing with Claude — this can take
+                        a minute…
+                      </p>
+                    )}
+
+                    {generateReviewComparison.isError && (
+                      <p className="text-sm text-destructive">
+                        {(generateReviewComparison.error as Error).message}
+                      </p>
+                    )}
+
+                    {insufficientData && (
+                      <p className="text-sm text-muted-foreground">
+                        Not enough review text yet to compare ({insufficientData.sampleSize.ours} of
+                        your reviews, {insufficientData.sampleSize.competitor} of theirs have text)
+                        — need at least 3 on each side.
+                      </p>
+                    )}
+
+                    {activeReal && (
+                      <>
+                        <div className="rounded-xl border border-border/70 p-4">
+                          <div className="flex items-center gap-2 text-xs font-medium">
+                            <TrendingUp className="h-3.5 w-3.5 text-emerald-600" /> What you do
+                            better
+                          </div>
+                          {activeReal.ourStrengths.length === 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              No clear real signal in the text yet.
+                            </p>
+                          ) : (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {activeReal.ourStrengths.map((s) => (
+                                <Badge
+                                  key={s.theme}
+                                  variant="outline"
+                                  className="rounded-full text-xs"
+                                >
+                                  {s.theme} · {s.count}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-border/70 p-4">
+                          <div className="flex items-center gap-2 text-xs font-medium">
+                            <TrendingDown className="h-3.5 w-3.5 text-amber-600" /> What they do
+                            better
+                          </div>
+                          {activeReal.competitorStrengths.length === 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              No clear real signal in the text yet.
+                            </p>
+                          ) : (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {activeReal.competitorStrengths.map((s) => (
+                                <Badge
+                                  key={s.theme}
+                                  variant="outline"
+                                  className="rounded-full text-xs"
+                                >
+                                  {s.theme} · {s.count}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {activeReal.opportunities.length > 0 && (
+                          <div className="rounded-xl border border-border/70 p-4">
+                            <div className="flex items-center gap-2 text-xs font-medium">
+                              <Lightbulb className="h-3.5 w-3.5 text-primary" /> Opportunities
+                            </div>
+                            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-muted-foreground">
+                              {activeReal.opportunities.map((o, i) => (
+                                <li key={i}>{o}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <p className="text-[11px] text-muted-foreground">
+                          Based on {activeReal.sampleSize.ours} of your real reviews and{" "}
+                          {activeReal.sampleSize.competitor} of theirs.
+                        </p>
+                      </>
+                    )}
+
+                    <Button
+                      className="w-full gap-2"
+                      variant={activeReal || insufficientData ? "outline" : "default"}
+                      disabled={generateReviewComparison.isPending}
+                      onClick={() => {
+                        generateReviewComparison.mutate(comparingCompetitor, {
+                          onSuccess: (data) => setFreshComparison(data),
+                        });
+                      }}
+                    >
+                      <Sparkles
+                        className={`h-4 w-4 ${generateReviewComparison.isPending ? "animate-pulse" : ""}`}
+                      />
+                      {generateReviewComparison.isPending
+                        ? "Comparing…"
+                        : activeReal || insufficientData
+                          ? "Refresh comparison"
+                          : "Compare reviews now"}
+                    </Button>
+                  </div>
+                </>
+              );
+            })()}
         </SheetContent>
       </Sheet>
 
