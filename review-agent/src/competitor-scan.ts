@@ -120,3 +120,80 @@ export async function scanLocalPack(
     await browser.close();
   }
 }
+
+export type OrganicResult = {
+  position: number;
+  title: string;
+  url: string;
+  domain: string;
+  isOwn: boolean;
+};
+
+const MAX_ORGANIC_RESULTS = 10;
+
+// Real organic (non-local-pack) Google web-search ranking for the
+// same tracked query — reuses the owner's cookies purely to avoid the
+// "unusual traffic" CAPTCHA a datacenter IP gets when logged out
+// (confirmed in testing). Google's organic result title+link
+// consistently renders as `a h3` in DOM order, real and reliable for
+// a category query like "sports bar bothell wa" — the personalized
+// "manage your business" panel bug only triggers for queries closely
+// matching the *owner's own* business name/brand, not generic
+// category searches, so this is a different (safer) query shape than
+// the one that bug was found on.
+export async function scanOrganicResults(
+  cookies: Cookie[],
+  query: string,
+  ownDomain: string | null,
+): Promise<OrganicResult[]> {
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    viewport: { width: 1280, height: 900 },
+    locale: "en-US",
+  });
+  await context.addCookies(cookies);
+  const page = await context.newPage();
+  page.setDefaultTimeout(15000);
+
+  try {
+    await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=30`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await SLEEP(3500);
+
+    const raw = await page.evaluate(() => {
+      const items: { title: string; href: string }[] = [];
+      document.querySelectorAll("a h3").forEach((h3) => {
+        const a = h3.closest("a") as HTMLAnchorElement | null;
+        if (a?.href) items.push({ title: h3.textContent ?? "", href: a.href });
+      });
+      return items;
+    });
+
+    const ownDomainNormalized = ownDomain?.replace(/^www\./, "").toLowerCase() ?? null;
+
+    return raw.slice(0, MAX_ORGANIC_RESULTS).map((r, i) => {
+      let domain = "";
+      try {
+        domain = new URL(r.href).hostname.replace(/^www\./, "");
+      } catch {
+        domain = r.href;
+      }
+      return {
+        position: i + 1,
+        title: r.title,
+        url: r.href,
+        domain,
+        isOwn: !!ownDomainNormalized && domain.toLowerCase() === ownDomainNormalized,
+      };
+    });
+  } finally {
+    await browser.close();
+  }
+}

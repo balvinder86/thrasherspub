@@ -32,8 +32,9 @@ import {
 import { scanUnrepliedReviews, postReplyToReview } from "./browser.js";
 import { generateReply } from "./claude.js";
 import { scanGbpInsights } from "./gbp-insights.js";
-import { scanLocalPack } from "./competitor-scan.js";
+import { scanLocalPack, scanOrganicResults } from "./competitor-scan.js";
 import { scanBacklinks } from "./backlinks.js";
+import { scanCompetitorReviews } from "./competitor-reviews.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const SERVICE_TOKEN = process.env.REVIEW_AGENT_SERVICE_TOKEN;
@@ -146,12 +147,30 @@ async function handleGbpInsights(restaurantId: string) {
   return insights;
 }
 
+// search_console_credentials.site_url is either a domain-property
+// ("sc-domain:example.com") or a URL-prefix property
+// ("https://example.com/") — normalize both to a bare domain for
+// comparing against a scraped organic result's hostname.
+function siteUrlToDomain(siteUrl: string | null): string | null {
+  if (!siteUrl) return null;
+  if (siteUrl.startsWith("sc-domain:")) return siteUrl.slice("sc-domain:".length);
+  try {
+    return new URL(siteUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
 async function handleCompetitorScan(restaurantId: string, trackedQueryId: string) {
   const tracked = await getTrackedQuery(restaurantId, trackedQueryId);
   const config = await getCredentialsForRestaurant(restaurantId);
   const cookies = await getGoogleCookies(config.vaultSecretName);
+  const ownDomain = siteUrlToDomain(await getSearchConsoleSiteUrl(restaurantId));
 
-  const localPack = await scanLocalPack(cookies, tracked.query, config.settings.businessName);
+  const [localPack, organicResults] = await Promise.all([
+    scanLocalPack(cookies, tracked.query, config.settings.businessName),
+    scanOrganicResults(cookies, tracked.query, ownDomain),
+  ]);
   const own = localPack.find((e) => e.isOwn) ?? null;
 
   await insertCompetitorScan({
@@ -161,9 +180,16 @@ async function handleCompetitorScan(restaurantId: string, trackedQueryId: string
     localPack,
     ownInPack: !!own,
     ownPosition: own?.position ?? null,
+    organicResults,
   });
 
-  return { localPack, ownInPack: !!own, ownPosition: own?.position ?? null };
+  return { localPack, ownInPack: !!own, ownPosition: own?.position ?? null, organicResults };
+}
+
+async function handleCompetitorReviews(restaurantId: string, competitorName: string) {
+  const config = await getCredentialsForRestaurant(restaurantId);
+  const cookies = await getGoogleCookies(config.vaultSecretName);
+  return scanCompetitorReviews(cookies, competitorName);
 }
 
 async function handleBacklinks(restaurantId: string) {
@@ -239,6 +265,17 @@ const server = createServer(async (req, res) => {
         return;
       }
       respond(200, { ok: true, ...(await handleCompetitorScan(restaurantId, trackedQueryId)) });
+      return;
+    }
+
+    if (req.url === "/competitor-reviews" && req.method === "POST") {
+      const restaurantId = body.restaurant_id;
+      const competitorName = body.competitor_name;
+      if (typeof restaurantId !== "string" || typeof competitorName !== "string") {
+        respond(400, { ok: false, error: "restaurant_id and competitor_name are required" });
+        return;
+      }
+      respond(200, { ok: true, ...(await handleCompetitorReviews(restaurantId, competitorName)) });
       return;
     }
 

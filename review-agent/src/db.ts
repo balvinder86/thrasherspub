@@ -283,6 +283,7 @@ export async function insertCompetitorScan(input: {
   localPack: unknown;
   ownInPack: boolean;
   ownPosition: number | null;
+  organicResults: unknown;
 }) {
   const { error } = await supabase.from("competitor_scans").insert({
     restaurant_id: input.restaurantId,
@@ -291,6 +292,7 @@ export async function insertCompetitorScan(input: {
     local_pack: input.localPack,
     own_in_pack: input.ownInPack,
     own_position: input.ownPosition,
+    organic_results: input.organicResults,
   });
   if (error) throw new Error(`insert competitor_scans failed: ${error.message}`);
 }
