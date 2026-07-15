@@ -181,6 +181,17 @@ function ProductMixPage() {
     [filtered, itemsPage],
   );
 
+  // Sold/revenue totals for whatever's currently filtered (category
+  // pill + search), not just the page in view — so switching a filter
+  // shows the real total for that slice, not a per-page fragment.
+  const filteredTotals = useMemo(
+    () => ({
+      units: filtered.reduce((s, i) => s + i.soldWk, 0),
+      revenue: filtered.reduce((s, i) => s + i.revenueWk, 0),
+    }),
+    [filtered],
+  );
+
   const popMedian = useMemo(() => {
     if (items.length === 0) return 0;
     const arr = [...items].sort((a, b) => a.soldWk - b.soldWk);
@@ -484,6 +495,13 @@ function ProductMixPage() {
                   {filtered.length === 0
                     ? "0 items"
                     : `Showing ${(itemsPage - 1) * ITEMS_PAGE_SIZE + 1}–${Math.min(itemsPage * ITEMS_PAGE_SIZE, filtered.length)} of ${filtered.length} item${filtered.length === 1 ? "" : "s"}`}
+                  {filtered.length > 0 && (
+                    <>
+                      {" "}
+                      · <span className="font-mono">{fmt(filteredTotals.units)}</span> sold ·{" "}
+                      <span className="font-mono">{usd(filteredTotals.revenue)}</span> revenue
+                    </>
+                  )}
                 </span>
                 {itemsTotalPages > 1 && (
                   <div className="flex items-center gap-2">
