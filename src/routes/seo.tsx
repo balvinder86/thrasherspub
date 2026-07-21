@@ -638,6 +638,20 @@ function SeoPage() {
                   />
                   Refresh
                 </Button>
+                {/* Refresh above only re-runs the same queries — if the
+                    stored Google token itself has expired or been
+                    revoked, every one of those calls fails the same way
+                    forever. This re-runs the full OAuth flow to replace
+                    the stored token, the only way to actually recover. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => connectSearchConsole.mutate()}
+                  disabled={connectSearchConsole.isPending}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Reconnect
+                </Button>
               </>
             ) : (
               <>
