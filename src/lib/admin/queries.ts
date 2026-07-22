@@ -42,13 +42,24 @@ export function useTeamMembers() {
   });
 }
 
+export type InviteResult = {
+  emailSent: boolean;
+  emailError?: string;
+  inviteLink?: string;
+};
+
 export function useInviteMember() {
   const restaurantId = useCurrentRestaurantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: Role }) => {
+    mutationFn: async ({ email, role }: { email: string; role: Role }): Promise<InviteResult> => {
       if (!restaurantId) throw new Error("no current restaurant");
-      await callManageTeam({ action: "invite", restaurant_id: restaurantId, email, role });
+      return callManageTeam<InviteResult>({
+        action: "invite",
+        restaurant_id: restaurantId,
+        email,
+        role,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members", restaurantId] });

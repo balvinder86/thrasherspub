@@ -94,7 +94,8 @@ async function sendGmailMessage(
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const errorMessage =
-      (body as { error?: { message?: string } } | null)?.error?.message ?? `Gmail API error ${res.status}`;
+      (body as { error?: { message?: string } } | null)?.error?.message ??
+      `Gmail API error ${res.status}`;
     throw new Error(errorMessage);
   }
   return (body as { id?: string } | null)?.id ?? "";
@@ -178,7 +179,10 @@ Deno.serve(async (req) => {
         return json({ ok: false, step: "input", error: "a valid email is required" }, 400);
       }
       if (!isRole(role)) {
-        return json({ ok: false, step: "input", error: "role must be owner, manager, or staff" }, 400);
+        return json(
+          { ok: false, step: "input", error: "role must be owner, manager, or staff" },
+          400,
+        );
       }
       try {
         await assertOwner(callerId, restaurantId);
@@ -204,7 +208,10 @@ Deno.serve(async (req) => {
 
       const { error: upsertErr } = await supabase
         .from("memberships")
-        .upsert({ user_id: userId, restaurant_id: restaurantId, role }, { onConflict: "user_id,restaurant_id" });
+        .upsert(
+          { user_id: userId, restaurant_id: restaurantId, role },
+          { onConflict: "user_id,restaurant_id" },
+        );
       if (upsertErr) return json({ ok: false, step: "membership", error: upsertErr.message }, 500);
 
       // Membership access is granted at this point regardless of what
@@ -272,7 +279,10 @@ Deno.serve(async (req) => {
         return json({ ok: false, step: "input", error: "user_id is required" }, 400);
       }
       if (!isRole(role)) {
-        return json({ ok: false, step: "input", error: "role must be owner, manager, or staff" }, 400);
+        return json(
+          { ok: false, step: "input", error: "role must be owner, manager, or staff" },
+          400,
+        );
       }
       try {
         await assertOwner(callerId, restaurantId);
@@ -340,7 +350,11 @@ Deno.serve(async (req) => {
     }
 
     return json(
-      { ok: false, step: "input", error: "action must be 'list', 'invite', 'update_role', or 'remove'" },
+      {
+        ok: false,
+        step: "input",
+        error: "action must be 'list', 'invite', 'update_role', or 'remove'",
+      },
       400,
     );
   } catch (e) {

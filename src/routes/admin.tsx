@@ -83,6 +83,8 @@ function AdminPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("staff");
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
+  const [emailFallback, setEmailFallback] = useState<{ error: string; link: string } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const ownerCount = (members ?? []).filter((m) => m.role === "owner").length;
 
@@ -221,6 +223,8 @@ function AdminPage() {
           if (!o) {
             setInviteEmail("");
             setInviteRole("staff");
+            setEmailFallback(null);
+            setLinkCopied(false);
             inviteMember.reset();
           }
         }}
@@ -234,48 +238,92 @@ function AdminPage() {
               We'll email them a link to set a password and sign in.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="name@example.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-              />
+
+          {emailFallback ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                They now have access, but the invite email couldn't be sent ({emailFallback.error}).
+                Share this link with them directly:
+              </p>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={emailFallback.link} className="text-xs" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(emailFallback.link).then(() => {
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 1500);
+                    });
+                  }}
+                >
+                  {linkCopied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+              <Button className="w-full" onClick={() => setInviteOpen(false)}>
+                Done
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="owner">Owner — full access, can manage the team</SelectItem>
-                  <SelectItem value="manager">Manager — day-to-day operations</SelectItem>
-                  <SelectItem value="staff">Staff — limited access</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {inviteMember.isError && (
-              <p className="text-sm text-[#a8453a]">{(inviteMember.error as Error).message}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              className="w-full"
-              disabled={!inviteEmail.includes("@") || inviteMember.isPending}
-              onClick={() =>
-                inviteMember.mutate(
-                  { email: inviteEmail, role: inviteRole },
-                  { onSuccess: () => setInviteOpen(false) },
-                )
-              }
-            >
-              {inviteMember.isPending ? "Sending invite…" : "Send invite"}
-            </Button>
-          </DialogFooter>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="invite-email">Email</Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="owner">
+                        Owner — full access, can manage the team
+                      </SelectItem>
+                      <SelectItem value="manager">Manager — day-to-day operations</SelectItem>
+                      <SelectItem value="staff">Staff — limited access</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {inviteMember.isError && (
+                  <p className="text-sm text-[#a8453a]">{(inviteMember.error as Error).message}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  className="w-full"
+                  disabled={!inviteEmail.includes("@") || inviteMember.isPending}
+                  onClick={() =>
+                    inviteMember.mutate(
+                      { email: inviteEmail, role: inviteRole },
+                      {
+                        onSuccess: (result) => {
+                          if (result.emailSent) {
+                            setInviteOpen(false);
+                          } else {
+                            setEmailFallback({
+                              error: result.emailError ?? "unknown error",
+                              link: result.inviteLink ?? "",
+                            });
+                          }
+                        },
+                      },
+                    )
+                  }
+                >
+                  {inviteMember.isPending ? "Sending invite…" : "Send invite"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
