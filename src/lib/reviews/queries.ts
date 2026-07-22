@@ -37,11 +37,17 @@ export function useReviews() {
     queryKey: ["reviews", restaurantId],
     enabled: !!restaurantId,
     queryFn: async (): Promise<Review[]> => {
+      // Sort by Google's real post date when we have it, newest first;
+      // falls back to scrape time for rows where that didn't parse
+      // (same reviewWrittenAt ?? reviewFoundAt precedence the UI
+      // already displays), so newest-first holds either way.
       const { data, error } = await supabase
         .from("reviews")
         .select(
           "id, reviewer_name, star_rating, review_text, review_found_at, review_written_at, ai_draft_reply, edited_reply, status, posted_at, post_error",
-        );
+        )
+        .order("review_written_at", { ascending: false, nullsFirst: false })
+        .order("review_found_at", { ascending: false });
       if (error) throw error;
       const rows = (data ?? []).map((r) => ({
         id: r.id,
