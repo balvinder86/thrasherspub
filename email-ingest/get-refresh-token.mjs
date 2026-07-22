@@ -41,8 +41,22 @@ console.log("\nWaiting for the redirect back to localhost...\n");
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, REDIRECT_URI);
+
+  // Browsers auto-request this on the redirected page; it's not the
+  // real OAuth callback, so don't let it print a confusing "no code"
+  // message or otherwise get treated as the real thing.
+  if (url.pathname === "/favicon.ico") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const code = url.searchParams.get("code");
   if (!code) {
+    const error = url.searchParams.get("error");
+    const errorDescription = url.searchParams.get("error_description");
+    console.log("\nReceived redirect with no code. Full URL:", url.toString());
+    if (error) console.log("Google error:", error, errorDescription ?? "");
     res.end("No code received — check the terminal for errors.");
     return;
   }
