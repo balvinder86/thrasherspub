@@ -68,25 +68,32 @@ async function scanConfig(config: RestaurantReviewConfig) {
   let drafted = 0;
   let autoPosted = 0;
   for (const review of extracted) {
-    const existingId = await findExistingReview(
-      config.restaurantId,
-      review.reviewerName,
-      review.starRating,
-      review.comment,
-    );
-    if (existingId) continue;
-    await insertDraftReview({
-      restaurantId: config.restaurantId,
-      reviewerName: review.reviewerName,
-      starRating: review.starRating,
-      reviewText: review.comment,
-      aiDraftReply: review.replyText,
-      reviewWrittenAt: review.writtenAt,
-      autoPosted: review.autoPosted,
-      autoPostError: review.autoPostError,
-    });
-    drafted++;
-    if (review.autoPosted) autoPosted++;
+    // One review failing to save (a dedup-check edge case, a transient
+    // DB error) used to throw here and abort the whole scan, dropping
+    // every review still left in the batch — log and move on instead.
+    try {
+      const existingId = await findExistingReview(
+        config.restaurantId,
+        review.reviewerName,
+        review.starRating,
+        review.comment,
+      );
+      if (existingId) continue;
+      await insertDraftReview({
+        restaurantId: config.restaurantId,
+        reviewerName: review.reviewerName,
+        starRating: review.starRating,
+        reviewText: review.comment,
+        aiDraftReply: review.replyText,
+        reviewWrittenAt: review.writtenAt,
+        autoPosted: review.autoPosted,
+        autoPostError: review.autoPostError,
+      });
+      drafted++;
+      if (review.autoPosted) autoPosted++;
+    } catch (e) {
+      console.error(`[scan] failed to save review by "${review.reviewerName}":`, e);
+    }
   }
 
   return { found, drafted, autoPosted };

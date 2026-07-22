@@ -121,14 +121,20 @@ export async function findExistingReview(
   starRating: number,
   reviewText: string,
 ): Promise<string | null> {
-  const { data, error } = await supabase
+  // insertDraftReview stores an empty comment as NULL, not "" — and in
+  // SQL, `review_text = ''` never matches `review_text IS NULL`. Without
+  // this, a star-only review (no comment) is never found as already
+  // existing, so every re-scan tries to insert it again and collides
+  // with reviews_dedup_idx instead of being skipped.
+  const query = supabase
     .from("reviews")
     .select("id")
     .eq("restaurant_id", restaurantId)
     .eq("reviewer_name", reviewerName)
-    .eq("star_rating", starRating)
-    .eq("review_text", reviewText)
-    .maybeSingle();
+    .eq("star_rating", starRating);
+  const { data, error } = await (
+    reviewText ? query.eq("review_text", reviewText) : query.is("review_text", null)
+  ).maybeSingle();
   if (error) throw new Error(`check reviews failed: ${error.message}`);
   return data?.id ?? null;
 }

@@ -213,7 +213,17 @@ export async function scanUnrepliedReviews(
     const drafted: (ExtractedReview & { replyText: string })[] = [];
     for (let i = 0; i < total; i++) {
       const review = await extractReviewAt(frame(), i);
-      const replyText = await generateReply(review.reviewerName, review.starRating, review.comment);
+      // One failed draft (a Claude API hiccup, a rate limit, an out-of-
+      // credits account) used to throw here and lose every review in
+      // this batch, including ones already drafted successfully —
+      // skip just this one and keep going instead.
+      let replyText: string;
+      try {
+        replyText = await generateReply(review.reviewerName, review.starRating, review.comment);
+      } catch (e) {
+        console.error(`[scan] failed to draft a reply for "${review.reviewerName}":`, e);
+        continue;
+      }
       drafted.push({ ...review, replyText });
     }
 
