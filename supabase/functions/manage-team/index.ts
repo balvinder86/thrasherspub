@@ -10,6 +10,19 @@
 //   { action: "invite", restaurant_id, email, role }
 //   { action: "update_role", restaurant_id, user_id, role }
 //   { action: "remove", restaurant_id, user_id }
+//
+// Invite emails do NOT go through supabase.auth.admin.inviteUserByEmail
+// (which sends via Supabase Auth's configured SMTP) — that SMTP is
+// Resend on a sandbox sender, and thrasherspubbothell.com's DNS is
+// hosted on Wix, which cannot add the MX record Resend requires to
+// verify a sending domain (confirmed with Wix support; a Cloudflare
+// DNS migration was also attempted and blocked by a deeper Wix
+// registrar policy — see send-purchase-order-email/index.ts for the
+// full history of the same dead end). Same fix reused here: generate
+// the invite link with admin.generateLink (creates the user, never
+// sends anything) and deliver it ourselves via the Gmail API, using
+// the same connected Gmail account purchase-order emails already send
+// from.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -19,6 +32,8 @@ const supabase = createClient(
 );
 
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL")!;
+const GMAIL_CLIENT_ID = Deno.env.get("GMAIL_CLIENT_ID")!;
+const GMAIL_CLIENT_SECRET = Deno.env.get("GMAIL_CLIENT_SECRET")!;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +42,62 @@ const CORS_HEADERS = {
 
 function json(body: unknown, status: number) {
   return Response.json(body, { status, headers: CORS_HEADERS });
+}
+
+async function refreshGmailAccessToken(refreshToken: string): Promise<string> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GMAIL_CLIENT_ID,
+      client_secret: GMAIL_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const body = await res.json();
+  if (!res.ok || !body.access_token) {
+    throw new Error(`refresh Gmail access token failed (${res.status}): ${JSON.stringify(body)}`);
+  }
+  return body.access_token;
+}
+
+function base64UrlEncode(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function sendGmailMessage(
+  accessToken: string,
+  from: string,
+  to: string,
+  subject: string,
+  html: string,
+): Promise<string> {
+  const mime = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/html; charset=UTF-8",
+    "",
+    html,
+  ].join("\r\n");
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: base64UrlEncode(mime) }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const errorMessage =
+      (body as { error?: { message?: string } } | null)?.error?.message ?? `Gmail API error ${res.status}`;
+    throw new Error(errorMessage);
+  }
+  return (body as { id?: string } | null)?.id ?? "";
 }
 
 const ROLES = ["owner", "manager", "staff"] as const;
@@ -115,40 +186,84 @@ Deno.serve(async (req) => {
         return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
       }
 
-      let userId: string;
-      const { data: invited, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
+      // generateLink creates the user (or reuses them if they already
+      // have an account) and hands back a real invite link — it never
+      // sends anything itself, unlike inviteUserByEmail.
+      const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+        type: "invite",
         email,
-        { redirectTo: `${APP_BASE_URL}/set-password` },
-      );
-      if (inviteErr) {
-        // Already-registered is the one expected/recoverable error —
-        // that person already has a real account (maybe on another
-        // restaurant, or invited before), so just add them directly
-        // instead of trying to re-send an invite Supabase won't send.
-        if (!/already.*registered|already.*exists/i.test(inviteErr.message)) {
-          return json({ ok: false, step: "invite", error: inviteErr.message }, 500);
-        }
-        const { data: existingId, error: lookupErr } = await supabase.rpc(
-          "get_user_id_by_email",
-          { lookup_email: email },
+        options: { redirectTo: `${APP_BASE_URL}/set-password` },
+      });
+      if (linkErr || !linkData?.user) {
+        return json(
+          { ok: false, step: "invite", error: linkErr?.message ?? "could not create invite" },
+          500,
         );
-        if (lookupErr || !existingId) {
-          return json(
-            { ok: false, step: "invite", error: lookupErr?.message ?? "could not find that user" },
-            500,
-          );
-        }
-        userId = existingId;
-      } else {
-        userId = invited.user.id;
       }
+      const userId = linkData.user.id;
 
       const { error: upsertErr } = await supabase
         .from("memberships")
         .upsert({ user_id: userId, restaurant_id: restaurantId, role }, { onConflict: "user_id,restaurant_id" });
       if (upsertErr) return json({ ok: false, step: "membership", error: upsertErr.message }, 500);
 
-      return json({ ok: true }, 200);
+      // Membership access is granted at this point regardless of what
+      // happens below — a Gmail hiccup shouldn't undo a real,
+      // successful invite grant, so failures here are reported
+      // alongside ok:true rather than as a hard error.
+      try {
+        const { data: restaurant } = await supabase
+          .from("restaurants")
+          .select("name")
+          .eq("id", restaurantId)
+          .single();
+        const restaurantName = restaurant?.name ?? "the team";
+
+        const { data: emailCred, error: emailCredErr } = await supabase
+          .from("email_ingestion_credentials")
+          .select("connected_email, vault_secret_name")
+          .eq("restaurant_id", restaurantId)
+          .eq("provider", "gmail")
+          .maybeSingle();
+        if (emailCredErr || !emailCred) {
+          throw new Error("no connected Gmail account to send the invite from");
+        }
+
+        const { data: secretRaw, error: secretErr } = await supabase.rpc("get_pos_secret", {
+          secret_name: emailCred.vault_secret_name,
+        });
+        if (secretErr || !secretRaw) {
+          throw new Error(`vault secret not found: ${secretErr?.message ?? ""}`);
+        }
+        const { refreshToken } = JSON.parse(secretRaw);
+        if (!refreshToken) throw new Error("vault secret missing refreshToken");
+
+        const gmailAccessToken = await refreshGmailAccessToken(refreshToken);
+        const html = `
+          <p>You've been invited to join <strong>${restaurantName}</strong> on the owner dashboard, as ${role}.</p>
+          <p><a href="${linkData.properties.action_link}">Accept the invite and set a password</a></p>
+          <p>If you weren't expecting this, you can ignore this email.</p>
+        `;
+        await sendGmailMessage(
+          gmailAccessToken,
+          `${restaurantName} <${emailCred.connected_email}>`,
+          email,
+          `You've been invited to ${restaurantName}`,
+          html,
+        );
+      } catch (sendErr) {
+        return json(
+          {
+            ok: true,
+            emailSent: false,
+            emailError: sendErr instanceof Error ? sendErr.message : String(sendErr),
+            inviteLink: linkData.properties.action_link,
+          },
+          200,
+        );
+      }
+
+      return json({ ok: true, emailSent: true }, 200);
     }
 
     if (action === "update_role") {
