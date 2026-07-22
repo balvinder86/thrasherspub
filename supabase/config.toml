@@ -162,8 +162,10 @@ site_url = "https://thrasherscornerpub.lovable.app"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
   "https://thrasherscornerpub.lovable.app",
+  "https://thrasherscornerpub.lovable.app/",
   "https://thrasherscornerpub.lovable.app/set-password",
   "http://localhost:8080",
+  "http://localhost:8080/",
   "http://localhost:8080/set-password",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
