@@ -134,6 +134,9 @@ jobs:
       # `auth` schema, which only exists on real Supabase projects, not
       # a bare throwaway Postgres.
 
+      - name: Apply Phase 2 membership permissions column
+        run: $PSQL -f db/phase2/42_membership_permissions.sql
+
       - name: Seed test tenants
         run: $PSQL -f db/phase0/02_seed.sql
 

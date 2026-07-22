@@ -7,9 +7,15 @@
 // ourselves.
 //
 //   { action: "list", restaurant_id }
-//   { action: "invite", restaurant_id, email, role }
-//   { action: "update_role", restaurant_id, user_id, role }
+//   { action: "invite", restaurant_id, email, role, permissions }
+//   { action: "update_member", restaurant_id, user_id, role, permissions }
 //   { action: "remove", restaurant_id, user_id }
+//
+// permissions is a { [featureKey]: boolean } map — per-feature access
+// on top of role, e.g. a staff member granted Inventory but not
+// Invoices. Owners always have full access regardless of what's
+// stored (enforced client-side; see src/lib/permissions.ts), so this
+// only meaningfully matters for manager/staff rows.
 //
 // Invite emails do NOT go through supabase.auth.admin.inviteUserByEmail
 // (which sends via Supabase Auth's configured SMTP) — that SMTP is
@@ -107,6 +113,30 @@ function isRole(v: unknown): v is Role {
   return typeof v === "string" && (ROLES as readonly string[]).includes(v);
 }
 
+// Kept in sync with PERMISSION_KEYS in src/lib/permissions.ts — every
+// key an owner can grant is listed there once; this only needs to
+// reject anything that ISN'T one of them, not enumerate them again.
+const PERMISSION_KEYS = [
+  "sales_overview",
+  "product_mix",
+  "inventory",
+  "invoices",
+  "reviews",
+  "seo",
+  "marketing",
+  "loyalty",
+  "scheduling",
+];
+function sanitizePermissions(v: unknown): Record<string, boolean> {
+  if (typeof v !== "object" || v === null) return {};
+  const out: Record<string, boolean> = {};
+  for (const key of PERMISSION_KEYS) {
+    const value = (v as Record<string, unknown>)[key];
+    if (value === true) out[key] = true;
+  }
+  return out;
+}
+
 async function assertOwner(userId: string, restaurantId: string) {
   const { data } = await supabase
     .from("memberships")
@@ -153,7 +183,7 @@ Deno.serve(async (req) => {
     if (action === "list") {
       const { data: memberships, error } = await supabase
         .from("memberships")
-        .select("user_id, role, created_at")
+        .select("user_id, role, permissions, created_at")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: true });
       if (error) return json({ ok: false, error: error.message }, 500);
@@ -165,6 +195,7 @@ Deno.serve(async (req) => {
             userId: m.user_id,
             email: u.user?.email ?? "unknown",
             role: m.role,
+            permissions: m.permissions ?? {},
             joinedAt: m.created_at,
             isSelf: m.user_id === callerId,
           };
@@ -174,7 +205,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "invite") {
-      const { email, role } = body;
+      const { email, role, permissions } = body;
       if (typeof email !== "string" || !email.includes("@")) {
         return json({ ok: false, step: "input", error: "a valid email is required" }, 400);
       }
@@ -190,29 +221,59 @@ Deno.serve(async (req) => {
         return json({ ok: false, step: "auth", error: (e as Error).message }, 403);
       }
 
-      // generateLink creates the user (or reuses them if they already
-      // have an account) and hands back a real invite link — it never
-      // sends anything itself, unlike inviteUserByEmail.
+      // generateLink creates a brand-new user and hands back a real
+      // invite link — it never sends anything itself, unlike
+      // inviteUserByEmail. It refuses to issue an "invite" link for an
+      // email that already has a real, confirmed account though (e.g.
+      // someone already on another restaurant) — that's not a
+      // failure, just a different case: add them directly, since they
+      // already have real credentials to log in with.
       const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
         type: "invite",
         email,
         options: { redirectTo: `${APP_BASE_URL}/set-password` },
       });
-      if (linkErr || !linkData?.user) {
-        return json(
-          { ok: false, step: "invite", error: linkErr?.message ?? "could not create invite" },
-          500,
-        );
-      }
-      const userId = linkData.user.id;
 
-      const { error: upsertErr } = await supabase
-        .from("memberships")
-        .upsert(
-          { user_id: userId, restaurant_id: restaurantId, role },
-          { onConflict: "user_id,restaurant_id" },
-        );
+      let userId: string;
+      let actionLink: string | null = null;
+      if (linkErr || !linkData?.user) {
+        if (!linkErr || !/already.*registered|already.*exists/i.test(linkErr.message)) {
+          return json(
+            { ok: false, step: "invite", error: linkErr?.message ?? "could not create invite" },
+            500,
+          );
+        }
+        const { data: existingId, error: lookupErr } = await supabase.rpc("get_user_id_by_email", {
+          lookup_email: email,
+        });
+        if (lookupErr || !existingId) {
+          return json(
+            { ok: false, step: "invite", error: lookupErr?.message ?? "could not find that user" },
+            500,
+          );
+        }
+        userId = existingId;
+      } else {
+        userId = linkData.user.id;
+        actionLink = linkData.properties.action_link;
+      }
+
+      const { error: upsertErr } = await supabase.from("memberships").upsert(
+        {
+          user_id: userId,
+          restaurant_id: restaurantId,
+          role,
+          permissions: sanitizePermissions(permissions),
+        },
+        { onConflict: "user_id,restaurant_id" },
+      );
       if (upsertErr) return json({ ok: false, step: "membership", error: upsertErr.message }, 500);
+
+      if (!actionLink) {
+        // Already had a real account elsewhere — they can log in with
+        // their existing credentials, no invite link to send.
+        return json({ ok: true, emailSent: false, alreadyRegistered: true }, 200);
+      }
 
       // Membership access is granted at this point regardless of what
       // happens below — a Gmail hiccup shouldn't undo a real,
@@ -248,7 +309,7 @@ Deno.serve(async (req) => {
         const gmailAccessToken = await refreshGmailAccessToken(refreshToken);
         const html = `
           <p>You've been invited to join <strong>${restaurantName}</strong> on the owner dashboard, as ${role}.</p>
-          <p><a href="${linkData.properties.action_link}">Accept the invite and set a password</a></p>
+          <p><a href="${actionLink}">Accept the invite and set a password</a></p>
           <p>If you weren't expecting this, you can ignore this email.</p>
         `;
         await sendGmailMessage(
@@ -264,7 +325,7 @@ Deno.serve(async (req) => {
             ok: true,
             emailSent: false,
             emailError: sendErr instanceof Error ? sendErr.message : String(sendErr),
-            inviteLink: linkData.properties.action_link,
+            inviteLink: actionLink,
           },
           200,
         );
@@ -273,8 +334,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, emailSent: true }, 200);
     }
 
-    if (action === "update_role") {
-      const { user_id: targetUserId, role } = body;
+    if (action === "update_member") {
+      const { user_id: targetUserId, role, permissions } = body;
       if (typeof targetUserId !== "string") {
         return json({ ok: false, step: "input", error: "user_id is required" }, 400);
       }
@@ -307,7 +368,7 @@ Deno.serve(async (req) => {
 
       const { error } = await supabase
         .from("memberships")
-        .update({ role })
+        .update({ role, permissions: sanitizePermissions(permissions) })
         .eq("user_id", targetUserId)
         .eq("restaurant_id", restaurantId);
       if (error) return json({ ok: false, error: error.message }, 500);
@@ -353,7 +414,7 @@ Deno.serve(async (req) => {
       {
         ok: false,
         step: "input",
-        error: "action must be 'list', 'invite', 'update_role', or 'remove'",
+        error: "action must be 'list', 'invite', 'update_member', or 'remove'",
       },
       400,
     );

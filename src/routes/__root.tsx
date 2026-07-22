@@ -21,6 +21,8 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth-context";
+import { hasAccess, useCurrentMembership, ROUTE_PERMISSION } from "@/lib/permissions";
+import { ShieldOff } from "lucide-react";
 
 function NotFoundComponent() {
   return (
@@ -88,16 +90,33 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Thrasher's Pub · Owner Dashboard" },
-      { name: "description", content: "Restaurant owner dashboard for sales, inventory, reviews, and operations." },
+      {
+        name: "description",
+        content: "Restaurant owner dashboard for sales, inventory, reviews, and operations.",
+      },
       { name: "author", content: "Thrasher's Pub" },
       { property: "og:title", content: "Thrasher's Pub · Owner Dashboard" },
-      { property: "og:description", content: "Restaurant owner dashboard for sales, inventory, reviews, and operations." },
+      {
+        property: "og:description",
+        content: "Restaurant owner dashboard for sales, inventory, reviews, and operations.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Thrasher's Pub · Owner Dashboard" },
-      { name: "twitter:description", content: "Restaurant owner dashboard for sales, inventory, reviews, and operations." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png" },
+      {
+        name: "twitter:description",
+        content: "Restaurant owner dashboard for sales, inventory, reviews, and operations.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/853b18c3-7d5c-4438-a3c8-51c47bbf311c/id-preview-adae2796--220ba5c0-f290-490d-9883-fee0eadbbd96.lovable.app-1782439183216.png",
+      },
     ],
     links: [
       {
@@ -182,9 +201,43 @@ function AuthGate() {
         <AppSidebar />
         <SidebarInset className="min-w-0 flex-1 bg-background">
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
+          <RouteGuard pathname={pathname} />
         </SidebarInset>
       </div>
     </SidebarProvider>
   );
+}
+
+// Hiding a sidebar link isn't a real access control — someone can
+// still type the URL directly, so every gated route is checked here
+// too, in the one shared layout every page renders inside of, rather
+// than repeating this check in each of the 9 route files.
+function RouteGuard({ pathname }: { pathname: string }) {
+  const { membershipsLoading } = useAuth();
+  const membership = useCurrentMembership();
+  const requiredPermission = ROUTE_PERMISSION[pathname];
+
+  if (!requiredPermission) {
+    return <Outlet />;
+  }
+
+  if (membershipsLoading) {
+    return null;
+  }
+
+  if (!hasAccess(membership, requiredPermission)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="max-w-md text-center">
+          <ShieldOff className="mx-auto h-10 w-10 text-muted-foreground" />
+          <h1 className="mt-4 text-xl font-semibold text-foreground">You don't have access</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Ask an owner to grant you access to this page from the Admin tab.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <Outlet />;
 }

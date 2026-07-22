@@ -3,19 +3,21 @@ import { useState } from "react";
 import {
   useTeamMembers,
   useInviteMember,
-  useUpdateMemberRole,
+  useUpdateMember,
   useRemoveMember,
   type Role,
   type TeamMember,
 } from "@/lib/admin/queries";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useRestaurantIds } from "@/lib/supabase/scope";
+import { PERMISSION_KEYS, PERMISSION_LABEL, type PermissionKey } from "@/lib/permissions";
 import { Topbar } from "@/components/dashboard/Topbar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -49,7 +51,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Shield, UserPlus, X } from "lucide-react";
+import { Pencil, Shield, UserPlus, X } from "lucide-react";
+
+type Permissions = Partial<Record<PermissionKey, boolean>>;
+
+// Only a starting point for a brand-new invite's checkboxes — an
+// owner can freely uncheck/check any of these before sending.
+// Managers start with everything on (typical day-to-day operators);
+// staff start with nothing on, since "some access" should be a
+// deliberate choice per person, not an assumed default.
+function defaultPermissions(role: Role): Permissions {
+  if (role === "staff") return {};
+  return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
+}
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin · Thrasher's Pub" }] }),
@@ -76,17 +90,32 @@ function AdminPage() {
 
   const { data: members, isLoading, error } = useTeamMembers();
   const inviteMember = useInviteMember();
-  const updateRole = useUpdateMemberRole();
+  const updateMember = useUpdateMember();
   const removeMember = useRemoveMember();
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("staff");
+  const [invitePermissions, setInvitePermissions] = useState<Permissions>(
+    defaultPermissions("staff"),
+  );
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [emailFallback, setEmailFallback] = useState<{ error: string; link: string } | null>(null);
+  const [addedExisting, setAddedExisting] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [editRole, setEditRole] = useState<Role>("staff");
+  const [editPermissions, setEditPermissions] = useState<Permissions>({});
+
   const ownerCount = (members ?? []).filter((m) => m.role === "owner").length;
+  const isLastOwner = (m: TeamMember) => m.role === "owner" && ownerCount <= 1;
+
+  function openEdit(m: TeamMember) {
+    setEditingMember(m);
+    setEditRole(m.role);
+    setEditPermissions(m.permissions);
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -162,27 +191,14 @@ function AdminPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {canManage ? (
-                        <Select
-                          value={m.role}
-                          onValueChange={(role) =>
-                            updateRole.mutate({ userId: m.userId, role: role as Role })
-                          }
-                          disabled={updateRole.isPending || (m.role === "owner" && ownerCount <= 1)}
-                        >
-                          <SelectTrigger className="h-8 w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="owner">Owner</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="staff">Staff</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge variant="outline" className="font-normal">
-                          {ROLE_LABEL[m.role]}
-                        </Badge>
+                      <Badge variant="outline" className="font-normal">
+                        {ROLE_LABEL[m.role]}
+                      </Badge>
+                      {m.role !== "owner" && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {PERMISSION_KEYS.filter((k) => m.permissions[k]).length}/
+                          {PERMISSION_KEYS.length} pages
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
@@ -193,8 +209,16 @@ function AdminPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEdit(m)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          disabled={m.role === "owner" && ownerCount <= 1}
+                          disabled={isLastOwner(m)}
                           onClick={() => setMemberToRemove(m)}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -208,9 +232,9 @@ function AdminPage() {
           </Table>
         </Card>
 
-        {(updateRole.isError || removeMember.isError) && (
+        {(updateMember.isError || removeMember.isError) && (
           <p className="text-sm text-[#a8453a]">
-            {((updateRole.error ?? removeMember.error) as Error).message}
+            {((updateMember.error ?? removeMember.error) as Error).message}
           </p>
         )}
       </main>
@@ -223,7 +247,9 @@ function AdminPage() {
           if (!o) {
             setInviteEmail("");
             setInviteRole("staff");
+            setInvitePermissions(defaultPermissions("staff"));
             setEmailFallback(null);
+            setAddedExisting(false);
             setLinkCopied(false);
             inviteMember.reset();
           }
@@ -239,7 +265,17 @@ function AdminPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {emailFallback ? (
+          {addedExisting ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                They already had an account here — access is granted. They can log in with their
+                existing email and password, no new invite needed.
+              </p>
+              <Button className="w-full" onClick={() => setInviteOpen(false)}>
+                Done
+              </Button>
+            </div>
+          ) : emailFallback ? (
             <div className="space-y-4 py-2">
               <p className="text-sm text-muted-foreground">
                 They now have access, but the invite email couldn't be sent ({emailFallback.error}).
@@ -280,7 +316,14 @@ function AdminPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Role</Label>
-                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+                  <Select
+                    value={inviteRole}
+                    onValueChange={(v) => {
+                      const role = v as Role;
+                      setInviteRole(role);
+                      setInvitePermissions(defaultPermissions(role));
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -293,6 +336,28 @@ function AdminPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {inviteRole === "owner" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Owners always have access to every page.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Pages they can access</Label>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border p-3">
+                      {PERMISSION_KEYS.map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={invitePermissions[key] === true}
+                            onCheckedChange={(checked) =>
+                              setInvitePermissions((prev) => ({ ...prev, [key]: checked === true }))
+                            }
+                          />
+                          {PERMISSION_LABEL[key]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {inviteMember.isError && (
                   <p className="text-sm text-[#a8453a]">{(inviteMember.error as Error).message}</p>
                 )}
@@ -303,11 +368,13 @@ function AdminPage() {
                   disabled={!inviteEmail.includes("@") || inviteMember.isPending}
                   onClick={() =>
                     inviteMember.mutate(
-                      { email: inviteEmail, role: inviteRole },
+                      { email: inviteEmail, role: inviteRole, permissions: invitePermissions },
                       {
                         onSuccess: (result) => {
                           if (result.emailSent) {
                             setInviteOpen(false);
+                          } else if (result.alreadyRegistered) {
+                            setAddedExisting(true);
                           } else {
                             setEmailFallback({
                               error: result.emailError ?? "unknown error",
@@ -320,6 +387,100 @@ function AdminPage() {
                   }
                 >
                   {inviteMember.isPending ? "Sending invite…" : "Send invite"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit access dialog */}
+      <Dialog
+        open={!!editingMember}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditingMember(null);
+            updateMember.reset();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-muted-foreground" /> Edit access
+            </DialogTitle>
+            <DialogDescription>{editingMember?.email}</DialogDescription>
+          </DialogHeader>
+          {editingMember && (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Select
+                    value={editRole}
+                    onValueChange={(v) => setEditRole(v as Role)}
+                    disabled={isLastOwner(editingMember)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="owner">
+                        Owner — full access, can manage the team
+                      </SelectItem>
+                      <SelectItem value="manager">Manager — day-to-day operations</SelectItem>
+                      <SelectItem value="staff">Staff — limited access</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {isLastOwner(editingMember) && (
+                    <p className="text-xs text-muted-foreground">
+                      This is the only owner, so their role can't be changed. Make someone else an
+                      owner first.
+                    </p>
+                  )}
+                </div>
+                {editRole === "owner" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Owners always have access to every page.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Pages they can access</Label>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border p-3">
+                      {PERMISSION_KEYS.map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={editPermissions[key] === true}
+                            onCheckedChange={(checked) =>
+                              setEditPermissions((prev) => ({ ...prev, [key]: checked === true }))
+                            }
+                          />
+                          {PERMISSION_LABEL[key]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {updateMember.isError && (
+                  <p className="text-sm text-[#a8453a]">{(updateMember.error as Error).message}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  className="w-full"
+                  disabled={updateMember.isPending}
+                  onClick={() =>
+                    updateMember.mutate(
+                      {
+                        userId: editingMember.userId,
+                        role: editRole,
+                        permissions: editPermissions,
+                      },
+                      { onSuccess: () => setEditingMember(null) },
+                    )
+                  }
+                >
+                  {updateMember.isPending ? "Saving…" : "Save changes"}
                 </Button>
               </DialogFooter>
             </>

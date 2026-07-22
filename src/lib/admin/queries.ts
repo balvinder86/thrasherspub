@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase/client";
 import { useRestaurantIds } from "@/lib/supabase/scope";
+import type { PermissionKey } from "@/lib/permissions";
 
 function useCurrentRestaurantId(): string | undefined {
   return useRestaurantIds()[0];
@@ -13,6 +14,7 @@ export type TeamMember = {
   userId: string;
   email: string;
   role: Role;
+  permissions: Partial<Record<PermissionKey, boolean>>;
   joinedAt: string;
   isSelf: boolean;
 };
@@ -46,19 +48,32 @@ export type InviteResult = {
   emailSent: boolean;
   emailError?: string;
   inviteLink?: string;
+  // They already had a real, confirmed account elsewhere — added
+  // directly, nothing to send since they log in with existing
+  // credentials.
+  alreadyRegistered?: boolean;
 };
 
 export function useInviteMember() {
   const restaurantId = useCurrentRestaurantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: Role }): Promise<InviteResult> => {
+    mutationFn: async ({
+      email,
+      role,
+      permissions,
+    }: {
+      email: string;
+      role: Role;
+      permissions: Partial<Record<PermissionKey, boolean>>;
+    }): Promise<InviteResult> => {
       if (!restaurantId) throw new Error("no current restaurant");
       return callManageTeam<InviteResult>({
         action: "invite",
         restaurant_id: restaurantId,
         email,
         role,
+        permissions,
       });
     },
     onSuccess: () => {
@@ -67,17 +82,26 @@ export function useInviteMember() {
   });
 }
 
-export function useUpdateMemberRole() {
+export function useUpdateMember() {
   const restaurantId = useCurrentRestaurantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: Role }) => {
+    mutationFn: async ({
+      userId,
+      role,
+      permissions,
+    }: {
+      userId: string;
+      role: Role;
+      permissions: Partial<Record<PermissionKey, boolean>>;
+    }) => {
       if (!restaurantId) throw new Error("no current restaurant");
       await callManageTeam({
-        action: "update_role",
+        action: "update_member",
         restaurant_id: restaurantId,
         user_id: userId,
         role,
+        permissions,
       });
     },
     onSuccess: () => {
