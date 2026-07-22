@@ -290,24 +290,34 @@ async function extractReviewAt(frame: FrameLocator, index: number): Promise<Extr
         let node: Node | null;
         while ((node = walker.nextNode())) {
           const t = (node.textContent ?? "").trim();
-          if (t.length > 1) texts.push(t);
+          // A single-digit review age ("3", "5") is only 1 char — must
+          // not be filtered out here, or the lookback below never sees
+          // it (confirmed via direct DOM inspection: single digits do
+          // appear as their own text node, same as multi-digit ones).
+          if (t.length > 0) texts.push(t);
         }
 
         const IGNORE =
           /^(star|Star|review|photo|ago|week|month|year|Local Guide|Translate|Reply|More|Like|Share|View full review|Posted|Edited|NEW)$|^\d/i;
-        // Google renders the review's age as its own short text node near
-        // the reviewer name, e.g. "2 weeks ago", "a month ago", "3 days
-        // ago". Captured separately from reviewerName/comment since it
-        // matches IGNORE (previously just discarded) and needs parsing,
-        // not display, once found.
-        const DATE_RELATIVE = /^(a|an|\d+)\s+(day|week|month|year|hour|minute)s?\s+ago$/i;
+        // Google renders the review's age as TWO separate text nodes —
+        // a bare count, then a following "hours ago"/"days ago"/"weeks
+        // ago" node — never combined into one "3 hours ago" string like
+        // a naive regex would expect (confirmed via direct DOM
+        // inspection). Match the unit+"ago" half on its own, then look
+        // one node back for the count; "a/an X ago" (no preceding
+        // number) defaults to 1.
+        const DATE_UNIT_AGO = /^(day|week|month|year|hour|minute)s?\s+ago$/i;
+        const BARE_NUMBER = /^\d+$/;
         let reviewerName = "Anonymous";
         let comment = "";
         let writtenRelative: string | null = null;
 
-        for (const t of texts) {
-          if (writtenRelative === null && DATE_RELATIVE.test(t)) {
-            writtenRelative = t;
+        for (let idx = 0; idx < texts.length; idx++) {
+          const t = texts[idx];
+          if (writtenRelative === null && DATE_UNIT_AGO.test(t)) {
+            const prev = idx > 0 ? texts[idx - 1] : null;
+            const amount = prev && BARE_NUMBER.test(prev) ? prev : "1";
+            writtenRelative = `${amount} ${t}`;
           }
           if (
             reviewerName === "Anonymous" &&
@@ -325,9 +335,9 @@ async function extractReviewAt(frame: FrameLocator, index: number): Promise<Extr
 
         let writtenAt: string | null = null;
         if (writtenRelative) {
-          const m = writtenRelative.match(DATE_RELATIVE);
+          const m = writtenRelative.match(/^(\d+)\s+(day|week|month|year|hour|minute)s?\s+ago$/i);
           if (m) {
-            const amount = /^(a|an)$/i.test(m[1]) ? 1 : parseInt(m[1], 10);
+            const amount = parseInt(m[1], 10);
             const unit = m[2].toLowerCase();
             const msPerUnit: Record<string, number> = {
               minute: 60_000,
