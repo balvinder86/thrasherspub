@@ -32,6 +32,7 @@ function json(body: unknown, status: number) {
 }
 
 type Theme = { theme: string; count: number };
+type StaffMention = { name: string; count: number };
 
 function stripJsonFences(text: string): string {
   return text
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
         model: "claude-sonnet-4-5",
         max_tokens: 1024,
         system:
-          'You analyze real restaurant guest reviews and extract recurring themes actually present in the text. Respond with ONLY valid JSON, no markdown, no commentary, matching exactly this shape: {"praiseThemes":[{"theme":string,"count":number}],"complaintThemes":[{"theme":string,"count":number}]}. Each theme is a short 2-5 word phrase (e.g. "Friendly staff", "Slow service on weekends"). At most 5 themes per list, ordered by count descending. count = how many of the given reviews genuinely mention that theme — never invent a theme not actually reflected in the text, and return fewer than 5 (or an empty list) if there isn\'t real signal for more.',
+          'You analyze real restaurant guest reviews and extract recurring themes actually present in the text. Respond with ONLY valid JSON, no markdown, no commentary, matching exactly this shape: {"praiseThemes":[{"theme":string,"count":number}],"complaintThemes":[{"theme":string,"count":number}],"staffMentions":[{"name":string,"count":number}]}. Each theme is a short 2-5 word phrase (e.g. "Friendly staff", "Slow service on weekends"). At most 5 themes per list, ordered by count descending. count = how many of the given reviews genuinely mention that theme — never invent a theme not actually reflected in the text, and return fewer than 5 (or an empty list) if there isn\'t real signal for more. staffMentions: scan ONLY the positive (4-5 star) reviews for actual employee/staff first names or full names the guest names by name (e.g. "Our server Maria was great", "ask for Jake at the bar") — a real person\'s name, not a generic role like "the waitress" or "our server". count = how many positive reviews name that person. At most 8 people, ordered by count descending, empty list if no one is named by name.',
         messages: [{ role: "user", content: userMessage }],
       }),
     });
@@ -137,7 +138,7 @@ Deno.serve(async (req) => {
       .map((b: { text: string }) => b.text)
       .join("");
 
-    let parsed: { praiseThemes: Theme[]; complaintThemes: Theme[] };
+    let parsed: { praiseThemes: Theme[]; complaintThemes: Theme[]; staffMentions: StaffMention[] };
     try {
       parsed = JSON.parse(stripJsonFences(rawText));
     } catch {
@@ -153,6 +154,7 @@ Deno.serve(async (req) => {
         insufficientData: false,
         praiseThemes: parsed.praiseThemes ?? [],
         complaintThemes: parsed.complaintThemes ?? [],
+        staffMentions: parsed.staffMentions ?? [],
         sampleSize: { positive: positive.length, negative: negative.length },
       },
       200,

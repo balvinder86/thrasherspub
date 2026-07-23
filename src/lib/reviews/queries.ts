@@ -263,10 +263,12 @@ export function useDismissReview() {
 }
 
 export type InsightsTheme = { theme: string; count: number };
+export type StaffMention = { name: string; count: number };
 export type InsightsResult = {
   insufficientData: boolean;
   praiseThemes: InsightsTheme[];
   complaintThemes: InsightsTheme[];
+  staffMentions: StaffMention[];
   sampleSize: { positive: number; negative: number };
 };
 

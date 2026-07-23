@@ -13,7 +13,6 @@ import {
   type Review,
   type ReviewStatus,
   type InsightsResult,
-  type InsightsTheme,
 } from "@/lib/reviews/queries";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -249,14 +248,16 @@ function EmptyInsightCard({ title, description }: { title: string; description: 
 function ThemeListCard({
   title,
   emptyHint,
+  noResultsHint = "No clear recurring theme yet — reviews are too varied so far.",
   mutation,
   pick,
   badgeVariant,
 }: {
   title: string;
   emptyHint: string;
+  noResultsHint?: string;
   mutation: UseMutationResult<InsightsResult, Error, void, unknown>;
-  pick: (data: InsightsResult) => InsightsTheme[];
+  pick: (data: InsightsResult) => { label: string; count: number }[];
   badgeVariant: "positive" | "negative";
 }) {
   const badgeCls =
@@ -292,14 +293,12 @@ function ThemeListCard({
       {mutation.isSuccess && !mutation.data.insufficientData && (
         <>
           {pick(mutation.data).length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No clear recurring theme yet — reviews are too varied so far.
-            </p>
+            <p className="mt-3 text-sm text-muted-foreground">{noResultsHint}</p>
           ) : (
             <ul className="mt-4 space-y-3 text-sm">
               {pick(mutation.data).map((t) => (
-                <li key={t.theme} className="flex items-center gap-3">
-                  <span className="flex-1">{t.theme}</span>
+                <li key={t.label} className="flex items-center gap-3">
+                  <span className="flex-1">{t.label}</span>
                   <Badge variant="secondary" className={`rounded-full border ${badgeCls}`}>
                     {t.count}
                   </Badge>
@@ -933,19 +932,23 @@ function ReviewsPage() {
                 title="Trending praise"
                 emptyHint="Would surface the dishes, staff, and details guests mention most in positive reviews."
                 mutation={analyzeInsights}
-                pick={(d) => d.praiseThemes}
+                pick={(d) => d.praiseThemes.map((t) => ({ label: t.theme, count: t.count }))}
                 badgeVariant="positive"
               />
               <ThemeListCard
                 title="Trending complaints"
                 emptyHint="Would surface recurring themes in critical reviews — wait times, temperature, billing, etc."
                 mutation={analyzeInsights}
-                pick={(d) => d.complaintThemes}
+                pick={(d) => d.complaintThemes.map((t) => ({ label: t.theme, count: t.count }))}
                 badgeVariant="negative"
               />
-              <EmptyInsightCard
+              <ThemeListCard
                 title="Staff leaderboard"
-                description="Would rank staff by how often they're named in positive reviews. Needs a staff roster and name detection across review text — not built yet."
+                emptyHint="Reads your positive reviews for guests naming staff by name (e.g. 'ask for Jake at the bar')."
+                noResultsHint="No one named by name in positive reviews yet."
+                mutation={analyzeInsights}
+                pick={(d) => d.staffMentions.map((s) => ({ label: s.name, count: s.count }))}
+                badgeVariant="positive"
               />
             </div>
           </TabsContent>
