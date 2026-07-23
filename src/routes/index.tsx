@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  AlertTriangle,
   ArrowRight,
   ArrowUpRight,
   Brain,
   CalendarClock,
-  CheckCircle2,
   DollarSign,
   Gift,
   Megaphone,
@@ -37,7 +35,6 @@ import { Topbar } from "@/components/dashboard/Topbar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   useChannelMix,
   useFoodCostSummary,
@@ -46,6 +43,7 @@ import {
   useTopItems,
 } from "@/lib/pos/queries";
 import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
+import { useCustomers } from "@/lib/marketing/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/queries";
 
@@ -62,16 +60,6 @@ export const Route = createFileRoute("/")({
   }),
   component: Overview,
 });
-
-/* ---------- mock data, mirrors the other tabs ---------- */
-
-const todaysAgenda = [
-  { time: "9:00a", text: "Approve Sysco & Columbia POs", module: "Inventory", to: "/inventory" },
-  { time: "11:30a", text: "Reply to 3 flagged reviews", module: "Reviews", to: "/reviews" },
-  { time: "2:00p", text: "Confirm Sunday brunch campaign", module: "Marketing", to: "/marketing" },
-  { time: "4:00p", text: "Publish next week's schedule", module: "Scheduling", to: "/scheduling" },
-  { time: "5:30p", text: "Pre-shift: 220 covers forecast", module: "Sales", to: "/" },
-];
 
 const toneTile: Record<string, string> = {
   primary: "bg-primary/10 text-primary border-primary/20",
@@ -140,6 +128,7 @@ function Overview() {
   const isSeoConnected = !!scConnection;
   const { data: scOverview } = useSearchConsoleOverview(isSeoConnected);
   const { data: channelMix = [] } = useChannelMix(7);
+  const { data: customers = [] } = useCustomers();
 
   const netSales = useMemo(() => {
     const current = revenueData.reduce((s, d) => s + d.revenue, 0);
@@ -149,6 +138,22 @@ function Overview() {
       delta: prior > 0 ? ((current - prior) / prior) * 100 : null,
     };
   }, [revenueData]);
+
+  // "New customers added" = real CRM contacts created in the period —
+  // narrower than real walk-in traffic, since only Toast POS revenue
+  // gets synced automatically today, not customer identities. Sample
+  // rows are seed/demo data, not real customers, so they're excluded.
+  const newCustomers = useMemo(() => {
+    const real = customers.filter((c) => c.source !== "sample");
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const current = real.filter((c) => now - new Date(c.createdAt).getTime() <= 7 * dayMs).length;
+    const prior = real.filter((c) => {
+      const age = now - new Date(c.createdAt).getTime();
+      return age > 7 * dayMs && age <= 14 * dayMs;
+    }).length;
+    return { count: current, delta: current - prior };
+  }, [customers]);
 
   const moduleTiles = useMemo(() => {
     // Product Mix — same revenueWk/soldWk aggregation product-mix.tsx's
@@ -527,7 +532,7 @@ function Overview() {
         </section>
 
         {/* KPI row */}
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Kpi
             icon={DollarSign}
             label="Net sales (7d)"
@@ -539,7 +544,18 @@ function Overview() {
             }
             positive={netSales.delta != null ? netSales.delta >= 0 : undefined}
           />
-          <Kpi icon={Users} label="New guests" value="46" delta="-3" />
+          <Kpi
+            icon={Users}
+            label="New customers added"
+            value={String(newCustomers.count)}
+            delta={
+              newCustomers.delta != null
+                ? `${newCustomers.delta >= 0 ? "+" : ""}${newCustomers.delta}`
+                : "—"
+            }
+            positive={newCustomers.delta != null ? newCustomers.delta >= 0 : undefined}
+            deltaSuffix="vs prior 7d · CRM contacts, not walk-ins"
+          />
           <Kpi
             icon={Receipt}
             label="Food cost"
@@ -548,11 +564,10 @@ function Overview() {
             positive={foodCostDisplay.positive}
             deltaSuffix="vs actual spend"
           />
-          <Kpi icon={CheckCircle2} label="On-time POs" value="96%" delta="+2%" positive />
         </section>
 
-        {/* Top items + Agenda + Operational pulse */}
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        {/* Top sellers */}
+        <section>
           <Card className="overflow-hidden p-0">
             <div className="flex items-center justify-between border-b border-border px-6 py-5">
               <div>
@@ -606,73 +621,6 @@ function Overview() {
                   <Bar dataKey="revenue" fill="var(--color-primary)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-          </Card>
-
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-border px-6 py-5">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Today
-                </div>
-                <h2 className="mt-1 font-display text-xl">Your agenda</h2>
-              </div>
-              <Badge variant="outline" className="rounded-full">
-                {todaysAgenda.length}
-              </Badge>
-            </div>
-            <div className="divide-y divide-border">
-              {todaysAgenda.map((a) => (
-                <Link
-                  key={a.text}
-                  to={a.to}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-6 py-3.5 transition-colors hover:bg-muted/40"
-                >
-                  <div className="w-12 font-display text-sm text-muted-foreground">{a.time}</div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{a.text}</div>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                      {a.module}
-                    </div>
-                  </div>
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                </Link>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-border px-6 py-5">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Operational pulse
-                </div>
-                <h2 className="mt-1 font-display text-xl">House health</h2>
-              </div>
-              <Badge
-                variant="outline"
-                className="gap-1.5 rounded-full border-primary/30 bg-primary/10 text-primary"
-              >
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" /> Live
-              </Badge>
-            </div>
-            <div className="space-y-5 p-6">
-              <PulseRow
-                label="Kitchen ticket time"
-                value="11m 20s"
-                pct={78}
-                hint="goal < 12m"
-                tone="ok"
-              />
-              <PulseRow label="Bar wait" value="6m" pct={62} hint="trending up" tone="ok" />
-              <PulseRow label="Table turn" value="68m" pct={92} hint="goal 65m" tone="warn" />
-              <PulseRow label="Open tabs" value="9 · $1,842" pct={45} hint="oldest 38m" tone="ok" />
-              <div className="flex items-center gap-2 rounded-lg border border-[oklch(0.85_0.08_75)] bg-[oklch(0.96_0.04_85)] p-3 text-xs">
-                <AlertTriangle className="h-4 w-4 text-[oklch(0.55_0.15_50)]" />
-                <span className="text-[oklch(0.35_0.08_50)]">
-                  Patio 7 has been on first course 22 min — check in.
-                </span>
-              </div>
             </div>
           </Card>
         </section>
@@ -781,34 +729,6 @@ function Kpi({
         <span className="text-muted-foreground">{deltaSuffix}</span>
       </div>
     </Card>
-  );
-}
-
-function PulseRow({
-  label,
-  value,
-  pct,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  pct: number;
-  hint: string;
-  tone: "ok" | "warn";
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-display">{value}</span>
-      </div>
-      <Progress
-        value={pct}
-        className={"mt-2 h-1.5 " + (tone === "warn" ? "[&>div]:bg-[oklch(0.7_0.15_55)]" : "")}
-      />
-      <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>
-    </div>
   );
 }
 
