@@ -1,7 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase/client";
 import { useLocationIds } from "@/lib/supabase/scope";
+
+// PostgREST caps an unpaginated read at 1000 rows. pmix_sales and
+// pos_raw_events both scale with days-in-range × (menu items or
+// orders), so a query that was safely under 1000 rows at a 7-day
+// window can silently truncate — without an explicit order, to an
+// arbitrary, non-deterministic subset — once the date-range filter
+// grows past a week. Page through every matching row instead of
+// trusting a single request to return everything.
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  makeQuery: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await makeQuery(from, from + SUPABASE_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    all.push(...page);
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+  return all;
+}
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -206,13 +235,17 @@ export function useFoodCostSummary(days = 7) {
       const today = new Date();
       const periodStart = addDays(today, -days);
 
-      const [salesRes, recipeRes, invoicesRes] = await Promise.all([
-        supabase
-          .from("pmix_sales")
-          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
-          .in("location_id", locationIds!)
-          .gte("business_date", isoDate(periodStart))
-          .lt("business_date", isoDate(today)),
+      const [salesData, recipeRes, invoicesRes] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("pmix_sales")
+            .select("menu_item_pos_id, quantity_sold, net_sales_cents")
+            .in("location_id", locationIds!)
+            .gte("business_date", isoDate(periodStart))
+            .lt("business_date", isoDate(today))
+            .order("business_date", { ascending: true })
+            .range(from, to),
+        ),
         supabase
           .from("recipe_lines")
           .select("menu_item_pos_id, quantity, ingredients (unit_cost_cents)")
@@ -225,7 +258,6 @@ export function useFoodCostSummary(days = 7) {
           .gte("invoice_date", isoDate(periodStart))
           .lt("invoice_date", isoDate(today)),
       ]);
-      if (salesRes.error) throw salesRes.error;
       if (recipeRes.error) throw recipeRes.error;
       if (invoicesRes.error) throw invoicesRes.error;
 
@@ -245,7 +277,7 @@ export function useFoodCostSummary(days = 7) {
       let theoreticalCostCents = 0;
       let netSalesCents = 0;
       const itemsMissing = new Set<string>();
-      for (const row of salesRes.data ?? []) {
+      for (const row of salesData) {
         netSalesCents += Number(row.net_sales_cents);
         const perUnit = recipeCostPerUnit.get(row.menu_item_pos_id);
         if (perUnit == null) {
@@ -304,15 +336,18 @@ export function useSalesTrend(days = 7) {
     queryFn: async (): Promise<DailyRevenue[]> => {
       const today = new Date();
       const rangeStart = addDays(today, -days * 2);
-      const { data, error } = await supabase
-        .from("pmix_sales")
-        .select("business_date, net_sales_cents")
-        .in("location_id", locationIds!)
-        .gte("business_date", isoDate(rangeStart));
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .from("pmix_sales")
+          .select("business_date, net_sales_cents")
+          .in("location_id", locationIds!)
+          .gte("business_date", isoDate(rangeStart))
+          .order("business_date", { ascending: true })
+          .range(from, to),
+      );
 
       const byDate = new Map<string, number>();
-      for (const r of data ?? [])
+      for (const r of data)
         byDate.set(r.business_date, (byDate.get(r.business_date) ?? 0) + Number(r.net_sales_cents));
 
       const out: DailyRevenue[] = [];
@@ -321,7 +356,13 @@ export function useSalesTrend(days = 7) {
         const key = isoDate(d);
         const lastWeekKey = isoDate(addDays(d, -7));
         out.push({
-          day: d.toLocaleDateString("en-US", { weekday: "short" }),
+          // Weekday-only labels ("Mon", "Tue"...) repeat and become
+          // ambiguous once the range exceeds a week — switch to a
+          // dated label ("Jul 5") beyond 7 days.
+          day:
+            days <= 7
+              ? d.toLocaleDateString("en-US", { weekday: "short" })
+              : d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           revenue: (byDate.get(key) ?? 0) / 100,
           lastWeek: (byDate.get(lastWeekKey) ?? 0) / 100,
         });
@@ -373,19 +414,22 @@ export function useChannelMix(days = 7) {
     enabled: !!locationIds && locationIds.length > 0,
     queryFn: async (): Promise<ChannelMixSlice[]> => {
       const start = addDays(new Date(), -days);
-      const [ordersRes, centersRes] = await Promise.all([
-        supabase
-          .from("pos_raw_events")
-          .select("payload")
-          .eq("event_type", "order")
-          .in("location_id", locationIds!)
-          .gte("business_date", isoDate(start)),
+      const [orders, centersRes] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("pos_raw_events")
+            .select("payload")
+            .eq("event_type", "order")
+            .in("location_id", locationIds!)
+            .gte("business_date", isoDate(start))
+            .order("business_date", { ascending: true })
+            .range(from, to),
+        ),
         supabase
           .from("pos_revenue_centers")
           .select("pos_guid, name")
           .in("location_id", locationIds!),
       ]);
-      if (ordersRes.error) throw ordersRes.error;
       if (centersRes.error) throw centersRes.error;
 
       const nameByGuid = new Map(
@@ -400,7 +444,7 @@ export function useChannelMix(days = 7) {
       };
 
       const centsByGuid = new Map<string, number>();
-      for (const row of ordersRes.data ?? []) {
+      for (const row of orders) {
         const order = row.payload as RawOrder;
         if (order.deleted || order.voided) continue;
         const guid = order.revenueCenter?.guid ?? "unknown";
@@ -436,15 +480,18 @@ export function useTopItems(days = 7, limit = 5) {
     enabled: !!locationIds && locationIds.length > 0,
     queryFn: async (): Promise<TopItem[]> => {
       const start = addDays(new Date(), -days);
-      const { data, error } = await supabase
-        .from("pmix_sales")
-        .select("name, quantity_sold, net_sales_cents")
-        .in("location_id", locationIds!)
-        .gte("business_date", isoDate(start));
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .from("pmix_sales")
+          .select("name, quantity_sold, net_sales_cents")
+          .in("location_id", locationIds!)
+          .gte("business_date", isoDate(start))
+          .order("business_date", { ascending: true })
+          .range(from, to),
+      );
 
       const map = new Map<string, TopItem>();
-      for (const r of data ?? []) {
+      for (const r of data) {
         const cur = map.get(r.name) ?? { name: r.name, sold: 0, revenue: 0 };
         cur.sold += Number(r.quantity_sold);
         cur.revenue += Number(r.net_sales_cents) / 100;

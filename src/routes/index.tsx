@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -115,9 +115,15 @@ function suggestedQty(item: { par: number; onHand: number; weeklyUsage: number }
 }
 
 function Overview() {
-  const { data: revenueData = [] } = useSalesTrend(7);
-  const { data: topItems = [] } = useTopItems(7, 4);
-  const { data: foodCost } = useFoodCostSummary(7);
+  // Drives Revenue, Channel mix, Top sellers and the KPI row only —
+  // Real backlog and the module tiles below intentionally always show
+  // current/live state, not a historical window, so they keep their
+  // own fixed-window hooks untouched by this control.
+  const [rangeDays, setRangeDays] = useState(7);
+
+  const { data: revenueData = [] } = useSalesTrend(rangeDays);
+  const { data: topItems = [] } = useTopItems(rangeDays, 4);
+  const { data: foodCost } = useFoodCostSummary(rangeDays);
   const foodCostDisplay = foodCostKpi(foodCost);
 
   const { data: productMixItems = [] } = useProductMix(7);
@@ -127,7 +133,7 @@ function Overview() {
   const { data: scConnection } = useSearchConsoleConnection();
   const isSeoConnected = !!scConnection;
   const { data: scOverview } = useSearchConsoleOverview(isSeoConnected);
-  const { data: channelMix = [] } = useChannelMix(7);
+  const { data: channelMix = [], isLoading: isChannelMixLoading } = useChannelMix(rangeDays);
   const { data: customers = [] } = useCustomers();
 
   const netSales = useMemo(() => {
@@ -147,13 +153,15 @@ function Overview() {
     const real = customers.filter((c) => c.source !== "sample");
     const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
-    const current = real.filter((c) => now - new Date(c.createdAt).getTime() <= 7 * dayMs).length;
+    const current = real.filter(
+      (c) => now - new Date(c.createdAt).getTime() <= rangeDays * dayMs,
+    ).length;
     const prior = real.filter((c) => {
       const age = now - new Date(c.createdAt).getTime();
-      return age > 7 * dayMs && age <= 14 * dayMs;
+      return age > rangeDays * dayMs && age <= rangeDays * 2 * dayMs;
     }).length;
     return { count: current, delta: current - prior };
-  }, [customers]);
+  }, [customers, rangeDays]);
 
   const moduleTiles = useMemo(() => {
     // Product Mix — same revenueWk/soldWk aggregation product-mix.tsx's
@@ -319,7 +327,12 @@ function Overview() {
 
   return (
     <>
-      <Topbar eyebrow="Thursday · June 25 · West Village" title="Good evening, Bali" />
+      <Topbar
+        eyebrow="Thursday · June 25 · West Village"
+        title="Good evening, Bali"
+        dateRangeDays={rangeDays}
+        onDateRangeDaysChange={setRangeDays}
+      />
       <main className="space-y-8 px-6 py-8">
         {/* Agents working for you — real, actionable backlog counts,
             reusing the exact same hooks/data as the module tiles below. */}
@@ -414,11 +427,11 @@ function Overview() {
                 <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Revenue
                 </div>
-                <h2 className="mt-1 font-display text-2xl">This week vs last</h2>
+                <h2 className="mt-1 font-display text-2xl">Last {rangeDays} days vs prior</h2>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs">
-                <LegendDot color="var(--color-primary)" label="This week" />
-                <LegendDot color="oklch(0.78 0.04 70)" label="Last week" />
+                <LegendDot color="var(--color-primary)" label="This period" />
+                <LegendDot color="oklch(0.78 0.04 70)" label="Same day, prior week" />
               </div>
             </div>
             <div className="mt-6 h-[260px]">
@@ -441,6 +454,7 @@ function Overview() {
                     tickLine={false}
                     axisLine={false}
                     fontSize={12}
+                    interval={Math.max(0, Math.floor(rangeDays / 8) - 1)}
                   />
                   <YAxis
                     stroke="var(--color-muted-foreground)"
@@ -484,9 +498,13 @@ function Overview() {
             </div>
             <h2 className="mt-1 font-display text-2xl">Channel mix</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Real revenue by Toast revenue center, last 7 days
+              Real revenue by Toast revenue center, last {rangeDays} days
             </p>
-            {channelMix.length === 0 ? (
+            {isChannelMixLoading ? (
+              <div className="mt-6 flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : channelMix.length === 0 ? (
               <div className="mt-6 flex h-[200px] items-center justify-center text-sm text-muted-foreground">
                 No real order data for this period yet.
               </div>
@@ -535,7 +553,7 @@ function Overview() {
         <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Kpi
             icon={DollarSign}
-            label="Net sales (7d)"
+            label={`Net sales (${rangeDays}d)`}
             value={`$${netSales.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
             delta={
               netSales.delta != null
@@ -554,7 +572,7 @@ function Overview() {
                 : "—"
             }
             positive={newCustomers.delta != null ? newCustomers.delta >= 0 : undefined}
-            deltaSuffix="vs prior 7d · CRM contacts, not walk-ins"
+            deltaSuffix={`vs prior ${rangeDays}d · CRM contacts, not walk-ins`}
           />
           <Kpi
             icon={Receipt}
@@ -574,7 +592,8 @@ function Overview() {
                 <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Product mix
                 </div>
-                <h2 className="mt-1 font-display text-xl">Top sellers tonight</h2>
+                <h2 className="mt-1 font-display text-xl">Top sellers</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">Last {rangeDays} days</p>
               </div>
               <Button asChild variant="outline" size="sm" className="rounded-full">
                 <Link to="/product-mix">Open</Link>
