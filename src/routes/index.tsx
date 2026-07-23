@@ -8,7 +8,6 @@ import {
   CalendarClock,
   CheckCircle2,
   DollarSign,
-  Flame,
   Gift,
   Megaphone,
   Package,
@@ -39,7 +38,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { useFoodCostSummary, useProductMix, useSalesTrend, useTopItems } from "@/lib/pos/queries";
+import {
+  useChannelMix,
+  useFoodCostSummary,
+  useProductMix,
+  useSalesTrend,
+  useTopItems,
+} from "@/lib/pos/queries";
 import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/queries";
@@ -60,43 +65,6 @@ export const Route = createFileRoute("/")({
 
 /* ---------- mock data, mirrors the other tabs ---------- */
 
-const channelMix = [
-  { name: "Dine-in", value: 58, color: "var(--color-primary)" },
-  { name: "Bar", value: 22, color: "oklch(0.72 0.13 55)" },
-  { name: "Patio", value: 12, color: "oklch(0.82 0.09 80)" },
-  { name: "Takeout", value: 8, color: "oklch(0.78 0.04 70)" },
-];
-
-const aiSignals = [
-  {
-    tag: "Inventory",
-    tone: "primary",
-    title: "12 items below par for tomorrow",
-    body: "Tito's, Sysco produce, and Columbia seafood orders ready to send.",
-    cta: "Review cart",
-    to: "/inventory",
-    icon: Package,
-  },
-  {
-    tag: "Reviews",
-    tone: "amber",
-    title: "3 critical reviews awaiting reply",
-    body: "Agent drafted responses in your editorial tone — 1-tap approve.",
-    cta: "Open inbox",
-    to: "/reviews",
-    icon: Star,
-  },
-  {
-    tag: "Marketing",
-    tone: "ink",
-    title: "Sunday brunch campaign primed",
-    body: "Email + SMS to 2,184 lapsed regulars · projected +$3.1k revenue.",
-    cta: "Launch",
-    to: "/marketing",
-    icon: Megaphone,
-  },
-];
-
 const todaysAgenda = [
   { time: "9:00a", text: "Approve Sysco & Columbia POs", module: "Inventory", to: "/inventory" },
   { time: "11:30a", text: "Reply to 3 flagged reviews", module: "Reviews", to: "/reviews" },
@@ -109,6 +77,10 @@ const toneTile: Record<string, string> = {
   primary: "bg-primary/10 text-primary border-primary/20",
   amber: "bg-[oklch(0.92_0.08_85)] text-[oklch(0.4_0.1_60)] border-[oklch(0.85_0.08_75)]",
   ink: "bg-[oklch(0.22_0.012_60)] text-[oklch(0.97_0.012_85)] border-[oklch(0.22_0.012_60)]",
+  // A real zero-count backlog item (e.g. no reviews awaiting reply
+  // right now) still shows in the list — this keeps it visually calm
+  // instead of implying urgency that isn't real.
+  muted: "bg-muted text-muted-foreground border-border",
 };
 
 // Theoretical food cost % is the KPI value; the delta line shows
@@ -133,6 +105,17 @@ function foodCostKpi(foodCost: ReturnType<typeof useFoodCostSummary>["data"]) {
   };
 }
 
+// Cycled across however many real revenue centers this restaurant
+// actually has configured in Toast — not a fixed 4-category palette,
+// since that count varies per tenant.
+const CHANNEL_MIX_COLORS = [
+  "var(--color-primary)",
+  "oklch(0.72 0.13 55)",
+  "oklch(0.82 0.09 80)",
+  "oklch(0.78 0.04 70)",
+  "oklch(0.6 0.1 280)",
+];
+
 // Same par - on-hand + 15% weekly-usage safety-stock math inventory.tsx's
 // "Auto-fill cart"/hero reorder summary already uses — replicated here
 // (not imported) to match this file's existing per-file-duplication
@@ -156,6 +139,7 @@ function Overview() {
   const { data: scConnection } = useSearchConsoleConnection();
   const isSeoConnected = !!scConnection;
   const { data: scOverview } = useSearchConsoleOverview(isSeoConnected);
+  const { data: channelMix = [] } = useChannelMix(7);
 
   const netSales = useMemo(() => {
     const current = revenueData.reduce((s, d) => s + d.revenue, 0);
@@ -268,63 +252,78 @@ function Overview() {
     { to: "/scheduling", icon: CalendarClock, label: "Scheduling" },
   ];
 
+  // Real, actionable backlog counts — same source data/math as the
+  // module tiles above, just reframed as "what needs a human today"
+  // instead of a per-module snapshot.
+  const agentSignals = useMemo(() => {
+    const needsReorder = inventoryItems.filter((i) => suggestedQty(i) > 0);
+    const needsReply = reviews.filter(
+      (r) => r.status === "drafted" || r.status === "approved_pending_post",
+    ).length;
+    const pendingReview = realInvoices.filter((i) => i.status === "pending_review").length;
+
+    return [
+      {
+        tag: "Inventory",
+        tone: "primary",
+        count: needsReorder.length,
+        title:
+          needsReorder.length > 0
+            ? `${needsReorder.length} item${needsReorder.length === 1 ? "" : "s"} below par`
+            : "Nothing below par right now",
+        body:
+          needsReorder.length > 0
+            ? "Real par-level math from on-hand counts and weekly usage."
+            : "All tracked ingredients are at or above par.",
+        cta: "Review cart",
+        to: "/inventory",
+        icon: Package,
+      },
+      {
+        tag: "Reviews",
+        tone: "amber",
+        count: needsReply,
+        title:
+          needsReply > 0 ? `${needsReply} reviews awaiting reply` : "No reviews awaiting reply",
+        body:
+          needsReply > 0
+            ? "Real Google reviews with an AI-drafted reply ready to approve."
+            : "You're caught up on real Google reviews.",
+        cta: "Open inbox",
+        to: "/reviews",
+        icon: Star,
+      },
+      {
+        tag: "Invoices",
+        tone: "ink",
+        count: pendingReview,
+        title:
+          pendingReview > 0
+            ? `${pendingReview} invoice${pendingReview === 1 ? "" : "s"} pending review`
+            : "No invoices pending review",
+        body:
+          pendingReview > 0
+            ? "Real invoices waiting on a vendor match or approval."
+            : "Every real invoice has been reviewed.",
+        cta: "Review invoices",
+        to: "/invoices",
+        icon: Receipt,
+      },
+    ];
+  }, [inventoryItems, reviews, realInvoices]);
+
   return (
     <>
       <Topbar eyebrow="Thursday · June 25 · West Village" title="Good evening, Bali" />
       <main className="space-y-8 px-6 py-8">
-        {/* Hero band: tonight + AI signals */}
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.35fr_1fr]">
-          <Card className="relative overflow-hidden border-0 bg-[oklch(0.22_0.012_60)] p-8 text-[oklch(0.97_0.012_85)] shadow-card">
-            <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-primary/30 blur-3xl" />
-            <div className="absolute -bottom-24 right-24 h-60 w-60 rounded-full bg-[oklch(0.7_0.15_70)]/20 blur-3xl" />
-            <div className="relative">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[oklch(0.97_0.012_85)]/60">
-                <Flame className="h-3.5 w-3.5 text-primary" /> Service in progress
-              </div>
-              <div className="mt-5 flex items-end gap-3">
-                <div className="font-display text-[64px] leading-none">$8,420</div>
-                <Badge className="mb-2 border-0 bg-primary/20 text-primary hover:bg-primary/20">
-                  <ArrowUpRight className="mr-1 h-3 w-3" /> +12.4% vs last Fri
-                </Badge>
-              </div>
-              <div className="mt-2 text-sm text-[oklch(0.97_0.012_85)]/70">
-                Pacing $940 ahead of last Friday · 184 of 220 covers in the door
-              </div>
-
-              <div className="mt-8 grid grid-cols-3 gap-6 border-t border-white/10 pt-6">
-                <HeroStat label="Covers" value="184" hint="of 220 forecast" pct={84} />
-                <HeroStat label="Avg ticket" value="$46" hint="+ $3 vs avg" pct={62} />
-                <HeroStat label="Labor" value="27%" hint="goal 26%" pct={73} />
-              </div>
-
-              <div className="mt-7 flex flex-wrap gap-2">
-                <Button
-                  asChild
-                  size="sm"
-                  className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  <Link to="/product-mix">
-                    View product mix <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  variant="outline"
-                  className="rounded-full border-white/20 bg-white/5 text-[oklch(0.97_0.012_85)] hover:bg-white/10"
-                >
-                  <Link to="/scheduling">Tonight's floor</Link>
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* AI signal stack */}
+        {/* Agents working for you — real, actionable backlog counts,
+            reusing the exact same hooks/data as the module tiles below. */}
+        <section>
           <Card className="overflow-hidden p-0">
             <div className="flex items-center justify-between border-b border-border px-6 py-5">
               <div>
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  <Sparkles className="h-3 w-3" /> Agents working for you
+                  <Sparkles className="h-3 w-3" /> Real backlog
                 </div>
                 <h2 className="mt-1 font-display text-xl">What needs you today</h2>
               </div>
@@ -332,18 +331,21 @@ function Overview() {
                 variant="outline"
                 className="rounded-full border-primary/30 bg-primary/10 text-primary"
               >
-                <Brain className="mr-1 h-3 w-3" /> 7 actions
+                <Brain className="mr-1 h-3 w-3" /> {agentSignals.filter((s) => s.count > 0).length}{" "}
+                {agentSignals.filter((s) => s.count > 0).length === 1 ? "action" : "actions"}
               </Badge>
             </div>
             <div className="divide-y divide-border">
-              {aiSignals.map((s) => (
+              {agentSignals.map((s) => (
                 <Link
-                  key={s.title}
+                  key={s.tag}
                   to={s.to}
                   className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-muted/40"
                 >
                   <div
-                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${toneTile[s.tone]}`}
+                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${
+                      s.count > 0 ? toneTile[s.tone] : toneTile.muted
+                    }`}
                   >
                     <s.icon className="h-[18px] w-[18px]" />
                   </div>
@@ -476,35 +478,51 @@ function Overview() {
               Where sales come from
             </div>
             <h2 className="mt-1 font-display text-2xl">Channel mix</h2>
-            <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-4">
-              <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={channelMix}
-                      dataKey="value"
-                      innerRadius={55}
-                      outerRadius={85}
-                      paddingAngle={3}
-                      stroke="none"
-                    >
-                      {channelMix.map((c) => (
-                        <Cell key={c.name} fill={c.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Real revenue by Toast revenue center, last 7 days
+            </p>
+            {channelMix.length === 0 ? (
+              <div className="mt-6 flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+                No real order data for this period yet.
               </div>
-              <div className="space-y-2">
-                {channelMix.map((c) => (
-                  <div key={c.name} className="flex items-center gap-2 text-xs">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
-                    <span className="text-muted-foreground">{c.name}</span>
-                    <span className="ml-2 font-display text-sm">{c.value}%</span>
-                  </div>
-                ))}
+            ) : (
+              <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-4">
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={channelMix}
+                        dataKey="value"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={3}
+                        stroke="none"
+                        isAnimationActive={false}
+                      >
+                        {channelMix.map((c, i) => (
+                          <Cell
+                            key={c.name}
+                            fill={CHANNEL_MIX_COLORS[i % CHANNEL_MIX_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {channelMix.map((c, i) => (
+                    <div key={c.name} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: CHANNEL_MIX_COLORS[i % CHANNEL_MIX_COLORS.length] }}
+                      />
+                      <span className="text-muted-foreground">{c.name}</span>
+                      <span className="ml-2 font-display text-sm">{c.value.toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </Card>
         </section>
 
@@ -725,31 +743,6 @@ function ModuleTile({
         )}
       </Card>
     </Link>
-  );
-}
-
-function HeroStat({
-  label,
-  value,
-  hint,
-  pct,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  pct: number;
-}) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-[0.18em] text-[oklch(0.97_0.012_85)]/55">
-        {label}
-      </div>
-      <div className="mt-1.5 font-display text-2xl">{value}</div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="mt-1.5 text-[11px] text-[oklch(0.97_0.012_85)]/55">{hint}</div>
-    </div>
   );
 }
 

@@ -21,17 +21,23 @@ export type PosCredential = {
 export async function getToastCredentials(): Promise<PosCredential[]> {
   const { data, error } = await supabase
     .from("pos_credentials")
-    .select("restaurant_id, location_id, provider, pos_location_ref, vault_secret_name, api_hostname, last_synced_at")
+    .select(
+      "restaurant_id, location_id, provider, pos_location_ref, vault_secret_name, api_hostname, last_synced_at",
+    )
     .eq("provider", "toast");
   if (error) throw new Error(`load pos_credentials failed: ${error.message}`);
   return data ?? [];
 }
 
-export async function getSecret(vaultSecretName: string): Promise<{ clientId: string; clientSecret: string }> {
+export async function getSecret(
+  vaultSecretName: string,
+): Promise<{ clientId: string; clientSecret: string }> {
   const { data, error } = await supabase.rpc("get_pos_secret", { secret_name: vaultSecretName });
-  if (error || !data) throw new Error(`vault secret '${vaultSecretName}' not found: ${error?.message ?? ""}`);
+  if (error || !data)
+    throw new Error(`vault secret '${vaultSecretName}' not found: ${error?.message ?? ""}`);
   const parsed = JSON.parse(data);
-  if (!parsed.clientId || !parsed.clientSecret) throw new Error(`vault secret '${vaultSecretName}' missing clientId/clientSecret`);
+  if (!parsed.clientId || !parsed.clientSecret)
+    throw new Error(`vault secret '${vaultSecretName}' missing clientId/clientSecret`);
   return parsed;
 }
 
@@ -61,9 +67,18 @@ export async function upsertRawEvents(
   if (error) throw new Error(`upsert pos_raw_events failed: ${error.message}`);
 }
 
-export type PmixRow = { menuItemPosId: string; name: string; quantitySold: number; netSalesCents: number };
+export type PmixRow = {
+  menuItemPosId: string;
+  name: string;
+  quantitySold: number;
+  netSalesCents: number;
+};
 
-export async function replacePmixForDate(cred: PosCredential, businessDate: string, rows: PmixRow[]) {
+export async function replacePmixForDate(
+  cred: PosCredential,
+  businessDate: string,
+  rows: PmixRow[],
+) {
   const isoDate = `${businessDate.slice(0, 4)}-${businessDate.slice(4, 6)}-${businessDate.slice(6, 8)}`;
   if (rows.length === 0) return;
   const { error } = await supabase.from("pmix_sales").upsert(
@@ -82,7 +97,10 @@ export async function replacePmixForDate(cred: PosCredential, businessDate: stri
   if (error) throw new Error(`upsert pmix_sales failed: ${error.message}`);
 }
 
-export async function upsertMenuItems(cred: PosCredential, items: { posId: string; name: string; category: string; priceCents: number | null }[]) {
+export async function upsertMenuItems(
+  cred: PosCredential,
+  items: { posId: string; name: string; category: string; priceCents: number | null }[],
+) {
   if (items.length === 0) return;
   const { error } = await supabase.from("menu_items").upsert(
     items.map((i) => ({
@@ -98,6 +116,25 @@ export async function upsertMenuItems(cred: PosCredential, items: { posId: strin
     { onConflict: "location_id,pos_id" },
   );
   if (error) throw new Error(`upsert menu_items failed: ${error.message}`);
+}
+
+export async function upsertRevenueCenters(
+  cred: PosCredential,
+  centers: { guid: string; name: string }[],
+) {
+  if (centers.length === 0) return;
+  const { error } = await supabase.from("pos_revenue_centers").upsert(
+    centers.map((c) => ({
+      restaurant_id: cred.restaurant_id,
+      location_id: cred.location_id,
+      provider: cred.provider,
+      pos_guid: c.guid,
+      name: c.name,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: "location_id,provider,pos_guid" },
+  );
+  if (error) throw new Error(`upsert pos_revenue_centers failed: ${error.message}`);
 }
 
 export async function updateLastSyncedAt(cred: PosCredential, at: Date) {

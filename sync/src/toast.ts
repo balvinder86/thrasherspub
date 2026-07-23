@@ -33,7 +33,17 @@ export type ToastMenuItemFlat = {
   priceCents: number | null;
 };
 
-async function toastFetch(hostname: string, path: string, token: string, restaurantExternalId: string) {
+export type ToastRevenueCenter = {
+  guid: string;
+  name: string;
+};
+
+async function toastFetch(
+  hostname: string,
+  path: string,
+  token: string,
+  restaurantExternalId: string,
+) {
   const res = await fetch(`${hostname}${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -47,7 +57,11 @@ async function toastFetch(hostname: string, path: string, token: string, restaur
   return res.json();
 }
 
-export async function authenticate(hostname: string, clientId: string, clientSecret: string): Promise<string> {
+export async function authenticate(
+  hostname: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
   const res = await fetch(`${hostname}/authentication/v1/authentication/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,10 +111,34 @@ function flattenMenuGroup(group: any, category: string, out: ToastMenuItemFlat[]
   }
 }
 
-export async function fetchMenus(hostname: string, token: string, restaurantExternalId: string): Promise<ToastMenuItemFlat[]> {
+// Real names for the opaque revenueCenter.guid every order payload
+// already carries — used to label Channel Mix with e.g. "Bar" instead
+// of a raw GUID.
+export async function fetchRevenueCenters(
+  hostname: string,
+  token: string,
+  restaurantExternalId: string,
+): Promise<ToastRevenueCenter[]> {
+  const centers = await toastFetch(
+    hostname,
+    `/config/v2/revenueCenters`,
+    token,
+    restaurantExternalId,
+  );
+  return (Array.isArray(centers) ? centers : []).map((c: { guid: string; name: string }) => ({
+    guid: c.guid,
+    name: c.name,
+  }));
+}
+
+export async function fetchMenus(
+  hostname: string,
+  token: string,
+  restaurantExternalId: string,
+): Promise<ToastMenuItemFlat[]> {
   const menus = await toastFetch(hostname, `/menus/v2/menus`, token, restaurantExternalId);
   const out: ToastMenuItemFlat[] = [];
-  for (const menu of Array.isArray(menus) ? menus : menus.menus ?? []) {
+  for (const menu of Array.isArray(menus) ? menus : (menus.menus ?? [])) {
     for (const group of menu.menuGroups ?? []) {
       flattenMenuGroup(group, group.name ?? "Uncategorized", out);
     }

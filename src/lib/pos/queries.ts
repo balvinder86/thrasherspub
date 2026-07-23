@@ -355,6 +355,77 @@ export function useOrderCount(days = 7) {
   });
 }
 
+export type ChannelMixSlice = { name: string; value: number; amountCents: number };
+
+// Real revenue by Toast revenue center (Bar/Dining Room/Patio/Online
+// Ordering, etc.) — sums each real order's check total(s) from the
+// raw payload sync already stores, grouped by revenueCenter.guid and
+// labeled via pos_revenue_centers (synced from Toast's own config
+// API — see sync/src/toast.ts's fetchRevenueCenters). Deliberately
+// NOT diningOption (Dine In/Takeout/Delivery) — real data showed that
+// field populated on well under 5% of this restaurant's real orders,
+// too sparse to be a meaningful breakdown.
+export function useChannelMix(days = 7) {
+  const { data: locationIds } = useLocationIds();
+
+  return useQuery({
+    queryKey: ["channel-mix", locationIds, days],
+    enabled: !!locationIds && locationIds.length > 0,
+    queryFn: async (): Promise<ChannelMixSlice[]> => {
+      const start = addDays(new Date(), -days);
+      const [ordersRes, centersRes] = await Promise.all([
+        supabase
+          .from("pos_raw_events")
+          .select("payload")
+          .eq("event_type", "order")
+          .in("location_id", locationIds!)
+          .gte("business_date", isoDate(start)),
+        supabase
+          .from("pos_revenue_centers")
+          .select("pos_guid, name")
+          .in("location_id", locationIds!),
+      ]);
+      if (ordersRes.error) throw ordersRes.error;
+      if (centersRes.error) throw centersRes.error;
+
+      const nameByGuid = new Map(
+        (centersRes.data ?? []).map((c) => [c.pos_guid, c.name as string]),
+      );
+
+      type RawOrder = {
+        deleted?: boolean;
+        voided?: boolean;
+        revenueCenter?: { guid: string } | null;
+        checks?: { deleted?: boolean; voided?: boolean; totalAmount?: number }[];
+      };
+
+      const centsByGuid = new Map<string, number>();
+      for (const row of ordersRes.data ?? []) {
+        const order = row.payload as RawOrder;
+        if (order.deleted || order.voided) continue;
+        const guid = order.revenueCenter?.guid ?? "unknown";
+        let orderCents = 0;
+        for (const check of order.checks ?? []) {
+          if (check.deleted || check.voided) continue;
+          orderCents += Math.round((check.totalAmount ?? 0) * 100);
+        }
+        centsByGuid.set(guid, (centsByGuid.get(guid) ?? 0) + orderCents);
+      }
+
+      const totalCents = Array.from(centsByGuid.values()).reduce((s, c) => s + c, 0);
+      if (totalCents === 0) return [];
+
+      return Array.from(centsByGuid.entries())
+        .map(([guid, amountCents]) => ({
+          name: nameByGuid.get(guid) ?? "Other",
+          amountCents,
+          value: (amountCents / totalCents) * 100,
+        }))
+        .sort((a, b) => b.amountCents - a.amountCents);
+    },
+  });
+}
+
 export type TopItem = { name: string; sold: number; revenue: number };
 
 export function useTopItems(days = 7, limit = 5) {
