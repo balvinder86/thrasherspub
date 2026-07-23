@@ -50,7 +50,7 @@ import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Overview · Thrasher's Pub" },
+      { title: "Home · Thrasher's Pub" },
       {
         name: "description",
         content:

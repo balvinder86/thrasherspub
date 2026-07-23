@@ -28,7 +28,7 @@ import {
 import { hasAccess, useCurrentMembership, type PermissionKey } from "@/lib/permissions";
 
 const overview = [
-  { title: "Sales Overview", url: "/", icon: LayoutDashboard, permission: "sales_overview" },
+  { title: "Home", url: "/", icon: LayoutDashboard, permission: "sales_overview" },
   { title: "Product Mix", url: "/product-mix", icon: PieChart, permission: "product_mix" },
   { title: "Inventory & Ordering", url: "/inventory", icon: Package, permission: "inventory" },
   { title: "Invoices", url: "/invoices", icon: Receipt, permission: "invoices" },

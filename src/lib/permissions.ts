@@ -26,7 +26,7 @@ export const PERMISSION_KEYS = [
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 export const PERMISSION_LABEL: Record<PermissionKey, string> = {
-  sales_overview: "Sales Overview",
+  sales_overview: "Home",
   product_mix: "Product Mix",
   inventory: "Inventory & Ordering",
   invoices: "Invoices",
