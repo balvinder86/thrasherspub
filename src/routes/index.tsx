@@ -46,16 +46,8 @@ import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
 import { useCustomers } from "@/lib/marketing/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/queries";
-import { addDays, formatDateRange, startOfDay } from "@/lib/date-range";
+import { formatDateRange } from "@/lib/date-range";
 import { useDateRange } from "@/lib/date-range-context";
-
-// Fixed window for the Product Mix module tile — deliberately not the
-// global date-range filter, since the module strip always shows
-// current/live state (see the note on rangeDayCount below).
-const MODULE_TILE_WINDOW = (() => {
-  const today = startOfDay(new Date());
-  return { from: addDays(today, -6), to: today };
-})();
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -125,29 +117,33 @@ function suggestedQty(item: { par: number; onHand: number; weeklyUsage: number }
 }
 
 function Overview() {
-  // Drives Revenue, Channel mix, Top sellers and the KPI row only —
-  // Real backlog and the module tiles below intentionally always show
-  // current/live state, not a historical window, so they keep their
-  // own fixed-window hooks untouched by this control. The range itself
-  // is global (src/lib/date-range-context.tsx), shared with the
-  // Topbar's picker on every page, not local to this page.
+  // The global date range (src/lib/date-range-context.tsx, shared with
+  // the Topbar's picker on every page) drives every historical/
+  // aggregate metric on this page — Revenue, Channel mix, Top sellers,
+  // the KPI row, and the Product Mix/Invoices/Reviews/SEO module
+  // tiles. Real backlog and the Inventory tile's "below par" count are
+  // deliberately excluded — those are live, current-state facts
+  // ("what's below par right now"), not something a historical window
+  // can meaningfully re-express.
   const { dateRange } = useDateRange();
   const rangeDayCount =
     Math.round((dateRange.to.getTime() - dateRange.from.getTime()) / 86_400_000) + 1;
   const rangeLabel = formatDateRange(dateRange);
+  const fromMs = dateRange.from.getTime();
+  const toMsExclusive = dateRange.to.getTime() + 24 * 60 * 60 * 1000;
 
   const { data: revenueData = [] } = useSalesTrend(dateRange);
   const { data: topItems = [] } = useTopItems(dateRange, 4);
   const { data: foodCost } = useFoodCostSummary(dateRange);
   const foodCostDisplay = foodCostKpi(foodCost);
 
-  const { data: productMixItems = [] } = useProductMix(MODULE_TILE_WINDOW);
+  const { data: productMixItems = [] } = useProductMix(dateRange);
   const { data: inventoryItems = [] } = useInventoryItems();
   const { data: realInvoices = [] } = useRealInvoices();
   const { data: reviews = [] } = useReviews();
   const { data: scConnection } = useSearchConsoleConnection();
   const isSeoConnected = !!scConnection;
-  const { data: scOverview } = useSearchConsoleOverview(isSeoConnected);
+  const { data: scOverview } = useSearchConsoleOverview(isSeoConnected, dateRange);
   const { data: channelMix = [], isLoading: isChannelMixLoading } = useChannelMix(dateRange);
   const { data: customers = [] } = useCustomers();
 
@@ -166,19 +162,17 @@ function Overview() {
   // rows are seed/demo data, not real customers, so they're excluded.
   const newCustomers = useMemo(() => {
     const real = customers.filter((c) => c.source !== "sample");
-    const periodMs = dateRange.to.getTime() - dateRange.from.getTime() + 24 * 60 * 60 * 1000;
-    const fromMs = dateRange.from.getTime();
-    const toMs = dateRange.to.getTime() + 24 * 60 * 60 * 1000;
+    const periodMs = toMsExclusive - fromMs;
     const current = real.filter((c) => {
       const t = new Date(c.createdAt).getTime();
-      return t >= fromMs && t < toMs;
+      return t >= fromMs && t < toMsExclusive;
     }).length;
     const prior = real.filter((c) => {
       const t = new Date(c.createdAt).getTime();
       return t >= fromMs - periodMs && t < fromMs;
     }).length;
     return { count: current, delta: current - prior };
-  }, [customers, dateRange]);
+  }, [customers, fromMs, toMsExclusive]);
 
   const moduleTiles = useMemo(() => {
     // Product Mix — same revenueWk/soldWk aggregation product-mix.tsx's
@@ -196,26 +190,34 @@ function Overview() {
       needsReorder.map((i) => i.vendorId).filter((id): id is string => !!id),
     ).size;
 
-    // Invoices — MTD approved spend/savings + real pending-review backlog.
-    const now = new Date();
-    const approvedThisMonth = realInvoices.filter((i) => {
+    // Invoices — approved spend/savings within the selected range +
+    // real pending-review backlog (live, not range-scoped).
+    const approvedInRange = realInvoices.filter((i) => {
       if (i.status !== "approved") return false;
-      const d = new Date(i.invoiceDate ?? i.createdAt);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      const t = new Date(i.invoiceDate ?? i.createdAt).getTime();
+      return t >= fromMs && t < toMsExclusive;
     });
-    const mtdSpendCents = approvedThisMonth.reduce((s, i) => s + (i.totalCents ?? 0), 0);
-    const mtdSavedCents = approvedThisMonth.reduce((s, i) => s + (i.discountCents ?? 0), 0);
+    const approvedSpendCents = approvedInRange.reduce((s, i) => s + (i.totalCents ?? 0), 0);
+    const approvedSavedCents = approvedInRange.reduce((s, i) => s + (i.discountCents ?? 0), 0);
     const pendingReview = realInvoices.filter((i) => i.status === "pending_review").length;
 
-    // Reviews — same avg-rating sample-size gate as the Reviews page.
+    // Reviews — avg rating for reviews written within the selected
+    // range (same sample-size gate as the Reviews page); needsReply
+    // stays a live, unfiltered backlog count like Real backlog above.
+    const reviewsInRange = reviews.filter((r) => {
+      const t = new Date(r.reviewWrittenAt ?? r.reviewFoundAt).getTime();
+      return t >= fromMs && t < toMsExclusive;
+    });
     const needsReply = reviews.filter(
       (r) => r.status === "drafted" || r.status === "approved_pending_post",
     ).length;
     const avgRating =
-      reviews.length >= 5 ? reviews.reduce((s, r) => s + r.starRating, 0) / reviews.length : null;
+      reviewsInRange.length >= 5
+        ? reviewsInRange.reduce((s, r) => s + r.starRating, 0) / reviewsInRange.length
+        : null;
 
-    // SEO — real avg position + clicks over whatever window
-    // useSearchConsoleOverview returns (8 weeks, same as the SEO page).
+    // SEO — real avg position + clicks for the selected range, from
+    // the Search Console Edge Function.
     const scRows = scOverview?.rows ?? [];
     const totalClicks = scRows.reduce((s, r) => s + r.clicks, 0);
     const avgPosition =
@@ -227,7 +229,7 @@ function Overview() {
         icon: PieIcon,
         label: "Product Mix",
         metric: `$${(pmRevenue / 1000).toFixed(1)}k`,
-        sub: `this week · ${pmUnits.toLocaleString()} items sold`,
+        sub: `${rangeLabel} · ${pmUnits.toLocaleString()} items sold`,
         delta: pmDelta != null ? `${pmDelta >= 0 ? "+" : ""}${pmDelta.toFixed(1)}%` : "—",
         deltaPositive: pmDelta != null ? pmDelta >= 0 : undefined,
       },
@@ -244,8 +246,8 @@ function Overview() {
         to: "/invoices",
         icon: Receipt,
         label: "Invoices",
-        metric: `$${(mtdSpendCents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        sub: `MTD spend · $${(mtdSavedCents / 100).toFixed(0)} saved`,
+        metric: `$${(approvedSpendCents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+        sub: `Approved spend · $${(approvedSavedCents / 100).toFixed(0)} saved`,
         delta: `${pendingReview} to review`,
         deltaPositive: pendingReview === 0,
       },
@@ -254,7 +256,7 @@ function Overview() {
         icon: Star,
         label: "Reviews",
         metric: avgRating != null ? `${avgRating.toFixed(1)} ★` : "—",
-        sub: `${reviews.length.toLocaleString()} reviews · ${needsReply} need reply`,
+        sub: `${reviewsInRange.length.toLocaleString()} reviews · ${needsReply} need reply`,
         delta: needsReply === 0 ? "all caught up" : `${needsReply} pending`,
         deltaPositive: needsReply === 0,
       },
@@ -269,12 +271,22 @@ function Overview() {
             : "—",
         sub: !isSeoConnected
           ? "Connect Search Console"
-          : `${totalClicks.toLocaleString()} clicks, last 8 wks`,
+          : `${totalClicks.toLocaleString()} clicks, ${rangeLabel}`,
         delta: isSeoConnected ? "Search Console" : "—",
         deltaPositive: undefined,
       },
     ];
-  }, [productMixItems, inventoryItems, realInvoices, reviews, scOverview, isSeoConnected]);
+  }, [
+    productMixItems,
+    inventoryItems,
+    realInvoices,
+    reviews,
+    scOverview,
+    isSeoConnected,
+    fromMs,
+    toMsExclusive,
+    rangeLabel,
+  ]);
 
   const notBuiltTiles = [
     { to: "/marketing", icon: Megaphone, label: "Marketing" },

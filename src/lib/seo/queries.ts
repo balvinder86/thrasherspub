@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase/client";
 import { useRestaurantIds } from "@/lib/supabase/scope";
+import { type DateRange, isoDate } from "@/lib/date-range";
 
 function useCurrentRestaurantId(): string | undefined {
   return useRestaurantIds()[0];
@@ -91,9 +92,14 @@ export type PageRow = {
 async function callSearchConsoleData<T>(
   restaurantId: string,
   view: "overview" | "keywords" | "pages" | "content-gaps",
+  range?: DateRange,
 ): Promise<{ connected: boolean; rows: T[] }> {
   const { data, error } = await supabase.functions.invoke("search-console-data", {
-    body: { restaurant_id: restaurantId, view },
+    body: {
+      restaurant_id: restaurantId,
+      view,
+      ...(range ? { start_date: isoDate(range.from), end_date: isoDate(range.to) } : undefined),
+    },
   });
   if (error || !(data as { ok?: boolean } | null)?.ok) {
     throw new Error(
@@ -106,12 +112,18 @@ async function callSearchConsoleData<T>(
   return { connected: body.connected, rows: body.rows ?? [] };
 }
 
-export function useSearchConsoleOverview(enabled: boolean) {
+// `range` is optional — omit it for the SEO page's own fixed 8-week
+// overview chart; pass it to have the Edge Function honor a real
+// arbitrary date range instead (used by Home's SEO module tile,
+// driven by the global date-range filter).
+export function useSearchConsoleOverview(enabled: boolean, range?: DateRange) {
   const restaurantId = useCurrentRestaurantId();
+  const fromIso = range ? isoDate(range.from) : undefined;
+  const toIso = range ? isoDate(range.to) : undefined;
   return useQuery({
-    queryKey: ["search-console-overview", restaurantId],
+    queryKey: ["search-console-overview", restaurantId, fromIso, toIso],
     enabled: enabled && !!restaurantId,
-    queryFn: () => callSearchConsoleData<OverviewRow>(restaurantId!, "overview"),
+    queryFn: () => callSearchConsoleData<OverviewRow>(restaurantId!, "overview", range),
   });
 }
 

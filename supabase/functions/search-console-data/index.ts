@@ -186,7 +186,13 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "invalid session" }, 401);
     }
 
-    const { restaurant_id, view, query: queryFilter } = await req.json();
+    const {
+      restaurant_id,
+      view,
+      query: queryFilter,
+      start_date: requestedStartDate,
+      end_date: requestedEndDate,
+    } = await req.json();
     if (!restaurant_id) {
       return json({ ok: false, error: "restaurant_id is required" }, 400);
     }
@@ -241,15 +247,32 @@ Deno.serve(async (req) => {
     end.setDate(end.getDate() - 3);
 
     if (view === "overview") {
-      const start = new Date(end);
-      start.setDate(start.getDate() - 56); // 8 weeks
+      // Explicit start/end from the caller (Home's SEO tile, driven by
+      // the global date-range filter) wins over the default 8-week
+      // window — but never past the real ~3-day GSC data lag, so a
+      // range including "today" doesn't silently ask for days Google
+      // hasn't indexed yet.
+      const requestedEnd = requestedEndDate ? new Date(requestedEndDate) : null;
+      const effectiveEnd = requestedEnd && requestedEnd < end ? requestedEnd : end;
+      const start = requestedStartDate
+        ? new Date(requestedStartDate)
+        : (() => {
+            const d = new Date(effectiveEnd);
+            d.setDate(d.getDate() - 56); // 8 weeks, default window
+            return d;
+          })();
       const rows = await queryOneDimension(
         googleAccessToken,
         cred.site_url,
         "date",
         isoDate(start),
-        isoDate(end),
-        56,
+        isoDate(effectiveEnd),
+        // Real row cap: one row per calendar day in the queried range,
+        // plus slack for the 8-week default.
+        Math.max(
+          56,
+          Math.round((effectiveEnd.getTime() - start.getTime()) / 86_400_000) + 1,
+        ),
       );
       await supabase
         .from("search_console_credentials")
