@@ -298,64 +298,6 @@ function ProductMixPage() {
     return { tiles, hourlyChart, totalOrders: orders.length };
   }, [orderDetails]);
 
-  // Modifier usage + item attach rate — both computed from the same
-  // real per-order detail. Attach rate anchors on whichever of the
-  // pair sold more on its own, so "72% of X orders also include Y"
-  // reads naturally instead of an arbitrary direction.
-  const MIN_COOCCURRENCE = 3;
-  const modifiersAndAttach = useMemo(() => {
-    if (!orderDetails) return null;
-    const { orders } = orderDetails;
-
-    const modMap = new Map<string, { count: number; revenueCents: number }>();
-    for (const o of orders) {
-      for (const item of o.items) {
-        for (const m of item.modifiers) {
-          const cur = modMap.get(m.name) ?? { count: 0, revenueCents: 0 };
-          cur.count += m.quantity;
-          cur.revenueCents += m.priceCents * m.quantity;
-          modMap.set(m.name, cur);
-        }
-      }
-    }
-    const modifierHits = Array.from(modMap.entries())
-      .map(([name, v]) => ({ name, count: v.count, revenueCents: v.revenueCents }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6);
-
-    const itemOrderCount = new Map<string, number>();
-    const pairCoOccur = new Map<string, number>();
-    for (const o of orders) {
-      const uniqueNames = Array.from(new Set(o.items.map((i) => i.name)));
-      for (const n of uniqueNames) itemOrderCount.set(n, (itemOrderCount.get(n) ?? 0) + 1);
-      for (let i = 0; i < uniqueNames.length; i++) {
-        for (let j = i + 1; j < uniqueNames.length; j++) {
-          const key = [uniqueNames[i], uniqueNames[j]].sort().join("|||");
-          pairCoOccur.set(key, (pairCoOccur.get(key) ?? 0) + 1);
-        }
-      }
-    }
-    const attachLeaders = Array.from(pairCoOccur.entries())
-      .filter(([, count]) => count >= MIN_COOCCURRENCE)
-      .map(([key, count]) => {
-        const [x, y] = key.split("|||");
-        const xCount = itemOrderCount.get(x) ?? 0;
-        const yCount = itemOrderCount.get(y) ?? 0;
-        const anchor = xCount >= yCount ? x : y;
-        const other = xCount >= yCount ? y : x;
-        const anchorCount = Math.max(xCount, yCount);
-        return {
-          pair: `${anchor} + ${other}`,
-          rate: anchorCount > 0 ? (count / anchorCount) * 100 : 0,
-          count,
-        };
-      })
-      .sort((a, b) => b.rate - a.rate)
-      .slice(0, 6);
-
-    return { modifierHits, attachLeaders };
-  }, [orderDetails]);
-
   return (
     <div className="min-h-screen bg-background">
       <Topbar eyebrow="Menu performance" title="Product Mix" />
@@ -462,7 +404,6 @@ function ProductMixPage() {
             <TabsTrigger value="items">All items</TabsTrigger>
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="dayparts">Dayparts</TabsTrigger>
-            <TabsTrigger value="modifiers">Modifiers & attach</TabsTrigger>
             <TabsTrigger value="trends">Trends</TabsTrigger>
           </TabsList>
 
@@ -762,69 +703,6 @@ function ProductMixPage() {
                 </>
               )}
             </Card>
-          </TabsContent>
-
-          {/* MODIFIERS */}
-          <TabsContent value="modifiers">
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card className="p-5">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                  Attach rate leaders
-                </p>
-                <h3 className="font-serif text-xl mb-4">What rides along</h3>
-                {isOrderDetailsLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading real order data…</p>
-                ) : !modifiersAndAttach || modifiersAndAttach.attachLeaders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Not enough repeat item pairings in {rangeLabel} yet.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {modifiersAndAttach.attachLeaders.map((p) => (
-                      <div key={p.pair}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>{p.pair}</span>
-                          <span className="font-mono text-muted-foreground">
-                            {p.rate.toFixed(0)}% · {p.count}x
-                          </span>
-                        </div>
-                        <Progress value={p.rate} className="h-1.5" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-
-              <Card className="p-5">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                  Modifier hits
-                </p>
-                <h3 className="font-serif text-xl mb-4">Most-used modifiers</h3>
-                {isOrderDetailsLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading real order data…</p>
-                ) : !modifiersAndAttach || modifiersAndAttach.modifierHits.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No real modifier usage in {rangeLabel} yet.
-                  </p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {modifiersAndAttach.modifierHits.map((m) => (
-                      <div key={m.name} className="flex items-center justify-between text-sm">
-                        <div>
-                          <div>{m.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {m.count} use{m.count === 1 ? "" : "s"} · {rangeLabel}
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="font-mono">
-                          {m.revenueCents > 0 ? `+${usd(m.revenueCents / 100)}` : "$0"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
           </TabsContent>
 
           {/* TRENDS */}
