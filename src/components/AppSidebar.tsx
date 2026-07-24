@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { UtensilsCrossed } from "lucide-react";
+import { LogOut, UtensilsCrossed } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -12,8 +12,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { hasAccess, useCurrentMembership, type PermissionKey } from "@/lib/permissions";
 import { NAV_OVERVIEW, NAV_GROWTH, NAV_OPERATIONS, NAV_UNGATED } from "@/lib/nav-items";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { useLanguage } from "@/lib/i18n/language-context";
+import { LANGUAGES, type Language } from "@/lib/i18n/translations";
 
 function visibleFor<T extends { permission: PermissionKey }>(
   items: T[],
@@ -26,6 +39,8 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (url: string) => (url === "/" ? pathname === "/" : pathname.startsWith(url));
   const membership = useCurrentMembership();
+  const { signOut } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
 
   const visibleOverview = visibleFor(NAV_OVERVIEW, membership);
   const visibleGrowth = visibleFor(NAV_GROWTH, membership);
@@ -49,7 +64,7 @@ export function AppSidebar() {
                 >
                   <Link to={item.url} className="flex items-center gap-3">
                     <item.icon className="h-[18px] w-[18px]" />
-                    <span className="text-sm">{item.title}</span>
+                    <span className="text-sm">{t.nav[item.titleKey]}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -70,26 +85,58 @@ export function AppSidebar() {
           <div className="min-w-0">
             <div className="font-display text-base leading-tight">Thrasher's Pub</div>
             <div className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Owner Dashboard
+              {t.sidebar.tagline}
             </div>
           </div>
         </Link>
       </SidebarHeader>
       <SidebarContent className="px-2 py-3">
-        {renderGroup("Overview", visibleOverview)}
-        {renderGroup("Growth", visibleGrowth)}
-        {renderGroup("Operations", [...visibleOperations, ...NAV_UNGATED])}
+        {renderGroup(t.navSection.overview, visibleOverview)}
+        {renderGroup(t.navSection.growth, visibleGrowth)}
+        {renderGroup(t.navSection.operations, [...visibleOperations, ...NAV_UNGATED])}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent font-display text-sm text-accent-foreground">
-            BS
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">Bali Singh</div>
-            <div className="truncate text-[11px] text-muted-foreground">Owner · West Village</div>
-          </div>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent font-display text-sm text-accent-foreground">
+                BS
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">Bali Singh</div>
+                <div className="truncate text-[11px] text-muted-foreground">
+                  Owner · West Village
+                </div>
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            <DropdownMenuLabel className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+              {t.profile.language}
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={language}
+              onValueChange={(v) => setLanguage(v as Language)}
+            >
+              {LANGUAGES.map((l) => (
+                <DropdownMenuRadioItem key={l.code} value={l.code}>
+                  {l.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => signOut()}
+              className="gap-2 text-destructive focus:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              {t.profile.logout}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );

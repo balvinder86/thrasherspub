@@ -22,6 +22,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth-context";
 import { DateRangeProvider } from "@/lib/date-range-context";
+import { LanguageProvider } from "@/lib/i18n/language-context";
 import { hasAccess, useCurrentMembership, ROUTE_PERMISSION } from "@/lib/permissions";
 import { ShieldOff } from "lucide-react";
 
@@ -152,9 +153,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <DateRangeProvider>
-          <AuthGate />
-        </DateRangeProvider>
+        <LanguageProvider>
+          <DateRangeProvider>
+            <AuthGate />
+          </DateRangeProvider>
+        </LanguageProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -194,8 +197,19 @@ function AuthGate() {
   }
 
   if (!session) {
-    // Redirect is in flight (useEffect above) — render nothing.
-    return null;
+    // Redirect is in flight (useEffect above). Keep a SidebarProvider
+    // mounted through this transitional render rather than tearing it
+    // down here — session goes null (via the Supabase auth listener)
+    // a render before router.navigate() actually swaps the route, and
+    // dropping SidebarProvider in that gap raced against the still-
+    // mounted page's SidebarTrigger reading useSidebar(), throwing.
+    return (
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full items-center justify-center bg-background">
+          <p className="text-sm text-muted-foreground">Signing out…</p>
+        </div>
+      </SidebarProvider>
+    );
   }
 
   return (

@@ -9,6 +9,7 @@ import { useProductMix } from "@/lib/pos/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useCustomers } from "@/lib/marketing/queries";
 import { addDays, startOfDay } from "@/lib/date-range";
+import { useLanguage } from "@/lib/i18n/language-context";
 
 // Fixed recent-items window for search candidates — deliberately not
 // tied to the global date-range filter, since search should always
@@ -58,6 +59,7 @@ function bestMatch(query: string, candidates: Candidate[]): Candidate | null {
 export function GlobalSearch() {
   const navigate = useNavigate();
   const membership = useCurrentMembership();
+  const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -84,9 +86,9 @@ export function GlobalSearch() {
     const list: Candidate[] = [];
     for (const f of ALL_FEATURES) {
       if (hasAccess(membership, f.permission))
-        list.push({ label: f.title, url: f.url, groupRank: 0 });
+        list.push({ label: t.nav[f.titleKey], url: f.url, groupRank: 0 });
     }
-    for (const f of NAV_UNGATED) list.push({ label: f.title, url: f.url, groupRank: 0 });
+    for (const f of NAV_UNGATED) list.push({ label: t.nav[f.titleKey], url: f.url, groupRank: 0 });
 
     if (hasAccess(membership, "inventory")) {
       for (const i of inventoryItems)
@@ -117,7 +119,7 @@ export function GlobalSearch() {
         list.push({ label: `${c.name} ${c.email ?? ""}`, url: "/marketing", groupRank: 5 });
     }
     return list;
-  }, [membership, inventoryItems, invoices, productMixItems, reviews, customers]);
+  }, [membership, inventoryItems, invoices, productMixItems, reviews, customers, t]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -150,11 +152,11 @@ export function GlobalSearch() {
         onKeyDown={(e) => {
           if (e.key === "Escape") inputRef.current?.blur();
         }}
-        placeholder="Search and press Enter to jump to a page…"
+        placeholder={t.topbar.searchPlaceholder}
         className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
       />
       {notFound ? (
-        <span className="shrink-0 text-xs text-destructive">No match</span>
+        <span className="shrink-0 text-xs text-destructive">{t.topbar.noMatch}</span>
       ) : (
         <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           ⌘K

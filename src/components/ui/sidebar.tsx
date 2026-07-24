@@ -261,7 +261,16 @@ const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   React.ComponentProps<typeof Button>
 >(({ className, onClick, ...props }, ref) => {
-  const { toggleSidebar } = useSidebar();
+  // Plain useContext, not the throwing useSidebar() — this can
+  // legitimately render for one tick without a SidebarProvider
+  // ancestor while <Outlet/> is transitioning between an
+  // authenticated route (wrapped in SidebarProvider) and /login
+  // (not), e.g. right after logout. Render nothing rather than crash
+  // the route's error boundary over a toggle button that's about to
+  // disappear anyway.
+  const context = React.useContext(SidebarContext);
+  if (!context) return null;
+  const { toggleSidebar } = context;
 
   return (
     <Button

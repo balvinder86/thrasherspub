@@ -6,18 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { type DateRange, addDays, formatDateRange, startOfDay } from "@/lib/date-range";
+import { useLanguage } from "@/lib/i18n/language-context";
+import type { TranslationDict } from "@/lib/i18n/translations";
 
-function presetsFor(today: Date): { label: string; range: DateRange }[] {
+function presetsFor(
+  today: Date,
+  t: TranslationDict,
+): { id: string; label: string; range: DateRange }[] {
   const end = startOfDay(today);
   const startOfMonth = new Date(end.getFullYear(), end.getMonth(), 1);
   const startOfLastMonth = new Date(end.getFullYear(), end.getMonth() - 1, 1);
   const endOfLastMonth = addDays(startOfMonth, -1);
   return [
-    { label: "Today", range: { from: end, to: end } },
-    { label: "Last 7 days", range: { from: addDays(end, -6), to: end } },
-    { label: "Last 30 days", range: { from: addDays(end, -29), to: end } },
-    { label: "This month", range: { from: startOfMonth, to: end } },
-    { label: "Last month", range: { from: startOfLastMonth, to: endOfLastMonth } },
+    { id: "today", label: t.dateRange.today, range: { from: end, to: end } },
+    { id: "last7", label: t.dateRange.last7Days, range: { from: addDays(end, -6), to: end } },
+    { id: "last30", label: t.dateRange.last30Days, range: { from: addDays(end, -29), to: end } },
+    { id: "thisMonth", label: t.dateRange.thisMonth, range: { from: startOfMonth, to: end } },
+    {
+      id: "lastMonth",
+      label: t.dateRange.lastMonth,
+      range: { from: startOfLastMonth, to: endOfLastMonth },
+    },
   ];
 }
 
@@ -28,6 +37,7 @@ export function DateRangePicker({
   range: DateRange;
   onRangeChange: (range: DateRange) => void;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DayPickerRange | undefined>(range);
 
@@ -58,9 +68,9 @@ export function DateRangePicker({
       <PopoverContent align="end" className="w-auto p-0">
         <div className="flex">
           <div className="flex flex-col gap-1 border-r border-border p-3">
-            {presetsFor(new Date()).map((p) => (
+            {presetsFor(new Date(), t).map((p) => (
               <Button
-                key={p.label}
+                key={p.id}
                 variant="ghost"
                 size="sm"
                 className="justify-start rounded-md"
@@ -87,7 +97,7 @@ export function DateRangePicker({
                   draft?.from && draft?.to && apply({ from: draft.from, to: draft.to })
                 }
               >
-                Apply
+                {t.dateRange.apply}
               </Button>
             </div>
           </div>
