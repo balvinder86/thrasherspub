@@ -1,16 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Package, PieChart, Receipt, Star, User } from "lucide-react";
+import { Search } from "lucide-react";
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { hasAccess, useCurrentMembership } from "@/lib/permissions";
 import { NAV_OVERVIEW, NAV_GROWTH, NAV_OPERATIONS, NAV_UNGATED } from "@/lib/nav-items";
 import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
@@ -19,183 +10,146 @@ import { useReviews } from "@/lib/reviews/queries";
 import { useCustomers } from "@/lib/marketing/queries";
 
 const ALL_FEATURES = [...NAV_OVERVIEW, ...NAV_GROWTH, ...NAV_OPERATIONS];
-const RESULTS_PER_CATEGORY = 6;
 
-function matches(query: string, ...fields: (string | null | undefined)[]): boolean {
-  return fields.some((f) => f?.toLowerCase().includes(query));
+// Lower groupRank wins ties — a page you can navigate to by name
+// ("invoices") should beat a same-scoring item match, and within
+// items, earlier categories are just listed in a stable, sensible
+// order (there's no real reason to prefer a menu item over an
+// inventory item on a tie, so this is just deterministic, not ranked
+// by importance).
+type Candidate = { label: string; url: string; groupRank: number };
+
+function scoreMatch(query: string, text: string): number {
+  const t = text.toLowerCase();
+  if (t === query) return 3;
+  if (t.startsWith(query)) return 2;
+  if (t.includes(query)) return 1;
+  return 0;
 }
 
-export function GlobalSearch({
-  open,
-  onOpenChange,
-  query,
-  onQueryChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  query: string;
-  onQueryChange: (query: string) => void;
-}) {
+function bestMatch(query: string, candidates: Candidate[]): Candidate | null {
+  let best: Candidate | null = null;
+  let bestScore = 0;
+  for (const c of candidates) {
+    const score = scoreMatch(query, c.label);
+    if (score === 0) continue;
+    if (!best || score > bestScore || (score === bestScore && c.groupRank < best.groupRank)) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+// A plain "type a word, hit Enter, land on the page" search — not a
+// command-palette popup. Jumps to whichever single feature or real
+// item scores highest against the query (exact > starts-with >
+// contains), tie-broken toward feature pages.
+export function GlobalSearch() {
   const navigate = useNavigate();
   const membership = useCurrentMembership();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+  const [notFound, setNotFound] = useState(false);
 
-  const go = (url: string) => {
-    onOpenChange(false);
-    navigate({ to: url });
-  };
-
-  const q = query.trim().toLowerCase();
-
-  const visibleFeatures = useMemo(
-    () => [...ALL_FEATURES.filter((f) => hasAccess(membership, f.permission)), ...NAV_UNGATED],
-    [membership],
-  );
-  const matchedFeatures = q
-    ? visibleFeatures.filter((f) => f.title.toLowerCase().includes(q))
-    : visibleFeatures;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0">
-        <DialogTitle className="sr-only">Search</DialogTitle>
-        <DialogDescription className="sr-only">
-          Search features, inventory, invoices, reviews and customers
-        </DialogDescription>
-        <Command
-          shouldFilter={false}
-          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
-        >
-          <CommandInput
-            placeholder="Search features, inventory, invoices, reviews…"
-            value={query}
-            onValueChange={onQueryChange}
-          />
-          <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
-            {matchedFeatures.length > 0 && (
-              <CommandGroup heading="Features">
-                {matchedFeatures.map((f) => (
-                  <CommandItem key={f.url} value={f.url} onSelect={() => go(f.url)}>
-                    <f.icon className="h-4 w-4" />
-                    {f.title}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-            {open && q && <ItemResults query={q} onSelect={go} />}
-          </CommandList>
-        </Command>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Split out so its data hooks only ever run once the palette is open
-// and the user has actually typed something — no point fetching
-// inventory/invoices/reviews/customers just to show the static
-// Features list.
-function ItemResults({ query, onSelect }: { query: string; onSelect: (url: string) => void }) {
-  const membership = useCurrentMembership();
   const { data: inventoryItems = [] } = useInventoryItems();
   const { data: invoices = [] } = useRealInvoices();
   const { data: productMixItems = [] } = useProductMix(7);
   const { data: reviews = [] } = useReviews();
   const { data: customers = [] } = useCustomers();
 
-  const matchedInventory = hasAccess(membership, "inventory")
-    ? inventoryItems
-        .filter((i) => matches(query, i.name, i.category, i.vendor))
-        .slice(0, RESULTS_PER_CATEGORY)
-    : [];
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
-  const matchedInvoices = hasAccess(membership, "invoices")
-    ? invoices
-        .filter((i) => matches(query, i.vendorName, i.invoiceNumber))
-        .slice(0, RESULTS_PER_CATEGORY)
-    : [];
+  const candidates = useMemo((): Candidate[] => {
+    const list: Candidate[] = [];
+    for (const f of ALL_FEATURES) {
+      if (hasAccess(membership, f.permission))
+        list.push({ label: f.title, url: f.url, groupRank: 0 });
+    }
+    for (const f of NAV_UNGATED) list.push({ label: f.title, url: f.url, groupRank: 0 });
 
-  const matchedMenuItems = hasAccess(membership, "product_mix")
-    ? productMixItems
-        .filter((i) => matches(query, i.name, i.category))
-        .slice(0, RESULTS_PER_CATEGORY)
-    : [];
+    if (hasAccess(membership, "inventory")) {
+      for (const i of inventoryItems)
+        list.push({ label: `${i.name} ${i.category}`, url: "/inventory", groupRank: 1 });
+    }
+    if (hasAccess(membership, "invoices")) {
+      for (const i of invoices)
+        list.push({
+          label: `${i.vendorName ?? ""} ${i.invoiceNumber ?? ""}`,
+          url: "/invoices",
+          groupRank: 2,
+        });
+    }
+    if (hasAccess(membership, "product_mix")) {
+      for (const i of productMixItems)
+        list.push({ label: `${i.name} ${i.category}`, url: "/product-mix", groupRank: 3 });
+    }
+    if (hasAccess(membership, "reviews")) {
+      for (const r of reviews)
+        list.push({
+          label: `${r.reviewerName} ${r.reviewText ?? ""}`,
+          url: "/reviews",
+          groupRank: 4,
+        });
+    }
+    if (hasAccess(membership, "marketing")) {
+      for (const c of customers)
+        list.push({ label: `${c.name} ${c.email ?? ""}`, url: "/marketing", groupRank: 5 });
+    }
+    return list;
+  }, [membership, inventoryItems, invoices, productMixItems, reviews, customers]);
 
-  const matchedReviews = hasAccess(membership, "reviews")
-    ? reviews
-        .filter((r) => matches(query, r.reviewerName, r.reviewText))
-        .slice(0, RESULTS_PER_CATEGORY)
-    : [];
-
-  const matchedCustomers = hasAccess(membership, "marketing")
-    ? customers.filter((c) => matches(query, c.name, c.email)).slice(0, RESULTS_PER_CATEGORY)
-    : [];
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    const match = bestMatch(q, candidates);
+    if (match) {
+      setNotFound(false);
+      setQuery("");
+      inputRef.current?.blur();
+      navigate({ to: match.url });
+    } else {
+      setNotFound(true);
+    }
+  }
 
   return (
-    <>
-      {matchedInventory.length > 0 && (
-        <CommandGroup heading="Inventory">
-          {matchedInventory.map((item) => (
-            <CommandItem key={item.id} value={item.id} onSelect={() => onSelect("/inventory")}>
-              <Package className="h-4 w-4" />
-              <span className="flex-1 truncate">{item.name}</span>
-              <span className="text-xs text-muted-foreground">{item.category}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+    <form
+      onSubmit={handleSubmit}
+      className="mx-auto flex h-10 w-full max-w-md items-center gap-2 rounded-full border border-border bg-card px-4 text-sm transition-colors focus-within:border-primary/40"
+    >
+      <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setNotFound(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") inputRef.current?.blur();
+        }}
+        placeholder="Search and press Enter to jump to a page…"
+        className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+      />
+      {notFound ? (
+        <span className="shrink-0 text-xs text-destructive">No match</span>
+      ) : (
+        <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          ⌘K
+        </kbd>
       )}
-      {matchedInvoices.length > 0 && (
-        <CommandGroup heading="Invoices">
-          {matchedInvoices.map((inv) => (
-            <CommandItem key={inv.id} value={inv.id} onSelect={() => onSelect("/invoices")}>
-              <Receipt className="h-4 w-4" />
-              <span className="flex-1 truncate">
-                {inv.vendorName ?? "Unknown vendor"}
-                {inv.invoiceNumber ? ` · #${inv.invoiceNumber}` : ""}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {inv.status === "pending_review" ? "Pending review" : "Approved"}
-              </span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      )}
-      {matchedMenuItems.length > 0 && (
-        <CommandGroup heading="Product Mix">
-          {matchedMenuItems.map((item) => (
-            <CommandItem key={item.id} value={item.id} onSelect={() => onSelect("/product-mix")}>
-              <PieChart className="h-4 w-4" />
-              <span className="flex-1 truncate">{item.name}</span>
-              <span className="text-xs text-muted-foreground">{item.category}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      )}
-      {matchedReviews.length > 0 && (
-        <CommandGroup heading="Reviews">
-          {matchedReviews.map((r) => (
-            <CommandItem key={r.id} value={r.id} onSelect={() => onSelect("/reviews")}>
-              <Star className="h-4 w-4" />
-              <span className="flex-1 truncate">
-                {r.reviewerName} · {r.starRating}★
-              </span>
-              <span className="max-w-[220px] truncate text-xs text-muted-foreground">
-                {r.reviewText ?? ""}
-              </span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      )}
-      {matchedCustomers.length > 0 && (
-        <CommandGroup heading="Customers">
-          {matchedCustomers.map((c) => (
-            <CommandItem key={c.id} value={c.id} onSelect={() => onSelect("/marketing")}>
-              <User className="h-4 w-4" />
-              <span className="flex-1 truncate">{c.name}</span>
-              <span className="text-xs text-muted-foreground">{c.email ?? c.phone ?? ""}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      )}
-    </>
+    </form>
   );
 }
