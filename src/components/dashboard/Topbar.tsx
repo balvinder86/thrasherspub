@@ -1,19 +1,11 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
 import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
-import type { DateRange } from "@/lib/date-range";
+import { useDateRange } from "@/lib/date-range-context";
 
-export function Topbar({
-  title,
-  eyebrow,
-  dateRange,
-  onDateRangeChange,
-}: {
-  title: string;
-  eyebrow?: string;
-  dateRange?: DateRange;
-  onDateRangeChange?: (range: DateRange) => void;
-}) {
+export function Topbar({ title, eyebrow }: { title: string; eyebrow?: string }) {
+  const { dateRange, setDateRange } = useDateRange();
+
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur">
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-6 py-4">
@@ -33,9 +25,7 @@ export function Topbar({
           <GlobalSearch />
         </div>
         <div className="flex items-center gap-2">
-          {dateRange && onDateRangeChange && (
-            <DateRangePicker range={dateRange} onRangeChange={onDateRangeChange} />
-          )}
+          <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
         </div>
       </div>
     </header>

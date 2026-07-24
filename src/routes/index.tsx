@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -46,7 +46,8 @@ import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
 import { useCustomers } from "@/lib/marketing/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/queries";
-import { type DateRange, addDays, formatDateRange, startOfDay } from "@/lib/date-range";
+import { formatDateRange } from "@/lib/date-range";
+import { useDateRange } from "@/lib/date-range-context";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -119,11 +120,10 @@ function Overview() {
   // Drives Revenue, Channel mix, Top sellers and the KPI row only —
   // Real backlog and the module tiles below intentionally always show
   // current/live state, not a historical window, so they keep their
-  // own fixed-window hooks untouched by this control.
-  const [dateRange, setDateRange] = useState<DateRange>(() => {
-    const today = startOfDay(new Date());
-    return { from: addDays(today, -6), to: today };
-  });
+  // own fixed-window hooks untouched by this control. The range itself
+  // is global (src/lib/date-range-context.tsx), shared with the
+  // Topbar's picker on every page, not local to this page.
+  const { dateRange } = useDateRange();
   const rangeDayCount =
     Math.round((dateRange.to.getTime() - dateRange.from.getTime()) / 86_400_000) + 1;
   const rangeLabel = formatDateRange(dateRange);
@@ -336,7 +336,7 @@ function Overview() {
 
   return (
     <>
-      <Topbar title="Good evening, Bali" dateRange={dateRange} onDateRangeChange={setDateRange} />
+      <Topbar title="Good evening, Bali" />
       <main className="space-y-8 px-6 py-8">
         {/* Agents working for you — real, actionable backlog counts,
             reusing the exact same hooks/data as the module tiles below. */}

@@ -73,8 +73,8 @@ export function DateRangePicker({
           <div>
             <Calendar
               mode="range"
-              numberOfMonths={2}
-              defaultMonth={range.from}
+              numberOfMonths={1}
+              defaultMonth={range.to}
               selected={draft}
               onSelect={setDraft}
               disabled={{ after: startOfDay(new Date()) }}

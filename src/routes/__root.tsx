@@ -21,6 +21,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/lib/supabase/auth-context";
+import { DateRangeProvider } from "@/lib/date-range-context";
 import { hasAccess, useCurrentMembership, ROUTE_PERMISSION } from "@/lib/permissions";
 import { ShieldOff } from "lucide-react";
 
@@ -151,7 +152,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AuthGate />
+        <DateRangeProvider>
+          <AuthGate />
+        </DateRangeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
