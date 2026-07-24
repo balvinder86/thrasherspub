@@ -46,8 +46,16 @@ import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
 import { useCustomers } from "@/lib/marketing/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useSearchConsoleConnection, useSearchConsoleOverview } from "@/lib/seo/queries";
-import { formatDateRange } from "@/lib/date-range";
+import { addDays, formatDateRange, startOfDay } from "@/lib/date-range";
 import { useDateRange } from "@/lib/date-range-context";
+
+// Fixed window for the Product Mix module tile — deliberately not the
+// global date-range filter, since the module strip always shows
+// current/live state (see the note on rangeDayCount below).
+const MODULE_TILE_WINDOW = (() => {
+  const today = startOfDay(new Date());
+  return { from: addDays(today, -6), to: today };
+})();
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -133,7 +141,7 @@ function Overview() {
   const { data: foodCost } = useFoodCostSummary(dateRange);
   const foodCostDisplay = foodCostKpi(foodCost);
 
-  const { data: productMixItems = [] } = useProductMix(7);
+  const { data: productMixItems = [] } = useProductMix(MODULE_TILE_WINDOW);
   const { data: inventoryItems = [] } = useInventoryItems();
   const { data: realInvoices = [] } = useRealInvoices();
   const { data: reviews = [] } = useReviews();

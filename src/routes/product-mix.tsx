@@ -48,6 +48,8 @@ import {
 } from "recharts";
 
 import { Topbar } from "@/components/dashboard/Topbar";
+import { formatDateRange } from "@/lib/date-range";
+import { useDateRange } from "@/lib/date-range-context";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,19 +95,6 @@ type Category = string;
 
 type MenuItem = RealMenuItem;
 
-function rangeToDays(range: string): number {
-  switch (range) {
-    case "Today":
-      return 1;
-    case "Last 28 days":
-      return 28;
-    case "Quarter":
-      return 90;
-    default:
-      return 7;
-  }
-}
-
 const ITEMS_PAGE_SIZE = 50;
 
 const PALETTE = {
@@ -144,14 +133,14 @@ function usd(n: number) {
 
 // ---------- Page ----------
 function ProductMixPage() {
-  const [range, setRange] = useState("Last 7 days");
+  const { dateRange } = useDateRange();
+  const rangeLabel = formatDateRange(dateRange);
   const [cat, setCat] = useState<Category | "All">("All");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<MenuItem | null>(null);
 
-  const days = rangeToDays(range);
-  const { data: items = [], isLoading, error } = useProductMix(days);
-  const { data: orderCount = 0 } = useOrderCount(days);
+  const { data: items = [], isLoading, error } = useProductMix(dateRange);
+  const { data: orderCount = 0 } = useOrderCount(dateRange);
   const updateCost = useUpdateItemCost();
 
   const categories = useMemo(
@@ -251,17 +240,6 @@ function ProductMixPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={range} onValueChange={setRange}>
-              <SelectTrigger className="w-44 bg-card">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Today">Today</SelectItem>
-                <SelectItem value="Last 7 days">Last 7 days</SelectItem>
-                <SelectItem value="Last 28 days">Last 28 days</SelectItem>
-                <SelectItem value="Quarter">This quarter</SelectItem>
-              </SelectContent>
-            </Select>
             <Button variant="outline" className="gap-2">
               <GitCompare className="h-4 w-4" /> Compare
             </Button>
@@ -315,7 +293,7 @@ function ProductMixPage() {
           <div className="flex items-end justify-between mb-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                {range}
+                {rangeLabel}
               </p>
               <h3 className="font-serif text-2xl">Top movers</h3>
               <p className="text-xs text-muted-foreground mt-1">

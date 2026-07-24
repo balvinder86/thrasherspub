@@ -81,49 +81,59 @@ export type RealMenuItem = {
   revenuePrevWk: number;
 };
 
-// Popularity for `days` (default a week) vs. the prior equal-length period,
-// joined against the current menu + cost. Cost prefers the real recipe
-// bridge (sum of recipe_lines quantity x ingredient cost) when an item
-// has one, falling back to the manual per-item override, then undefined
-// ("Unpriced") if neither exists yet.
-export function useProductMix(days = 7) {
+// Popularity across the selected range vs. the immediately preceding
+// period of equal length, joined against the current menu + cost.
+// Cost prefers the real recipe bridge (sum of recipe_lines quantity x
+// ingredient cost) when an item has one, falling back to the manual
+// per-item override, then undefined ("Unpriced") if neither exists yet.
+export function useProductMix(range: DateRange) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["product-mix", locationIds, days],
+    queryKey: ["product-mix", locationIds, fromIso, toIso],
     enabled: !!locationIds && locationIds.length > 0,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<RealMenuItem[]> => {
-      const today = new Date();
-      const periodStart = addDays(today, -days);
-      const prevStart = addDays(today, -days * 2);
+      const periodDays = Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000) + 1;
+      const prevTo = addDays(range.from, -1);
+      const prevFrom = addDays(prevTo, -(periodDays - 1));
+      const prevFromIso = isoDate(prevFrom);
+      const prevToIso = isoDate(prevTo);
 
-      const [menuItemsRes, currentRes, prevRes, recipeRes] = await Promise.all([
+      const [menuItemsRes, currentRows, prevRows, recipeRes] = await Promise.all([
         supabase
           .from("menu_items")
           .select("pos_id, location_id, name, category, price_cents, cost_cents")
           .in("location_id", locationIds!)
           .eq("active", true),
-        supabase
-          .from("pmix_sales")
-          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
-          .in("location_id", locationIds!)
-          .gte("business_date", isoDate(periodStart))
-          .lte("business_date", isoDate(today)),
-        supabase
-          .from("pmix_sales")
-          .select("menu_item_pos_id, quantity_sold, net_sales_cents")
-          .in("location_id", locationIds!)
-          .gte("business_date", isoDate(prevStart))
-          .lt("business_date", isoDate(periodStart)),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("pmix_sales")
+            .select("menu_item_pos_id, quantity_sold, net_sales_cents")
+            .in("location_id", locationIds!)
+            .gte("business_date", fromIso)
+            .lte("business_date", toIso)
+            .order("business_date", { ascending: true })
+            .range(from, to),
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("pmix_sales")
+            .select("menu_item_pos_id, quantity_sold, net_sales_cents")
+            .in("location_id", locationIds!)
+            .gte("business_date", prevFromIso)
+            .lte("business_date", prevToIso)
+            .order("business_date", { ascending: true })
+            .range(from, to),
+        ),
         supabase
           .from("recipe_lines")
           .select("menu_item_pos_id, quantity, ingredients (unit_cost_cents)")
           .in("location_id", locationIds!),
       ]);
       if (menuItemsRes.error) throw menuItemsRes.error;
-      if (currentRes.error) throw currentRes.error;
-      if (prevRes.error) throw prevRes.error;
       if (recipeRes.error) throw recipeRes.error;
 
       const sumQtyBy = (rows: { menu_item_pos_id: string; quantity_sold: number }[]) => {
@@ -141,10 +151,10 @@ export function useProductMix(days = 7) {
           );
         return map;
       };
-      const current = sumQtyBy(currentRes.data ?? []);
-      const prev = sumQtyBy(prevRes.data ?? []);
-      const currentRevenueCents = sumRevenueBy(currentRes.data ?? []);
-      const prevRevenueCents = sumRevenueBy(prevRes.data ?? []);
+      const current = sumQtyBy(currentRows);
+      const prev = sumQtyBy(prevRows);
+      const currentRevenueCents = sumRevenueBy(currentRows);
+      const prevRevenueCents = sumRevenueBy(prevRows);
 
       const recipeCostCents = new Map<string, number>();
       for (const row of (recipeRes.data ?? []) as any[]) {
@@ -372,21 +382,23 @@ export function useSalesTrend(range: DateRange) {
 // Approximates check count via raw order events (one row per Toast
 // order) — not a precise "check" count (an order can have >1 check),
 // but far more honest than a guessed items-per-check ratio.
-export function useOrderCount(days = 7) {
+export function useOrderCount(range: DateRange) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["order-count", locationIds, days],
+    queryKey: ["order-count", locationIds, fromIso, toIso],
     enabled: !!locationIds && locationIds.length > 0,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<number> => {
-      const start = addDays(new Date(), -days);
       const { count, error } = await supabase
         .from("pos_raw_events")
         .select("id", { count: "exact", head: true })
         .eq("event_type", "order")
         .in("location_id", locationIds!)
-        .gte("business_date", isoDate(start));
+        .gte("business_date", fromIso)
+        .lte("business_date", toIso);
       if (error) throw error;
       return count ?? 0;
     },

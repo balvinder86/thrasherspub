@@ -8,6 +8,16 @@ import { useInventoryItems, useRealInvoices } from "@/lib/boh/queries";
 import { useProductMix } from "@/lib/pos/queries";
 import { useReviews } from "@/lib/reviews/queries";
 import { useCustomers } from "@/lib/marketing/queries";
+import { addDays, startOfDay } from "@/lib/date-range";
+
+// Fixed recent-items window for search candidates — deliberately not
+// tied to the global date-range filter, since search should always
+// surface currently-relevant menu items regardless of what range
+// someone has picked for looking at historical data elsewhere.
+const SEARCH_ITEM_WINDOW = (() => {
+  const today = startOfDay(new Date());
+  return { from: addDays(today, -6), to: today };
+})();
 
 const ALL_FEATURES = [...NAV_OVERVIEW, ...NAV_GROWTH, ...NAV_OPERATIONS];
 
@@ -54,7 +64,7 @@ export function GlobalSearch() {
 
   const { data: inventoryItems = [] } = useInventoryItems();
   const { data: invoices = [] } = useRealInvoices();
-  const { data: productMixItems = [] } = useProductMix(7);
+  const { data: productMixItems = [] } = useProductMix(SEARCH_ITEM_WINDOW);
   const { data: reviews = [] } = useReviews();
   const { data: customers = [] } = useCustomers();
 
