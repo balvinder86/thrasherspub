@@ -1,18 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  LayoutDashboard,
-  PieChart,
-  Package,
-  Receipt,
-  Star,
-  Search,
-  Megaphone,
-  Gift,
-  CalendarClock,
-  Shield,
-  Settings,
-  UtensilsCrossed,
-} from "lucide-react";
+import { UtensilsCrossed } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -26,47 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { hasAccess, useCurrentMembership, type PermissionKey } from "@/lib/permissions";
-
-const overview = [
-  { title: "Home", url: "/", icon: LayoutDashboard, permission: "sales_overview" },
-  { title: "Product Mix", url: "/product-mix", icon: PieChart, permission: "product_mix" },
-  { title: "Inventory & Ordering", url: "/inventory", icon: Package, permission: "inventory" },
-  { title: "Invoices", url: "/invoices", icon: Receipt, permission: "invoices" },
-] satisfies {
-  title: string;
-  url: string;
-  icon: typeof LayoutDashboard;
-  permission: PermissionKey;
-}[];
-
-const growth = [
-  { title: "Reviews", url: "/reviews", icon: Star, permission: "reviews" },
-  { title: "SEO", url: "/seo", icon: Search, permission: "seo" },
-  { title: "Marketing", url: "/marketing", icon: Megaphone, permission: "marketing" },
-  { title: "Loyalty", url: "/loyalty", icon: Gift, permission: "loyalty" },
-] satisfies {
-  title: string;
-  url: string;
-  icon: typeof LayoutDashboard;
-  permission: PermissionKey;
-}[];
-
-const operations = [
-  { title: "Scheduling", url: "/scheduling", icon: CalendarClock, permission: "scheduling" },
-] satisfies {
-  title: string;
-  url: string;
-  icon: typeof LayoutDashboard;
-  permission: PermissionKey;
-}[];
-
-// Not permission-gated — Admin is owner-only (enforced by manage-team
-// itself) but still visible read-only to everyone, and Settings is
-// every member's own account, independent of what they're granted.
-const ungated = [
-  { title: "Admin", url: "/admin", icon: Shield },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+import { NAV_OVERVIEW, NAV_GROWTH, NAV_OPERATIONS, NAV_UNGATED } from "@/lib/nav-items";
 
 function visibleFor<T extends { permission: PermissionKey }>(
   items: T[],
@@ -80,11 +27,11 @@ export function AppSidebar() {
   const isActive = (url: string) => (url === "/" ? pathname === "/" : pathname.startsWith(url));
   const membership = useCurrentMembership();
 
-  const visibleOverview = visibleFor(overview, membership);
-  const visibleGrowth = visibleFor(growth, membership);
-  const visibleOperations = visibleFor(operations, membership);
+  const visibleOverview = visibleFor(NAV_OVERVIEW, membership);
+  const visibleGrowth = visibleFor(NAV_GROWTH, membership);
+  const visibleOperations = visibleFor(NAV_OPERATIONS, membership);
 
-  const renderGroup = (label: string, items: (typeof ungated)[number][]) => {
+  const renderGroup = (label: string, items: (typeof NAV_UNGATED)[number][]) => {
     if (items.length === 0) return null;
     return (
       <SidebarGroup>
@@ -131,7 +78,7 @@ export function AppSidebar() {
       <SidebarContent className="px-2 py-3">
         {renderGroup("Overview", visibleOverview)}
         {renderGroup("Growth", visibleGrowth)}
-        {renderGroup("Operations", [...visibleOperations, ...ungated])}
+        {renderGroup("Operations", [...visibleOperations, ...NAV_UNGATED])}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
