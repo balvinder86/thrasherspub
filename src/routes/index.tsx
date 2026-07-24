@@ -328,7 +328,6 @@ function Overview() {
   return (
     <>
       <Topbar
-        eyebrow="Thursday · June 25 · West Village"
         title="Good evening, Bali"
         dateRangeDays={rangeDays}
         onDateRangeDaysChange={setRangeDays}
