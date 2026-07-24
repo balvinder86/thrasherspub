@@ -108,6 +108,18 @@ const PALETTE = {
 
 const TREND_COLORS = [PALETTE.terracotta, "#3a2418", PALETTE.amber, PALETTE.olive, PALETTE.rose];
 
+// Real menu setup has two overlapping cocktail categories in Toast
+// ("Bar Drinks" and "Bar Drinks(Cocktails)") — the Categories tab
+// rolls the smaller one into the other instead of showing a redundant
+// tile. Item-level views (All items' filter pills, the items table)
+// keep the real distinct category as entered in Toast.
+const CATEGORY_ALIASES: Record<string, string> = {
+  "Bar Drinks": "Bar Drinks(Cocktails)",
+};
+function canonicalCategory(category: string): string {
+  return CATEGORY_ALIASES[category] ?? category;
+}
+
 const QUAD_COLOR: Record<Quadrant, string> = {
   Star: "#87a878",
   Plowhorse: "#d4a574",
@@ -151,6 +163,10 @@ function ProductMixPage() {
 
   const categories = useMemo(
     () => Array.from(new Set(items.map((i) => i.category))).sort(),
+    [items],
+  );
+  const canonicalCategories = useMemo(
+    () => Array.from(new Set(items.map((i) => canonicalCategory(i.category)))).sort(),
     [items],
   );
 
@@ -577,8 +593,8 @@ function ProductMixPage() {
           {/* CATEGORIES */}
           <TabsContent value="categories">
             <div className="grid md:grid-cols-2 gap-4">
-              {categories.map((c) => {
-                const list = items.filter((i) => i.category === c);
+              {canonicalCategories.map((c) => {
+                const list = items.filter((i) => canonicalCategory(i.category) === c);
                 const rev = list.reduce((s, i) => s + i.revenueWk, 0);
                 const cogs = list.reduce((s, i) => s + (i.cost ?? 0) * i.soldWk, 0);
                 const units = list.reduce((s, i) => s + i.soldWk, 0);
