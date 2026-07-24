@@ -516,3 +516,189 @@ export function useTopItems(range: DateRange, limit = 5) {
     },
   });
 }
+
+export type OrderModifier = { name: string; priceCents: number; quantity: number };
+export type OrderItem = {
+  name: string;
+  priceCents: number;
+  quantity: number;
+  modifiers: OrderModifier[];
+};
+export type RealOrderDetail = {
+  guid: string;
+  openedAt: string;
+  totalCents: number;
+  items: OrderItem[];
+};
+
+// Real per-order detail (real open timestamp, real items, real
+// modifiers — all straight from the raw Toast payload, since
+// pmix_sales' daily aggregates don't carry time-of-day or modifier
+// data) for the selected range. Powers Product Mix's Dayparts and
+// Modifiers & attach tabs.
+export function useOrderDetails(range: DateRange) {
+  const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
+
+  return useQuery({
+    queryKey: ["order-details", locationIds, fromIso, toIso],
+    enabled: !!locationIds && locationIds.length > 0,
+    queryFn: async (): Promise<{ timezone: string; orders: RealOrderDetail[] }> => {
+      const [ordersRows, locRes] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("pos_raw_events")
+            .select("payload")
+            .eq("event_type", "order")
+            .in("location_id", locationIds!)
+            .gte("business_date", fromIso)
+            .lte("business_date", toIso)
+            .order("business_date", { ascending: true })
+            .range(from, to),
+        ),
+        supabase.from("locations").select("timezone").in("id", locationIds!).limit(1).maybeSingle(),
+      ]);
+      if (locRes.error) throw locRes.error;
+      const timezone = locRes.data?.timezone ?? "America/Los_Angeles";
+
+      type RawModifier = {
+        displayName?: string;
+        price?: number;
+        quantity?: number;
+        voided?: boolean;
+      };
+      type RawSelection = {
+        displayName?: string;
+        price?: number;
+        quantity?: number;
+        voided?: boolean;
+        modifiers?: RawModifier[];
+      };
+      type RawCheck = {
+        totalAmount?: number;
+        deleted?: boolean;
+        voided?: boolean;
+        selections?: RawSelection[];
+      };
+      type RawOrder = {
+        guid: string;
+        openedDate?: string;
+        deleted?: boolean;
+        voided?: boolean;
+        checks?: RawCheck[];
+      };
+
+      const orders: RealOrderDetail[] = [];
+      for (const row of ordersRows) {
+        const o = row.payload as RawOrder;
+        if (o.deleted || o.voided || !o.openedDate) continue;
+        let totalCents = 0;
+        const items: OrderItem[] = [];
+        for (const check of o.checks ?? []) {
+          if (check.deleted || check.voided) continue;
+          totalCents += Math.round((check.totalAmount ?? 0) * 100);
+          for (const sel of check.selections ?? []) {
+            if (sel.voided) continue;
+            items.push({
+              name: sel.displayName ?? "Unknown item",
+              priceCents: Math.round((sel.price ?? 0) * 100),
+              quantity: sel.quantity ?? 1,
+              modifiers: (sel.modifiers ?? [])
+                .filter((m) => !m.voided)
+                .map((m) => ({
+                  name: m.displayName ?? "Unknown modifier",
+                  priceCents: Math.round((m.price ?? 0) * 100),
+                  quantity: m.quantity ?? 1,
+                })),
+            });
+          }
+        }
+        orders.push({ guid: o.guid, openedAt: o.openedDate, totalCents, items });
+      }
+      return { timezone, orders };
+    },
+  });
+}
+
+export type ItemTrendSeries = {
+  items: string[];
+  series: Record<string, string | number>[];
+};
+
+// Real velocity per top item across the selected range — daily
+// buckets for shorter ranges, weekly buckets once the range is wide
+// enough that daily points would be too dense to read.
+export function useItemTrend(range: DateRange, topN = 5) {
+  const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
+
+  return useQuery({
+    queryKey: ["item-trend", locationIds, fromIso, toIso, topN],
+    enabled: !!locationIds && locationIds.length > 0,
+    queryFn: async (): Promise<ItemTrendSeries> => {
+      const rows = await fetchAllRows((from, to) =>
+        supabase
+          .from("pmix_sales")
+          .select("business_date, name, quantity_sold")
+          .in("location_id", locationIds!)
+          .gte("business_date", fromIso)
+          .lte("business_date", toIso)
+          .order("business_date", { ascending: true })
+          .range(from, to),
+      );
+
+      const totals = new Map<string, number>();
+      for (const r of rows) totals.set(r.name, (totals.get(r.name) ?? 0) + Number(r.quantity_sold));
+      const top = Array.from(totals.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, topN)
+        .map(([name]) => name);
+      const topSet = new Set(top);
+
+      const days = Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000) + 1;
+      const useWeekly = days > 21;
+
+      // Monday-start week bucket key, in local (UTC, since
+      // business_date is a plain date) terms — good enough for
+      // grouping, this isn't timezone-sensitive like Dayparts is.
+      const weekStart = (d: Date): string => {
+        const day = d.getUTCDay();
+        const diff = (day + 6) % 7; // days since Monday
+        const monday = new Date(d);
+        monday.setUTCDate(d.getUTCDate() - diff);
+        return isoDate(monday);
+      };
+
+      const byBucket = new Map<string, Map<string, number>>();
+      for (const r of rows) {
+        if (!topSet.has(r.name)) continue;
+        const d = new Date(`${r.business_date}T00:00:00Z`);
+        const bucketKey = useWeekly ? weekStart(d) : r.business_date;
+        const m = byBucket.get(bucketKey) ?? new Map<string, number>();
+        m.set(r.name, (m.get(r.name) ?? 0) + Number(r.quantity_sold));
+        byBucket.set(bucketKey, m);
+      }
+
+      const series = Array.from(byBucket.keys())
+        .sort()
+        .map((key) => {
+          const m = byBucket.get(key)!;
+          // Parsed as UTC and must be formatted as UTC too, or a
+          // browser/server local timezone behind UTC renders the
+          // wrong (previous) calendar day.
+          const label = new Date(`${key}T00:00:00Z`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          });
+          const point: Record<string, string | number> = { bucket: label };
+          for (const name of top) point[name] = m.get(name) ?? 0;
+          return point;
+        });
+
+      return { items: top, series };
+    },
+  });
+}

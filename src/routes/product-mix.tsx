@@ -6,6 +6,8 @@ import {
   useUpdateItemCost,
   useOrderCount,
   useLastSyncTime,
+  useOrderDetails,
+  useItemTrend,
   type RealMenuItem,
 } from "@/lib/pos/queries";
 import {
@@ -104,6 +106,8 @@ const PALETTE = {
   muted: "hsl(var(--muted-foreground))",
 };
 
+const TREND_COLORS = [PALETTE.terracotta, "#3a2418", PALETTE.amber, PALETTE.olive, PALETTE.rose];
+
 const QUAD_COLOR: Record<Quadrant, string> = {
   Star: "#87a878",
   Plowhorse: "#d4a574",
@@ -133,12 +137,16 @@ function usd(n: number) {
 function ProductMixPage() {
   const { dateRange } = useDateRange();
   const rangeLabel = formatDateRange(dateRange);
+  const rangeDayCount =
+    Math.round((dateRange.to.getTime() - dateRange.from.getTime()) / 86_400_000) + 1;
   const [cat, setCat] = useState<Category | "All">("All");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<MenuItem | null>(null);
 
   const { data: items = [], isLoading, error } = useProductMix(dateRange);
   const { data: orderCount = 0 } = useOrderCount(dateRange);
+  const { data: orderDetails, isLoading: isOrderDetailsLoading } = useOrderDetails(dateRange);
+  const { data: itemTrend, isLoading: isTrendLoading } = useItemTrend(dateRange, 5);
   const updateCost = useUpdateItemCost();
 
   const categories = useMemo(
@@ -220,6 +228,133 @@ function ProductMixPage() {
       .sort((a, b) => b.revenueWk - a.revenueWk)
       .slice(0, 6);
   }, [items]);
+
+  // Real revenue by time-of-day, bucketed in the restaurant's own
+  // local timezone (not UTC) so "Lunch"/"Dinner" etc. line up with
+  // when guests actually ordered. "Late night" wraps past midnight —
+  // hour 0-11 is treated as a continuation of the prior night rather
+  // than a 5th "early morning" bucket, since a pub has ~no real
+  // activity in that window.
+  const dayparts = useMemo(() => {
+    if (!orderDetails) return null;
+    const { timezone, orders } = orderDetails;
+    const buckets = [
+      { name: "Lunch", hours: "11a–3p", test: (h: number) => h >= 11 && h < 15 },
+      { name: "Happy Hour", hours: "3p–6p", test: (h: number) => h >= 15 && h < 18 },
+      { name: "Dinner", hours: "6p–10p", test: (h: number) => h >= 18 && h < 22 },
+      { name: "Late night", hours: "10p–close", test: (h: number) => h >= 22 || h < 11 },
+    ];
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: timezone,
+    });
+    const localHour = (iso: string): number => {
+      const part = fmt.formatToParts(new Date(iso)).find((p) => p.type === "hour");
+      return Number(part?.value ?? "0") % 24;
+    };
+
+    const revenueByHour = new Array<number>(24).fill(0);
+    const bucketed = buckets.map((b) => ({
+      ...b,
+      revenueCents: 0,
+      itemQty: new Map<string, number>(),
+    }));
+    for (const o of orders) {
+      const h = localHour(o.openedAt);
+      revenueByHour[h] += o.totalCents;
+      const bucket = bucketed.find((b) => b.test(h));
+      if (!bucket) continue;
+      bucket.revenueCents += o.totalCents;
+      for (const item of o.items) {
+        bucket.itemQty.set(item.name, (bucket.itemQty.get(item.name) ?? 0) + item.quantity);
+      }
+    }
+    const totalRevenueCents = bucketed.reduce((s, b) => s + b.revenueCents, 0);
+    const tiles = bucketed.map((b) => {
+      let topItem = "—";
+      let topQty = 0;
+      for (const [name, qty] of b.itemQty) {
+        if (qty > topQty) {
+          topQty = qty;
+          topItem = name;
+        }
+      }
+      return {
+        name: b.name,
+        hours: b.hours,
+        revenue: b.revenueCents / 100,
+        share: totalRevenueCents > 0 ? (b.revenueCents / totalRevenueCents) * 100 : 0,
+        topItem,
+      };
+    });
+    // Chart starts at 11a (real service start) and wraps through
+    // close, matching the daypart order above rather than 12a-11p.
+    const hourOrder = [...Array(24).keys()].map((i) => (i + 11) % 24);
+    const hourlyChart = hourOrder.map((h) => ({
+      hr: h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`,
+      revenue: revenueByHour[h] / 100,
+    }));
+    return { tiles, hourlyChart, totalOrders: orders.length };
+  }, [orderDetails]);
+
+  // Modifier usage + item attach rate — both computed from the same
+  // real per-order detail. Attach rate anchors on whichever of the
+  // pair sold more on its own, so "72% of X orders also include Y"
+  // reads naturally instead of an arbitrary direction.
+  const MIN_COOCCURRENCE = 3;
+  const modifiersAndAttach = useMemo(() => {
+    if (!orderDetails) return null;
+    const { orders } = orderDetails;
+
+    const modMap = new Map<string, { count: number; revenueCents: number }>();
+    for (const o of orders) {
+      for (const item of o.items) {
+        for (const m of item.modifiers) {
+          const cur = modMap.get(m.name) ?? { count: 0, revenueCents: 0 };
+          cur.count += m.quantity;
+          cur.revenueCents += m.priceCents * m.quantity;
+          modMap.set(m.name, cur);
+        }
+      }
+    }
+    const modifierHits = Array.from(modMap.entries())
+      .map(([name, v]) => ({ name, count: v.count, revenueCents: v.revenueCents }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    const itemOrderCount = new Map<string, number>();
+    const pairCoOccur = new Map<string, number>();
+    for (const o of orders) {
+      const uniqueNames = Array.from(new Set(o.items.map((i) => i.name)));
+      for (const n of uniqueNames) itemOrderCount.set(n, (itemOrderCount.get(n) ?? 0) + 1);
+      for (let i = 0; i < uniqueNames.length; i++) {
+        for (let j = i + 1; j < uniqueNames.length; j++) {
+          const key = [uniqueNames[i], uniqueNames[j]].sort().join("|||");
+          pairCoOccur.set(key, (pairCoOccur.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    const attachLeaders = Array.from(pairCoOccur.entries())
+      .filter(([, count]) => count >= MIN_COOCCURRENCE)
+      .map(([key, count]) => {
+        const [x, y] = key.split("|||");
+        const xCount = itemOrderCount.get(x) ?? 0;
+        const yCount = itemOrderCount.get(y) ?? 0;
+        const anchor = xCount >= yCount ? x : y;
+        const other = xCount >= yCount ? y : x;
+        const anchorCount = Math.max(xCount, yCount);
+        return {
+          pair: `${anchor} + ${other}`,
+          rate: anchorCount > 0 ? (count / anchorCount) * 100 : 0,
+          count,
+        };
+      })
+      .sort((a, b) => b.rate - a.rate)
+      .slice(0, 6);
+
+    return { modifierHits, attachLeaders };
+  }, [orderDetails]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -570,92 +705,62 @@ function ProductMixPage() {
           {/* DAYPARTS */}
           <TabsContent value="dayparts">
             <Card className="p-6">
-              <div className="grid lg:grid-cols-4 gap-4 mb-6">
-                {[
-                  { name: "Lunch", hours: "11a–3p", rev: "$8,420", top: "Pub Burger", share: 22 },
-                  {
-                    name: "Happy Hour",
-                    hours: "3p–6p",
-                    rev: "$4,180",
-                    top: "Stella Pint",
-                    share: 11,
-                  },
-                  {
-                    name: "Dinner",
-                    hours: "6p–10p",
-                    rev: "$18,940",
-                    top: "Fish & Chips",
-                    share: 49,
-                  },
-                  {
-                    name: "Late night",
-                    hours: "10p–close",
-                    rev: "$6,860",
-                    top: "Wings (10pc)",
-                    share: 18,
-                  },
-                ].map((d) => (
-                  <div key={d.name} className="p-4 rounded-lg border bg-muted/20">
-                    <div className="text-xs uppercase tracking-widest text-muted-foreground">
-                      {d.hours}
-                    </div>
-                    <div className="font-serif text-xl mt-1">{d.name}</div>
-                    <div className="font-mono text-2xl mt-2">{d.rev}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{d.share}% of week</div>
-                    <Separator className="my-3" />
-                    <div className="text-xs text-muted-foreground">Best seller</div>
-                    <div className="text-sm font-medium">{d.top}</div>
+              {isOrderDetailsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading real order timing…</div>
+              ) : !dayparts || dayparts.totalOrders === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No real orders in {rangeLabel} yet.
+                </div>
+              ) : (
+                <>
+                  <div className="grid lg:grid-cols-4 gap-4 mb-6">
+                    {dayparts.tiles.map((d) => (
+                      <div key={d.name} className="p-4 rounded-lg border bg-muted/20">
+                        <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                          {d.hours}
+                        </div>
+                        <div className="font-serif text-xl mt-1">{d.name}</div>
+                        <div className="font-mono text-2xl mt-2">{usd(d.revenue)}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {d.share.toFixed(0)}% of {rangeLabel}
+                        </div>
+                        <Separator className="my-3" />
+                        <div className="text-xs text-muted-foreground">Best seller</div>
+                        <div className="text-sm font-medium">{d.topItem}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={[
-                      { hr: "11a", food: 60, drinks: 30 },
-                      { hr: "12p", food: 140, drinks: 60 },
-                      { hr: "1p", food: 180, drinks: 80 },
-                      { hr: "2p", food: 90, drinks: 50 },
-                      { hr: "3p", food: 40, drinks: 70 },
-                      { hr: "4p", food: 50, drinks: 120 },
-                      { hr: "5p", food: 80, drinks: 180 },
-                      { hr: "6p", food: 220, drinks: 220 },
-                      { hr: "7p", food: 320, drinks: 280 },
-                      { hr: "8p", food: 340, drinks: 320 },
-                      { hr: "9p", food: 240, drinks: 280 },
-                      { hr: "10p", food: 140, drinks: 240 },
-                      { hr: "11p", food: 80, drinks: 180 },
-                    ]}
-                  >
-                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" />
-                    <XAxis dataKey="hr" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--background))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="food"
-                      stroke={PALETTE.terracotta}
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="drinks"
-                      stroke={PALETTE.olive}
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Real revenue by hour of day, {rangeLabel} · restaurant local time
+                  </p>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={dayparts.hourlyChart}>
+                        <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" />
+                        <XAxis dataKey="hr" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--background))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number) => usd(v)}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          name="Revenue"
+                          stroke={PALETTE.terracotta}
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
             </Card>
           </TabsContent>
 
@@ -667,25 +772,27 @@ function ProductMixPage() {
                   Attach rate leaders
                 </p>
                 <h3 className="font-serif text-xl mb-4">What rides along</h3>
-                <div className="space-y-3">
-                  {[
-                    { pair: "Pub Burger + Hand-cut Fries", rate: 72, lift: "+$4.10" },
-                    { pair: "Wings + Guinness Pint", rate: 54, lift: "+$9.00" },
-                    { pair: "Fish & Chips + Stella Pint", rate: 41, lift: "+$8.00" },
-                    { pair: "Caesar Salad + Iced Tea", rate: 28, lift: "+$4.00" },
-                    { pair: "Sticky Toffee + Espresso Martini", rate: 19, lift: "+$15.00" },
-                  ].map((p) => (
-                    <div key={p.pair}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>{p.pair}</span>
-                        <span className="font-mono text-muted-foreground">
-                          {p.rate}% · {p.lift}
-                        </span>
+                {isOrderDetailsLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading real order data…</p>
+                ) : !modifiersAndAttach || modifiersAndAttach.attachLeaders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Not enough repeat item pairings in {rangeLabel} yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {modifiersAndAttach.attachLeaders.map((p) => (
+                      <div key={p.pair}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>{p.pair}</span>
+                          <span className="font-mono text-muted-foreground">
+                            {p.rate.toFixed(0)}% · {p.count}x
+                          </span>
+                        </div>
+                        <Progress value={p.rate} className="h-1.5" />
                       </div>
-                      <Progress value={p.rate} className="h-1.5" />
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </Card>
 
               <Card className="p-5">
@@ -693,26 +800,29 @@ function ProductMixPage() {
                   Modifier hits
                 </p>
                 <h3 className="font-serif text-xl mb-4">Most-used modifiers</h3>
-                <div className="space-y-2.5">
-                  {[
-                    { name: "Add bacon", count: 142, rev: "+$284" },
-                    { name: "Sub gluten-free bun", count: 88, rev: "+$176" },
-                    { name: "Extra cheese", count: 74, rev: "+$111" },
-                    { name: "Spicy buffalo (wings)", count: 218, rev: "$0" },
-                    { name: "Make it a double", count: 64, rev: "+$320" },
-                    { name: "Sub side salad", count: 41, rev: "+$82" },
-                  ].map((m) => (
-                    <div key={m.name} className="flex items-center justify-between text-sm">
-                      <div>
-                        <div>{m.name}</div>
-                        <div className="text-xs text-muted-foreground">{m.count} uses / wk</div>
+                {isOrderDetailsLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading real order data…</p>
+                ) : !modifiersAndAttach || modifiersAndAttach.modifierHits.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No real modifier usage in {rangeLabel} yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {modifiersAndAttach.modifierHits.map((m) => (
+                      <div key={m.name} className="flex items-center justify-between text-sm">
+                        <div>
+                          <div>{m.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {m.count} use{m.count === 1 ? "" : "s"} · {rangeLabel}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="font-mono">
+                          {m.revenueCents > 0 ? `+${usd(m.revenueCents / 100)}` : "$0"}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="font-mono">
-                        {m.rev}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </Card>
             </div>
           </TabsContent>
@@ -723,54 +833,54 @@ function ProductMixPage() {
               <div className="flex items-end justify-between mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
-                    12-week trend
+                    {rangeLabel}
                   </p>
-                  <h3 className="font-serif text-2xl">Top 5 items velocity</h3>
+                  <h3 className="font-serif text-2xl">
+                    Top {itemTrend?.items.length ?? 5} items velocity
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Real units sold, {rangeDayCount > 21 ? "weekly" : "daily"}
+                  </p>
                 </div>
               </div>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={Array.from({ length: 12 }).map((_, w) => ({
-                      week: `W${14 + w}`,
-                      "Pub Burger": 320 + Math.round(Math.sin(w / 2) * 30 + w * 7),
-                      "Guinness Pint": 500 + Math.round(Math.cos(w / 3) * 40 + w * 9),
-                      "Wings (10pc)": 240 + Math.round(Math.sin(w / 1.5) * 25 + w * 10),
-                      "Fish & Chips": 150 + Math.round(Math.cos(w / 2) * 15 + w * 2),
-                      "Espresso Martini": 80 + Math.round(w * 6 + Math.sin(w) * 8),
-                    }))}
-                  >
-                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--background))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    {[
-                      ["Pub Burger", PALETTE.terracotta],
-                      ["Guinness Pint", "#3a2418"],
-                      ["Wings (10pc)", PALETTE.amber],
-                      ["Fish & Chips", PALETTE.olive],
-                      ["Espresso Martini", PALETTE.rose],
-                    ].map(([name, color]) => (
-                      <Line
-                        key={name}
-                        type="monotone"
-                        dataKey={name}
-                        stroke={color}
-                        strokeWidth={2}
-                        dot={false}
+              {isTrendLoading ? (
+                <div className="h-80 flex items-center justify-center text-sm text-muted-foreground">
+                  Loading real sales history…
+                </div>
+              ) : !itemTrend || itemTrend.items.length === 0 ? (
+                <div className="h-80 flex items-center justify-center text-sm text-muted-foreground">
+                  No real sales in {rangeLabel} yet.
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={itemTrend.series}>
+                      <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" />
+                      <XAxis dataKey="bucket" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
                       />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {itemTrend.items.map((name, i) => (
+                        <Line
+                          key={name}
+                          type="monotone"
+                          dataKey={name}
+                          stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </Card>
           </TabsContent>
 
