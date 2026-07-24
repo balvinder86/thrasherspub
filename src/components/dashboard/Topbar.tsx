@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
-import { Bell, Calendar } from "lucide-react";
+import { Calendar } from "lucide-react";
 
 export const DATE_RANGE_OPTIONS = [
   { days: 7, label: "Last 7 days" },
@@ -74,10 +74,6 @@ export function Topbar({
               Last 7 days
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
-            <Bell className="h-4 w-4" />
-            <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" />
-          </Button>
         </div>
       </div>
     </header>
