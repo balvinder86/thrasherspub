@@ -1,32 +1,18 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
-import { Calendar } from "lucide-react";
-
-export const DATE_RANGE_OPTIONS = [
-  { days: 7, label: "Last 7 days" },
-  { days: 14, label: "Last 14 days" },
-  { days: 30, label: "Last 30 days" },
-  { days: 90, label: "Last 90 days" },
-];
+import { DateRangePicker } from "@/components/dashboard/DateRangePicker";
+import type { DateRange } from "@/lib/date-range";
 
 export function Topbar({
   title,
   eyebrow,
-  dateRangeDays,
-  onDateRangeDaysChange,
+  dateRange,
+  onDateRangeChange,
 }: {
   title: string;
   eyebrow?: string;
-  dateRangeDays?: number;
-  onDateRangeDaysChange?: (days: number) => void;
+  dateRange?: DateRange;
+  onDateRangeChange?: (range: DateRange) => void;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur">
@@ -47,32 +33,8 @@ export function Topbar({
           <GlobalSearch />
         </div>
         <div className="flex items-center gap-2">
-          {dateRangeDays != null && onDateRangeDaysChange ? (
-            <Select
-              value={String(dateRangeDays)}
-              onValueChange={(v) => onDateRangeDaysChange(Number(v))}
-            >
-              <SelectTrigger className="hidden h-9 w-auto gap-2 rounded-full sm:inline-flex">
-                <Calendar className="h-4 w-4" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DATE_RANGE_OPTIONS.map((o) => (
-                  <SelectItem key={o.days} value={String(o.days)}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden h-9 gap-2 rounded-full sm:inline-flex"
-            >
-              <Calendar className="h-4 w-4" />
-              Last 7 days
-            </Button>
+          {dateRange && onDateRangeChange && (
+            <DateRangePicker range={dateRange} onRangeChange={onDateRangeChange} />
           )}
         </div>
       </div>

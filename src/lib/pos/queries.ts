@@ -3,6 +3,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase/client";
 import { useLocationIds } from "@/lib/supabase/scope";
+import { type DateRange, addDays, isoDate } from "@/lib/date-range";
 
 // PostgREST caps an unpaginated read at 1000 rows. pmix_sales and
 // pos_raw_events both scale with days-in-range × (menu items or
@@ -30,16 +31,6 @@ async function fetchAllRows<T>(
     from += SUPABASE_PAGE_SIZE;
   }
   return all;
-}
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(d: Date, n: number): Date {
-  const out = new Date(d);
-  out.setDate(out.getDate() + n);
-  return out;
 }
 
 // The Toast sync job pulls fresh orders every ~10 minutes, but without
@@ -225,15 +216,16 @@ export type FoodCostSummary = {
   itemsMissingRecipeCount: number;
 };
 
-export function useFoodCostSummary(days = 7) {
+export function useFoodCostSummary(range: DateRange) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["food-cost-summary", locationIds, days],
+    queryKey: ["food-cost-summary", locationIds, fromIso, toIso],
     enabled: !!locationIds && locationIds.length > 0,
     queryFn: async (): Promise<FoodCostSummary> => {
-      const today = new Date();
-      const periodStart = addDays(today, -days);
+      const days = Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000) + 1;
 
       const [salesData, recipeRes, invoicesRes] = await Promise.all([
         fetchAllRows((from, to) =>
@@ -241,8 +233,8 @@ export function useFoodCostSummary(days = 7) {
             .from("pmix_sales")
             .select("menu_item_pos_id, quantity_sold, net_sales_cents")
             .in("location_id", locationIds!)
-            .gte("business_date", isoDate(periodStart))
-            .lt("business_date", isoDate(today))
+            .gte("business_date", fromIso)
+            .lte("business_date", toIso)
             .order("business_date", { ascending: true })
             .range(from, to),
         ),
@@ -255,8 +247,8 @@ export function useFoodCostSummary(days = 7) {
           .select("total_cents")
           .in("location_id", locationIds!)
           .eq("status", "approved")
-          .gte("invoice_date", isoDate(periodStart))
-          .lt("invoice_date", isoDate(today)),
+          .gte("invoice_date", fromIso)
+          .lte("invoice_date", toIso),
       ]);
       if (recipeRes.error) throw recipeRes.error;
       if (invoicesRes.error) throw invoicesRes.error;
@@ -324,24 +316,29 @@ export function useFoodCostSummary(days = 7) {
 
 export type DailyRevenue = { day: string; revenue: number; lastWeek: number };
 
-// Last `days` days of net sales, each paired with the same weekday one
-// week earlier for a like-for-like comparison line.
-export function useSalesTrend(days = 7) {
+// One point per day across the selected range, each paired with the
+// same weekday one week earlier for a like-for-like comparison line.
+export function useSalesTrend(range: DateRange) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["sales-trend", locationIds, days],
+    queryKey: ["sales-trend", locationIds, fromIso, toIso],
     enabled: !!locationIds && locationIds.length > 0,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     queryFn: async (): Promise<DailyRevenue[]> => {
-      const today = new Date();
-      const rangeStart = addDays(today, -days * 2);
+      const days = Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000) + 1;
+      // Fetch an extra 7 days before `from` too, so the "same day last
+      // week" comparison line has data for the earliest days shown.
+      const fetchStart = isoDate(addDays(range.from, -7));
       const data = await fetchAllRows((from, to) =>
         supabase
           .from("pmix_sales")
           .select("business_date, net_sales_cents")
           .in("location_id", locationIds!)
-          .gte("business_date", isoDate(rangeStart))
+          .gte("business_date", fetchStart)
+          .lte("business_date", toIso)
           .order("business_date", { ascending: true })
           .range(from, to),
       );
@@ -351,8 +348,8 @@ export function useSalesTrend(days = 7) {
         byDate.set(r.business_date, (byDate.get(r.business_date) ?? 0) + Number(r.net_sales_cents));
 
       const out: DailyRevenue[] = [];
-      for (let i = days - 1; i >= 0; i--) {
-        const d = addDays(today, -i);
+      for (let i = 0; i < days; i++) {
+        const d = addDays(range.from, i);
         const key = isoDate(d);
         const lastWeekKey = isoDate(addDays(d, -7));
         out.push({
@@ -406,14 +403,15 @@ export type ChannelMixSlice = { name: string; value: number; amountCents: number
 // NOT diningOption (Dine In/Takeout/Delivery) — real data showed that
 // field populated on well under 5% of this restaurant's real orders,
 // too sparse to be a meaningful breakdown.
-export function useChannelMix(days = 7) {
+export function useChannelMix(range: DateRange) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["channel-mix", locationIds, days],
+    queryKey: ["channel-mix", locationIds, fromIso, toIso],
     enabled: !!locationIds && locationIds.length > 0,
     queryFn: async (): Promise<ChannelMixSlice[]> => {
-      const start = addDays(new Date(), -days);
       const [orders, centersRes] = await Promise.all([
         fetchAllRows((from, to) =>
           supabase
@@ -421,7 +419,8 @@ export function useChannelMix(days = 7) {
             .select("payload")
             .eq("event_type", "order")
             .in("location_id", locationIds!)
-            .gte("business_date", isoDate(start))
+            .gte("business_date", fromIso)
+            .lte("business_date", toIso)
             .order("business_date", { ascending: true })
             .range(from, to),
         ),
@@ -472,20 +471,22 @@ export function useChannelMix(days = 7) {
 
 export type TopItem = { name: string; sold: number; revenue: number };
 
-export function useTopItems(days = 7, limit = 5) {
+export function useTopItems(range: DateRange, limit = 5) {
   const { data: locationIds } = useLocationIds();
+  const fromIso = isoDate(range.from);
+  const toIso = isoDate(range.to);
 
   return useQuery({
-    queryKey: ["top-items", locationIds, days, limit],
+    queryKey: ["top-items", locationIds, fromIso, toIso, limit],
     enabled: !!locationIds && locationIds.length > 0,
     queryFn: async (): Promise<TopItem[]> => {
-      const start = addDays(new Date(), -days);
       const data = await fetchAllRows((from, to) =>
         supabase
           .from("pmix_sales")
           .select("name, quantity_sold, net_sales_cents")
           .in("location_id", locationIds!)
-          .gte("business_date", isoDate(start))
+          .gte("business_date", fromIso)
+          .lte("business_date", toIso)
           .order("business_date", { ascending: true })
           .range(from, to),
       );
