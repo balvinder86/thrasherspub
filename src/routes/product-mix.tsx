@@ -21,9 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Download,
   Filter,
-  GitCompare,
   Plug,
   RefreshCw,
   Search,
@@ -213,9 +211,9 @@ function ProductMixPage() {
     };
   }, [items, popMedian, marginMedian, orderCount]);
 
-  // Top real sellers for whichever period is currently selected
-  // (Today / Last 7 days / Last 28 days / Quarter) — no prior-period
-  // comparison, just real revenue and units for the selection itself.
+  // Top real sellers for whatever the global date range is currently
+  // set to — no prior-period comparison, just real revenue and units
+  // for the selection itself.
   const topMovers = useMemo(() => {
     return [...items]
       .filter((i) => i.soldWk > 0)
@@ -228,25 +226,15 @@ function ProductMixPage() {
       <Topbar eyebrow="Menu performance" title="Product Mix" />
       <main className="px-8 py-8 max-w-[1600px] mx-auto space-y-8">
         {/* Header */}
-        <header className="flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
-              Menu performance
-            </p>
-            <h1 className="font-serif text-4xl text-foreground">Product Mix</h1>
-            <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              See which dishes carry the room, which ones drain it, and where the menu wants a
-              nudge. Tracked against the prior period's sales.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2">
-              <GitCompare className="h-4 w-4" /> Compare
-            </Button>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" /> Export
-            </Button>
-          </div>
+        <header>
+          <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Menu performance
+          </p>
+          <h1 className="font-serif text-4xl text-foreground">Product Mix</h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-xl">
+            See which dishes carry the room, which ones drain it, and where the menu wants a nudge.
+            Tracked against the prior period's sales.
+          </p>
         </header>
 
         {/* POS sync strip */}
